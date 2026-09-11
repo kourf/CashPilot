@@ -3,13 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { UploadCloud, AlertCircle, CheckCircle2, FileText, ClipboardPaste, Search, Loader2, Trash2, Filter, Plus, Info } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
-import { collection, writeBatch, doc, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, writeBatch, doc } from 'firebase/firestore';
+
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, functions } from '../../lib/firebase';
 import { Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Sankey, Legend } from 'recharts';
 import Papa from 'papaparse';
 import { cn } from '../../lib/utils';
-import { calculateKpis, filterByMonth, getAvailableMonths, formatMonthLabel, buildSankeyData, buildCategoryBreakdown, type Transaction } from '../../lib/kpiUtils';
+import { calculateKpis, filterByMonth, formatMonthLabel, buildSankeyData, buildCategoryBreakdown, type Transaction } from '../../lib/kpiUtils';
+import { useTransactions } from '../../context/TransactionsContext';
 
 
 type ViewState = 'dashboard' | 'upload' | 'mapping' | 'validation';
@@ -93,8 +95,15 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 
 function BankStatementsContent() {
   const [view, setView] = useState<ViewState>('dashboard');
-  const [loading, setLoading] = useState(true);
-  const [transactions, setTransactions] = useState<any[]>([]);
+  
+  // Données globales et réactives avec 0 ms de latence (cache chaud en mémoire & IndexedDB)
+  const {
+    transactions,
+    loading,
+    selectedMonth,
+    setSelectedMonth,
+    availableMonths
+  } = useTransactions();
   
   // Upload States
   const [isDragging, setIsDragging] = useState(false);
@@ -115,31 +124,7 @@ function BankStatementsContent() {
   // Filters for Dashboard Table
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
-  const [selectedMonth, setSelectedMonth] = useState('all');
 
-  useEffect(() => {
-    const deviceId = localStorage.getItem('deviceId') || 'default-user';
-    const q = query(
-      collection(db, `users/${deviceId}/transactions`),
-      orderBy('date', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setTransactions(txs as Transaction[]);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const availableMonths = useMemo(() => getAvailableMonths(transactions), [transactions]);
-  
-  useEffect(() => {
-    if (availableMonths.length > 0 && selectedMonth === 'all') {
-      setSelectedMonth(availableMonths[0]);
-    }
-  }, [availableMonths, selectedMonth]);
 
   // Draft persistence
   useEffect(() => {

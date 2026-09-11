@@ -23,76 +23,29 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
-import { db } from '../../lib/firebase';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
-import { calculateKpis, filterByMonth, getAvailableMonths, formatMonthLabel, buildSankeyData, buildCategoryBreakdown, type Transaction } from '../../lib/kpiUtils';
+import { calculateKpis, filterByMonth, formatMonthLabel, buildSankeyData, buildCategoryBreakdown } from '../../lib/kpiUtils';
+import { useTransactions } from '../../context/TransactionsContext';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [isDemo, setIsDemo] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string>('all');
-
-  useEffect(() => {
-    let unsubscribe: () => void;
-    
-    const timeoutId = setTimeout(() => {
-      if (loading) {
-        setLoading(false);
-        setError("Le chargement prend plus de temps que prévu.");
-      }
-    }, 10000);
-
-    if (isDemo) {
-      clearTimeout(timeoutId);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
-      const q = query(
-        collection(db, `users/${deviceId}/transactions`),
-        orderBy('date', 'desc')
-      );
-
-      unsubscribe = onSnapshot(q, (snapshot) => {
-        const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as unknown as Transaction[];
-        setTransactions(txs);
-        setLoading(false);
-        clearTimeout(timeoutId);
-      }, (err) => {
-        console.error("Erreur de chargement des transactions:", err);
-        setError("Impossible de charger vos données. Vérifiez votre connexion.");
-        setLoading(false);
-        clearTimeout(timeoutId);
-      });
-    } catch (err) {
-      console.error(err);
-      setError("Une erreur inattendue est survenue.");
-      setLoading(false);
-      clearTimeout(timeoutId);
-    }
-
-    return () => {
-      clearTimeout(timeoutId);
-      if (unsubscribe) unsubscribe();
-    };
-  }, [isDemo]);
-
-  const availableMonths = useMemo(() => getAvailableMonths(transactions), [transactions]);
   
-  useEffect(() => {
-    if (availableMonths.length > 0 && selectedMonth === 'all' && !isDemo) {
-      setSelectedMonth(availableMonths[0]);
-    }
-  }, [availableMonths, selectedMonth, isDemo]);
+  const { 
+    transactions, 
+    loading: ctxLoading, 
+    error: ctxError, 
+    selectedMonth, 
+    setSelectedMonth, 
+    availableMonths 
+  } = useTransactions();
+
+  const loading = isDemo ? false : ctxLoading;
+  const error = isDemo ? null : ctxError;
 
   const filteredTransactions = useMemo(() => {
     return isDemo ? [] : filterByMonth(transactions, selectedMonth);
   }, [transactions, selectedMonth, isDemo]);
+
 
   const kpis = useMemo(() => calculateKpis(filteredTransactions), [filteredTransactions]);
   const pieData = useMemo(() => buildCategoryBreakdown(filteredTransactions).slice(0, 5), [filteredTransactions]);

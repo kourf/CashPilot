@@ -1,5 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager,
+  connectFirestoreEmulator 
+} from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
@@ -14,7 +20,20 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+
+// Initialisation Firestore avec cache persistant IndexedDB multi-onglets (0 latence)
+let db: ReturnType<typeof getFirestore>;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+} catch (e) {
+  console.warn("Firestore persistent cache fallback to getFirestore:", e);
+  db = getFirestore(app);
+}
+
 const storage = getStorage(app);
 const functions = getFunctions(app, 'europe-west1');
 
@@ -26,3 +45,4 @@ if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
 }
 
 export { db, storage, functions };
+
