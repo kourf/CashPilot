@@ -10,10 +10,10 @@ service cloud.firestore {
 
     // Permettre l'accès uniquement si l'ID du document utilisateur correspond au deviceId passé
     match /users/{deviceId} {
-      allow read, write: if true; // En production V2 avec Firebase Auth, ce serait "if request.auth != null && request.auth.uid == userId"
+      allow read, write: if request.auth != null && request.auth.uid == deviceId;
       
       match /{document=**} {
-        allow read, write: if true;
+        allow read, write: if request.auth != null && request.auth.uid == deviceId;
       }
     }
     // Règles strictes pour le reste
@@ -22,4 +22,3 @@ service cloud.firestore {
     }
   }
 }
-

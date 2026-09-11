@@ -9,7 +9,7 @@ const ai = new GoogleGenAI({ apiKey });
 
 export const analyzeDocument = functions.region('europe-west1')
   .runWith({ timeoutSeconds: 300, memory: '1GB' })
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data) => {
     
   const { fileUrl, fileType, mimeType } = data;
   
@@ -150,7 +150,7 @@ Classe en type fixe, variable ou exceptionnelle.`;
 });
 
 export const generateCoachAdvice = functions.region('europe-west1')
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data) => {
     
   const { monthlyData } = data;
   
@@ -226,7 +226,7 @@ Ne fais aucune mention de la TVA.`;
 
 export const categorizeTransactions = functions.region('europe-west1')
   .runWith({ timeoutSeconds: 300, memory: '1GB' })
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data) => {
     
   const { transactions } = data;
   
@@ -296,7 +296,7 @@ Transactions Ã  traiter : ${JSON.stringify(transactions)}`;
 
 export const validateBankStatementImport = functions.region('europe-west1')
   .runWith({ timeoutSeconds: 300, memory: '512MB' })
-  .https.onCall(async (data, context) => {
+  .https.onCall(async (data) => {
     try {
       console.log("[validateBankStatementImport] Démarrage de la fonction");
       
@@ -308,6 +308,16 @@ export const validateBankStatementImport = functions.region('europe-west1')
           success: false,
           code: "INVALID_PAYLOAD",
           message: "Le payload ne contient pas de tableau de transactions valide.",
+          details: []
+        };
+      }
+
+      if (transactions.length > 5000) {
+        console.error("[validateBankStatementImport] Payload trop grand : plus de 5000 transactions");
+        return {
+          success: false,
+          code: "PAYLOAD_TOO_LARGE",
+          message: "Le payload contient trop de transactions. Limite fixée à 5000.",
           details: []
         };
       }

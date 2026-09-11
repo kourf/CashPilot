@@ -80,9 +80,9 @@ export default function Dashboard() {
   const sankeyData = useMemo(() => buildSankeyData(kpis, pieData), [kpis, pieData]);
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
-  const economiesPossibles = kpis.abonnements * 0.15; 
-  const documentsImportes = filteredTransactions.length > 0 ? 1 : 0; 
-  const ticketsAnalyses = 0; 
+
+
+
   
   const chartData = transactions.reduce((acc: any, t) => {
     const month = t.monthKey || (t.date || '').substring(0, 7) || 'Inconnu';
@@ -116,9 +116,9 @@ export default function Dashboard() {
   const displayReste = isDemo ? (displayRevenus - displayDepenses) : kpis.resteAVivre;
   const displayBudgetJour = isDemo ? (displayReste / 30) : kpis.budgetJournalier;
   const displayAbonnements = isDemo ? '3' : kpis.abonnements > 0 ? (kpis.abonnements).toFixed(2) + ' €' : '0';
-  const displayEconomies = isDemo ? 45.50 : economiesPossibles;
-  const displayDocs = isDemo ? 2 : documentsImportes;
-  const displayTickets = isDemo ? 12 : ticketsAnalyses;
+
+
+
   const displayChartData = isDemo ? demoData : sortedChartData;
   const displayTransactions = isDemo ? demoTx : filteredTransactions.slice(0, 5);
 
@@ -297,7 +297,7 @@ export default function Dashboard() {
               <div className="h-full w-full flex items-center justify-center">
                 <Skeleton className="w-full h-full rounded-lg" />
               </div>
-            ) : (!isDemo && sankeyData.links.length > 0) ? (
+            ) : (!isDemo && sankeyData?.nodes?.length > 0 && sankeyData?.links?.length > 0) ? (
               <ResponsiveContainer width="100%" height="100%">
                 <Sankey data={sankeyData} nodePadding={50} margin={{ left: 20, right: 20, top: 20, bottom: 20 }}
                   link={{ stroke: '#cbd5e1' }} node={{ fill: '#3b82f6' }} />

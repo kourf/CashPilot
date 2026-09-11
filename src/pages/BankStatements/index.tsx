@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { UploadCloud, AlertCircle, CheckCircle2, FileText, ClipboardPaste, Search, Loader2, Trash2, Filter, Plus } from 'lucide-react';
@@ -6,7 +6,7 @@ import { httpsCallable } from 'firebase/functions';
 import { collection, writeBatch, doc, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, functions } from '../../lib/firebase';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Sankey, Legend } from 'recharts';
+import { Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Sankey, Legend } from 'recharts';
 import Papa from 'papaparse';
 import { cn } from '../../lib/utils';
 import { calculateKpis, filterByMonth, getAvailableMonths, formatMonthLabel, buildSankeyData, buildCategoryBreakdown, type Transaction } from '../../lib/kpiUtils';
@@ -151,7 +151,7 @@ function BankStatementsContent() {
           setExtractedData(parsed.extractedData);
           setView(parsed.view || 'validation');
         }
-      } catch(e) {}
+      } catch(e) { console.error(e); }
     }
   }, []);
 
@@ -223,6 +223,7 @@ function BankStatementsContent() {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
+        dynamicTyping: false,
         complete: (results) => {
           if (results.data && results.data.length > 0) {
             const headers = Object.keys(results.data[0]);
