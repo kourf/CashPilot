@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{deviceId}/{allPaths=**} {
+      allow read, write: if true; // En prod, vérifier le deviceId / auth
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
