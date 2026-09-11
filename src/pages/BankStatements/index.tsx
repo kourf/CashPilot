@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { UploadCloud, AlertCircle, CheckCircle2, FileText, ClipboardPaste, Search, Loader2, Trash2, Filter, Plus } from 'lucide-react';
+import { UploadCloud, AlertCircle, CheckCircle2, FileText, ClipboardPaste, Search, Loader2, Trash2, Filter, Plus, Info } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { collection, writeBatch, doc, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -519,12 +519,19 @@ function BankStatementsContent() {
       {/* --- DASHBOARD VIEW --- */}
       {view === 'dashboard' && (
         <div className="space-y-6">
-          <Card className={cn("glass border-primary/20", transactions.length === 0 ? "bg-primary/5" : "")}>
-            <CardContent className={transactions.length === 0 ? "p-8" : "p-4"}>
+          
+          {/* LUXURY DROPZONE */}
+          <Card className={cn("glass-card border-primary/30", transactions.length === 0 ? "bg-primary/[0.03]" : "")}>
+            <CardContent className={transactions.length === 0 ? "p-8" : "p-3 md:p-4"}>
               <div 
-                className={cn("border-2 border-dashed rounded-xl flex flex-col items-center justify-center transition-colors cursor-pointer bg-background", 
-                  isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
-                  transactions.length === 0 ? "p-8" : "p-4 flex-row gap-4 justify-start"
+                className={cn(
+                  "border-2 border-dashed rounded-2xl flex items-center transition-all duration-300 cursor-pointer group relative overflow-hidden", 
+                  isDragging 
+                    ? 'border-primary bg-primary/10 shadow-glow-cyan' 
+                    : 'border-border/80 dark:border-white/[0.1] hover:border-primary/50 hover:bg-secondary/40 dark:hover:bg-white/[0.02]',
+                  transactions.length === 0 
+                    ? "p-8 flex-col justify-center text-center" 
+                    : "p-3 md:p-4 flex-row gap-3.5 justify-start"
                 )}
                 onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
@@ -532,101 +539,220 @@ function BankStatementsContent() {
                 onClick={() => document.getElementById('file-upload-dash')?.click()}
               >
                 <input type="file" id="file-upload-dash" className="hidden" accept=".pdf,.csv" onChange={handleFileInput} />
-                <div className={cn("bg-primary/10 rounded-full text-primary", transactions.length === 0 ? "p-3 mb-3" : "p-2")}>
-                  <UploadCloud size={transactions.length === 0 ? 24 : 20} />
+                <div className={cn(
+                  "rounded-2xl bg-gradient-to-br from-primary/15 to-cyan-500/15 text-primary flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 shadow-sm", 
+                  transactions.length === 0 ? "w-16 h-16 mb-3" : "w-10 h-10"
+                )}>
+                  <UploadCloud size={transactions.length === 0 ? 28 : 20} className="stroke-[2.2]" />
                 </div>
                 <div>
-                  <h3 className={cn("font-medium", transactions.length === 0 ? "text-base mb-1 text-center" : "text-sm")}>
+                  <h3 className={cn("font-bold text-foreground", transactions.length === 0 ? "text-base mb-1" : "text-xs md:text-sm")}>
                     Glissez-déposez un relevé PDF ou CSV pour commencer
                   </h3>
-                  {transactions.length === 0 && <p className="text-xs text-muted-foreground text-center">Les KPIs et graphiques ci-dessous s'animeront avec vos donnǸes.</p>}
+                  {transactions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Les KPIs et graphiques ci-dessous s'animeront automatiquement avec vos données réelles.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground hidden sm:block">
+                      Cliquez pour ajouter un nouveau relevé et enrichir votre historique multi-mois.
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>
           </Card>
 
           {/* KPIs Grid */}
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-5">
-            <Card className="glass border-primary/20"><CardContent className="pt-4"><p className="text-sm text-muted-foreground">Revenus du mois</p><p className="text-2xl font-bold text-success">{loading ? <div className="h-8 w-24 bg-muted animate-pulse rounded mt-1"></div> : `+${kpis.revenus.toFixed(2)} €`}</p></CardContent></Card>
-            <Card className="glass"><CardContent className="pt-4"><p className="text-sm text-muted-foreground">Dépenses réelles</p><p className="text-2xl font-bold text-destructive">{loading ? <div className="h-8 w-24 bg-muted animate-pulse rounded mt-1"></div> : `-${kpis.depenses.toFixed(2)} €`}</p></CardContent></Card>
-            <Card className="glass"><CardContent className="pt-4"><p className="text-sm text-muted-foreground">Reste à vivre</p><p className="text-2xl font-bold">{loading ? <div className="h-8 w-24 bg-muted animate-pulse rounded mt-1"></div> : `${kpis.reste.toFixed(2)} €`}</p></CardContent></Card>
-            <Card className="glass"><CardContent className="pt-4"><p className="text-sm text-muted-foreground">Budget Journalier</p><p className="text-2xl font-bold">{loading ? <div className="h-8 w-24 bg-muted animate-pulse rounded mt-1"></div> : `${(kpis.reste > 0 ? kpis.reste / 30 : 0).toFixed(2)} €`}</p></CardContent></Card>
-            <Card className="glass bg-primary/5 border-primary/20"><CardContent className="pt-4"><p className="text-sm text-primary">Top Catégorie</p><p className="text-xl font-bold truncate">{loading ? <div className="h-7 w-20 bg-muted/50 animate-pulse rounded mt-1"></div> : kpis.topCat}</p></CardContent></Card>
+          <div className="grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-5">
+            <Card className="glass-card border-primary/30">
+              <CardContent className="pt-4 p-4">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Revenus du mois</span>
+                <p className="text-xl md:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+                  {loading ? <div className="h-7 w-24 bg-muted animate-pulse rounded mt-1"></div> : `+${kpis.revenus.toFixed(2)} €`}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+              <CardContent className="pt-4 p-4">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Dépenses réelles</span>
+                <p className="text-xl md:text-2xl font-black text-foreground mt-1">
+                  {loading ? <div className="h-7 w-24 bg-muted animate-pulse rounded mt-1"></div> : `-${kpis.depenses.toFixed(2)} €`}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card border-primary/40 bg-gradient-to-br from-card to-primary/[0.04]">
+              <CardContent className="pt-4 p-4">
+                <span className="text-xs font-semibold text-primary uppercase tracking-wider block">Reste à vivre</span>
+                <p className="text-xl md:text-2xl font-black text-foreground mt-1">
+                  {loading ? <div className="h-7 w-24 bg-muted animate-pulse rounded mt-1"></div> : `${kpis.reste.toFixed(2)} €`}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+              <CardContent className="pt-4 p-4">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Rythme journalier</span>
+                <p className="text-xl md:text-2xl font-black text-foreground mt-1">
+                  {loading ? <div className="h-7 w-24 bg-muted animate-pulse rounded mt-1"></div> : `${(kpis.reste > 0 ? kpis.reste / 30 : 0).toFixed(2)} €`}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card col-span-2 sm:col-span-1">
+              <CardContent className="pt-4 p-4">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Top Catégorie</span>
+                <p className="text-lg md:text-xl font-bold text-foreground mt-1 truncate">
+                  {loading ? <div className="h-7 w-20 bg-muted animate-pulse rounded mt-1"></div> : (kpis.topCat || 'Général')}
+                </p>
+              </CardContent>
+            </Card>
           </div>
           
-          <div className="grid gap-4 grid-cols-3 md:grid-cols-6 text-sm">
-            <div className="bg-card border rounded-lg p-3 text-center"><span className="block text-muted-foreground mb-1">Fixes</span>{loading ? <div className="h-5 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-semibold">{kpis.fixe.toFixed(0)} €</span>}</div>
-            <div className="bg-card border rounded-lg p-3 text-center"><span className="block text-muted-foreground mb-1">Variables</span>{loading ? <div className="h-5 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-semibold">{kpis.variable.toFixed(0)} €</span>}</div>
-            <div className="bg-card border rounded-lg p-3 text-center"><span className="block text-muted-foreground mb-1">Excep.</span>{loading ? <div className="h-5 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-semibold">{kpis.exceptionnelle.toFixed(0)} €</span>}</div>
-            <div className="bg-card border rounded-lg p-3 text-center"><span className="block text-muted-foreground mb-1">Épargne</span>{loading ? <div className="h-5 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-semibold text-primary">{kpis.epargne.toFixed(0)} €</span>}</div>
-            <div className="bg-card border rounded-lg p-3 text-center"><span className="block text-muted-foreground mb-1">Abonnements</span>{loading ? <div className="h-5 w-8 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-semibold">{kpis.abonnements}</span>}</div>
-            <div className="bg-card border rounded-lg p-3 text-center"><span className="block text-muted-foreground mb-1">Frais Bancaires</span>{loading ? <div className="h-5 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-semibold text-destructive">{kpis.frais.toFixed(2)} €</span>}</div>
+          {/* Sub KPIs */}
+          <div className="grid gap-3 grid-cols-3 md:grid-cols-6 text-xs font-medium">
+            <div className="glass-card rounded-xl p-3 text-center">
+              <span className="block text-muted-foreground text-[11px] mb-0.5">Fixes</span>
+              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm">{kpis.fixe.toFixed(0)} €</span>}
+            </div>
+            <div className="glass-card rounded-xl p-3 text-center">
+              <span className="block text-muted-foreground text-[11px] mb-0.5">Variables</span>
+              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm">{kpis.variable.toFixed(0)} €</span>}
+            </div>
+            <div className="glass-card rounded-xl p-3 text-center">
+              <span className="block text-muted-foreground text-[11px] mb-0.5">Imprévus</span>
+              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm">{kpis.exceptionnelle.toFixed(0)} €</span>}
+            </div>
+            <div className="glass-card rounded-xl p-3 text-center">
+              <span className="block text-muted-foreground text-[11px] mb-0.5">Épargne</span>
+              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm text-primary">{kpis.epargne.toFixed(0)} €</span>}
+            </div>
+            <div className="glass-card rounded-xl p-3 text-center">
+              <span className="block text-muted-foreground text-[11px] mb-0.5">Abonnements</span>
+              {loading ? <div className="h-4 w-8 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm">{kpis.abonnements}</span>}
+            </div>
+            <div className="glass-card rounded-xl p-3 text-center">
+              <span className="block text-muted-foreground text-[11px] mb-0.5">Frais Bancaires</span>
+              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm text-rose-500">{kpis.frais.toFixed(2)} €</span>}
+            </div>
           </div>
 
           {/* Charts */}
           <div className="grid gap-6 md:grid-cols-2">
-            <Card className="glass">
-              <CardHeader><CardTitle className="text-base">Flux des Finances (Sankey)</CardTitle></CardHeader>
-              <CardContent className="h-[300px]">
-                {sankeyData.links.length > 0 ? (
+            <Card className="glass-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold">Flux des Finances (Sankey)</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[280px]">
+                {sankeyData?.nodes?.length > 0 && sankeyData?.links?.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <Sankey data={sankeyData} nodePadding={50} margin={{ left: 20, right: 20, top: 20, bottom: 20 }}
-                      link={{ stroke: '#cbd5e1' }} node={{ fill: '#3b82f6' }} />
+                      link={{ stroke: 'hsl(var(--border))' }} node={{ fill: 'hsl(var(--primary))' }} />
                   </ResponsiveContainer>
-                ) : <div className="h-full flex items-center justify-center text-muted-foreground">Pas assez de donnǸes</div>}
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground text-xs flex-col">
+                    <Info className="w-8 h-8 mb-2 opacity-25" />
+                    Pas assez de données pour générer le diagramme de flux.
+                  </div>
+                )}
               </CardContent>
             </Card>
             
-            <Card className="glass">
-              <CardHeader><CardTitle className="text-base">Répartition des Dépenses</CardTitle></CardHeader>
-              <CardContent className="h-[300px]">
+            <Card className="glass-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold">Répartition des Dépenses</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[280px]">
                 {pieData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value" nameKey="name">
-                        {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={4} dataKey="value" nameKey="name">
+                        {pieData.map((_entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                       </Pie>
-                      <RechartsTooltip formatter={(value: number, name: string, props: any) => [`${value.toFixed(2)} € (${(props?.payload?.percentage || 0).toFixed(1)} %)`, name]} />
-                      <Legend verticalAlign="bottom" height={36} />
+                      <RechartsTooltip 
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--card))',
+                          borderRadius: '0.875rem',
+                          border: '1px solid hsl(var(--border))',
+                          fontSize: '12px'
+                        }}
+                        formatter={(value: any, name: any, props: any) => [`${Number(value).toFixed(2)} € (${(props?.payload?.percentage || 0).toFixed(1)} %)`, name]} 
+                      />
+                      <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '11px' }} />
                     </PieChart>
                   </ResponsiveContainer>
-                ) : <div className="h-full flex items-center justify-center text-muted-foreground">Aucune dépense catégorisée</div>}
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground text-xs flex-col">
+                    <Info className="w-8 h-8 mb-2 opacity-25" />
+                    Aucune dépense catégorisée pour ce mois.
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Transactions Table */}
-          <Card className="glass">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle>Toutes les transactions</CardTitle>
-              <div className="flex gap-2">
+          {/* Transactions Table (Apple Wallet / HyperOS style) */}
+          <Card className="glass-card">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Grand Livre</span>
+                <CardTitle className="text-base font-bold mt-0.5">Toutes les transactions</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
                 <div className="relative">
-                  <Search className="w-4 h-4 absolute left-2 top-2.5 text-muted-foreground" />
-                  <input type="text" placeholder="Rechercher..." className="pl-8 h-9 text-sm rounded-md border bg-background" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                  <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" />
+                  <input 
+                    type="text" 
+                    placeholder="Filtrer..." 
+                    className="pl-8.5 pr-3 h-9 text-xs rounded-xl border border-border/80 bg-background/80 outline-none w-36 sm:w-48 transition-all focus:w-56 focus:border-primary" 
+                    value={searchTerm} 
+                    onChange={e => setSearchTerm(e.target.value)} 
+                  />
                 </div>
-                <select className="h-9 text-sm rounded-md border bg-background px-2" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
-                  {categories.map(c => <option key={String(c)} value={String(c)}>{String(c)}</option>)}
+                <select 
+                  className="h-9 text-xs rounded-xl border border-border/80 bg-background/80 px-2.5 outline-none cursor-pointer" 
+                  value={categoryFilter} 
+                  onChange={e => setCategoryFilter(e.target.value)}
+                >
+                  {categories.map(c => <option key={String(c)} value={String(c)} className="dark:bg-[#10141e]">{String(c)}</option>)}
                 </select>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-md mt-4 overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-muted text-muted-foreground text-xs uppercase">
-                    <tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Libellé</th><th className="px-4 py-3">Catégorie</th><th className="px-4 py-3">Nature</th><th className="px-4 py-3 text-right">Montant</th></tr>
+              <div className="rounded-2xl border border-border/70 dark:border-white/[0.06] overflow-hidden">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-secondary/50 dark:bg-white/[0.03] text-muted-foreground uppercase text-[11px] font-semibold border-b border-border/60">
+                    <tr>
+                      <th className="px-3.5 py-3">Date</th>
+                      <th className="px-3.5 py-3">Libellé</th>
+                      <th className="px-3.5 py-3">Catégorie</th>
+                      <th className="px-3.5 py-3">Nature</th>
+                      <th className="px-3.5 py-3 text-right">Montant</th>
+                    </tr>
                   </thead>
-                  <tbody className="divide-y">
-                    {filteredDashboardTx.slice(0, 50).map((tx, i) => (
-                      <tr key={i} className="hover:bg-muted/50">
-                        <td className="px-4 py-3 whitespace-nowrap">{tx.date}</td>
-                        <td className="px-4 py-3 max-w-[200px] truncate" title={tx.cleanLabel || tx.rawLabel}>{tx.cleanLabel || tx.rawLabel}</td>
-                        <td className="px-4 py-3"><span className="bg-secondary px-2 py-1 rounded-full text-xs">{tx.category}</span></td>
-                        <td className="px-4 py-3 text-muted-foreground">{tx.nature || '-'}</td>
-                        <td className={cn("px-4 py-3 text-right font-bold", (tx.amount || 0) > 0 ? "text-success" : "")}>
-                          {(tx.amount || 0) > 0 ? '+' : ''}{Number(tx.amount || 0).toFixed(2)} €
-                        </td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-border/50 dark:divide-white/[0.04]">
+                    {filteredDashboardTx.slice(0, 60).map((tx, i) => {
+                      const isPositive = (tx.amount || 0) > 0;
+                      return (
+                        <tr key={i} className="hover:bg-secondary/30 dark:hover:bg-white/[0.02] transition-colors">
+                          <td className="px-3.5 py-3 whitespace-nowrap font-mono text-muted-foreground">{tx.date}</td>
+                          <td className="px-3.5 py-3 max-w-[220px] truncate font-semibold text-foreground" title={tx.cleanLabel || tx.rawLabel}>
+                            {tx.cleanLabel || tx.rawLabel}
+                          </td>
+                          <td className="px-3.5 py-3">
+                            <span className="glass-pill text-[11px]">
+                              {tx.category || 'Autres'}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-3 text-muted-foreground capitalize">{tx.nature || '-'}</td>
+                          <td className={cn("px-3.5 py-3 text-right font-extrabold text-xs md:text-sm", isPositive ? "text-emerald-500" : "text-foreground")}>
+                            {isPositive ? '+' : ''}{Number(tx.amount || 0).toFixed(2)} €
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

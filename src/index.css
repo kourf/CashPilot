@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,38 +6,55 @@
 
 @layer base {
   :root {
-    --background: #f8fafc;
-    --foreground: #0f172a;
-    --primary: #2563eb;
-    --primary-foreground: #ffffff;
-    --card: #ffffff;
-    --card-foreground: #0f172a;
-    --border: #e2e8f0;
-    --muted: #f1f5f9;
-    --muted-foreground: #64748b;
-    --accent: #dbeafe;
-    --accent-foreground: #1e3a8a;
-    --success: #10b981;
-    --destructive: #ef4444;
-    --warning: #f59e0b;
-    --radius: 1rem;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 217 91% 54%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 214 32% 93%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 214 32% 91%;
+    --accent-foreground: 222 47% 11%;
+    --success: 158 64% 45%;
+    --success-foreground: 0 0% 100%;
+    --destructive: 350 89% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 54%;
   }
 
   .dark {
-    --background: #0f172a;
-    --foreground: #f8fafc;
-    --primary: #3b82f6;
-    --primary-foreground: #ffffff;
-    --card: #1e293b;
-    --card-foreground: #f8fafc;
-    --border: #334155;
-    --muted: #1e293b;
-    --muted-foreground: #94a3b8;
-    --accent: #1e3a8a;
-    --accent-foreground: #dbeafe;
-    --success: #10b981;
-    --destructive: #ef4444;
-    --warning: #f59e0b;
+    --background: 224 35% 6%;
+    --foreground: 210 40% 98%;
+    --card: 224 28% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 224 28% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 199 89% 52%;
+    --primary-foreground: 224 35% 6%;
+    --secondary: 220 20% 15%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 220 20% 13%;
+    --muted-foreground: 217 19% 68%;
+    --accent: 220 20% 18%;
+    --accent-foreground: 210 40% 98%;
+    --success: 158 64% 50%;
+    --success-foreground: 224 35% 6%;
+    --destructive: 350 89% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 224 35% 6%;
+    --border: 220 20% 17%;
+    --input: 220 20% 17%;
+    --ring: 199 89% 52%;
   }
 }
 
@@ -45,11 +62,60 @@
   * {
     @apply border-border;
   }
+  html {
+    color-scheme: light dark;
+  }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20 selection:text-primary min-h-screen transition-colors duration-200;
   }
 }
 
+/* Glassmorphism & High-End Tech Luxury Styles (Apple + Xiaomi/Huawei + Finary Feel) */
 .glass {
-  @apply bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border border-white/20 dark:border-slate-800/50 shadow-glass;
+  @apply bg-white/75 dark:bg-[#10141e]/75 backdrop-blur-xl border border-slate-200/80 dark:border-white/[0.08] shadow-glass dark:shadow-glass-dark;
+}
+
+.glass-card {
+  @apply bg-card/85 dark:bg-card/70 backdrop-blur-xl border border-border/70 dark:border-white/[0.07] shadow-sm hover:shadow-md dark:shadow-none hover:border-primary/40 dark:hover:border-primary/30 transition-all duration-300;
+}
+
+.glass-header {
+  @apply bg-background/80 backdrop-blur-2xl border-b border-border/70 dark:border-white/[0.06];
+}
+
+.glass-pill {
+  @apply bg-secondary/80 dark:bg-white/[0.05] backdrop-blur-md border border-border/60 dark:border-white/[0.08] text-foreground text-xs font-medium px-2.5 py-1 rounded-full;
+}
+
+.badge-jade {
+  @apply bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20;
+}
+
+.badge-cyan {
+  @apply bg-cyan-500/10 dark:bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20;
+}
+
+.badge-rose {
+  @apply bg-rose-500/10 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20;
+}
+
+.badge-amber {
+  @apply bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20;
+}
+
+/* Micro glow on hover */
+.glow-hover {
+  @apply transition-all duration-300 hover:shadow-glow-cyan;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors;
 }
