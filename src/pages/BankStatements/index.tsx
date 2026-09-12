@@ -16,7 +16,13 @@ import {
   Landmark,
   Wallet,
   CreditCard,
-  Check
+  Check,
+  Pencil,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Tag,
+  Settings2
 } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -32,8 +38,11 @@ import {
   checkDuplicateTransactions, 
   detectAccountFromFilename,
   parseCsvBankFile,
+  smartCategorizeTransaction,
+  calculateSubscriptionSummary,
   type FlowType, 
-  type BankTransaction 
+  type BankTransaction,
+  type SubscriptionSummary
 } from '../../lib/bankUtils';
 import { db, storage, functions } from '../../lib/firebase';
 import { doc, deleteDoc, writeBatch, collection, updateDoc } from 'firebase/firestore';
@@ -62,6 +71,22 @@ export const BankStatements: React.FC = () => {
   const [isBulkAccountModalOpen, setIsBulkAccountModalOpen] = useState(false);
   const [bulkTargetCategory, setBulkTargetCategory] = useState<string>(CATEGORIES[0]);
   const [bulkTargetAccount, setBulkTargetAccount] = useState<string>('');
+
+  // Single Transaction Edit Modal State (Manual Override)
+  const [editingTx, setEditingTx] = useState<BankTransaction | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    description: '',
+    amount: '',
+    category: 'Autre',
+    flowType: 'VARIABLE_EXPENSE' as FlowType,
+    isSubscription: false,
+    subscriptionDay: 1,
+    account: 'Compte Principal'
+  });
+
+  // Expand / collapse subscription banner
+  const [showSubscriptionDetails, setShowSubscriptionDetails] = useState(true);
   
   // Upload & File states
   const [isProcessingFile, setIsProcessingFile] = useState(false);
@@ -79,19 +104,30 @@ export const BankStatements: React.FC = () => {
     category: 'Alimentation & Courses',
     flowType: 'VARIABLE_EXPENSE' as FlowType,
     account: 'Compte Courant',
-    customAccount: ''
+    customAccount: '',
+    isSubscription: false,
+    subscriptionDay: 1
   });
 
-  // Convert raw Firestore transactions to BankTransaction models with strict flowType and accountName
+  // Convert raw Firestore transactions to BankTransaction models with strict flowType, smart categorization fallback and subscription detection
   const bankTransactions: BankTransaction[] = useMemo(() => {
     return rawTransactions.map(t => {
       const id = String(t.id || `tx_${t.date}_${t.amount}_${Math.random()}`);
       const desc = t.description || t.cleanLabel || t.rawLabel || 'Opération';
       const amount = Number(t.amount) || 0;
-      const category = t.category || (amount > 0 ? 'Salaire & Revenus' : 'Autre');
-      const flowType: FlowType = t.flowType || classifyFlowType(category, amount, desc);
+      
+      // Auto-analyze label via smartCategorizeTransaction if category missing or 'Autre'
+      const smart = smartCategorizeTransaction(desc, amount, t.date);
+      const category = (t.category && t.category !== 'Autre') ? t.category : smart.category;
+      const flowType: FlowType = t.flowType || (category === smart.category ? smart.flowType : classifyFlowType(category, amount, desc));
       const account = t.accountName || t.account || 'Compte Principal';
       const bankName = t.bankName || (account.includes(' - ') ? account.split(' - ')[0] : account);
+      const isSubscription = t.isSubscription !== undefined 
+        ? Boolean(t.isSubscription) 
+        : (category === 'Abonnements & Télécom' || smart.isSubscription);
+      const subscriptionDay = t.subscriptionDay !== undefined && t.subscriptionDay !== null
+        ? Number(t.subscriptionDay)
+        : (smart.subscriptionDay || (t.date ? parseInt(t.date.split('-')[2], 10) : undefined));
 
       return {
         id,
@@ -102,6 +138,9 @@ export const BankStatements: React.FC = () => {
         category,
         account,
         bankName,
+        isSubscription,
+        subscriptionDay,
+        confidence: smart.confidence,
         status: flowType === 'SAVINGS_TRANSFER' ? 'Internal Transfer' : 'Reconciled',
         monthKey: t.monthKey || (t.date ? t.date.substring(0, 7) : undefined),
         rawLabel: t.rawLabel,
@@ -140,6 +179,15 @@ export const BankStatements: React.FC = () => {
     return calculateBankMetrics(scopedTxs);
   }, [monthScopedTransactions, selectedAccount]);
 
+  // Subscription & Recurring Charges Summary for the scoped view
+  const subscriptionSummary: SubscriptionSummary = useMemo(() => {
+    const scopedTxs = selectedAccount === 'ALL'
+      ? monthScopedTransactions
+      : monthScopedTransactions.filter(t => t.account === selectedAccount);
+
+    return calculateSubscriptionSummary(scopedTxs);
+  }, [monthScopedTransactions, selectedAccount]);
+
   // Filtered & Searched Transaction List for the table
   const filteredTransactions = useMemo(() => {
     return monthScopedTransactions.filter(t => {
@@ -159,11 +207,12 @@ export const BankStatements: React.FC = () => {
         if (!matchDesc && !matchCat && !matchAmt && !matchAcc && !matchBank) return false;
       }
 
-      // Flow type filter
+      // Flow type & Subscription filter
       if (selectedFilter === 'ALL') return true;
       if (selectedFilter === 'INCOME') return t.flowType === 'INCOME';
       if (selectedFilter === 'FIXED') return t.flowType === 'FIXED_EXPENSE';
       if (selectedFilter === 'VARIABLE') return t.flowType === 'VARIABLE_EXPENSE';
+      if (selectedFilter === 'SUBSCRIPTION') return Boolean(t.isSubscription || t.category === 'Abonnements & Télécom');
       if (selectedFilter === 'EXPENSE') return t.flowType === 'FIXED_EXPENSE' || t.flowType === 'VARIABLE_EXPENSE';
       if (selectedFilter === 'SAVINGS') return t.flowType === 'SAVINGS_TRANSFER';
       return true;
@@ -205,6 +254,117 @@ export const BankStatements: React.FC = () => {
       setNotification({
         type: 'error',
         message: "Échec de la synchronisation Firestore."
+      });
+    }
+  };
+
+  // Open Edit Modal for Single Transaction (Manual Override)
+  const handleOpenEditModal = (tx: BankTransaction) => {
+    setEditingTx(tx);
+    setEditForm({
+      description: tx.description,
+      amount: String(Math.abs(tx.amount)),
+      category: tx.category,
+      flowType: tx.flowType,
+      isSubscription: Boolean(tx.isSubscription),
+      subscriptionDay: tx.subscriptionDay || (tx.date ? parseInt(tx.date.split('-')[2], 10) : 1),
+      account: tx.account || 'Compte Principal'
+    });
+    setIsEditModalOpen(true);
+  };
+
+  // Save changes from Edit Modal
+  const handleSaveEditModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx) return;
+
+    try {
+      const accountId = getActiveAccountId();
+      const docRef = doc(db, `users/${accountId}/transactions`, editingTx.id);
+
+      const parsedAmt = parseFloat(editForm.amount.replace(',', '.'));
+      const finalAmount = !isNaN(parsedAmt)
+        ? (editForm.flowType === 'INCOME' ? Math.abs(parsedAmt) : -Math.abs(parsedAmt))
+        : editingTx.amount;
+
+      const bankName = editForm.account.includes(' - ') ? editForm.account.split(' - ')[0] : editForm.account;
+
+      await updateDoc(docRef, {
+        description: editForm.description.trim(),
+        cleanLabel: editForm.description.trim(),
+        category: editForm.category,
+        flowType: editForm.flowType,
+        nature: editForm.flowType === 'FIXED_EXPENSE' ? 'fixe' : editForm.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+        isSubscription: editForm.isSubscription,
+        subscriptionDay: editForm.isSubscription ? Number(editForm.subscriptionDay) : null,
+        accountName: editForm.account,
+        bankName,
+        amount: finalAmount,
+        direction: finalAmount > 0 ? 'credit' : 'debit',
+        updatedAt: new Date().toISOString()
+      });
+
+      setIsEditModalOpen(false);
+      setEditingTx(null);
+      setNotification({
+        type: 'success',
+        message: `Opération mise à jour : ${editForm.category} (${editForm.flowType === 'FIXED_EXPENSE' ? 'Charge Fixe' : editForm.flowType === 'VARIABLE_EXPENSE' ? 'Dépense Courante' : editForm.flowType})`
+      });
+    } catch (err) {
+      console.error("Erreur mise à jour transaction:", err);
+      setNotification({
+        type: 'error',
+        message: "Échec de la sauvegarde de la transaction."
+      });
+    }
+  };
+
+  // AI Auto-Categorize for Selected or Visible Transactions
+  const handleAutoCategorizeSelected = async () => {
+    const idsToProcess = selectedTxIds.size > 0 
+      ? Array.from(selectedTxIds) 
+      : monthScopedTransactions.filter(t => t.category === 'Autre').map(t => t.id);
+
+    if (idsToProcess.length === 0) {
+      setNotification({
+        type: 'info',
+        message: "Toutes les opérations visibles sont déjà catégorisées avec précision."
+      });
+      return;
+    }
+
+    try {
+      const accountId = getActiveAccountId();
+      const batch = writeBatch(db);
+      let updatedCount = 0;
+
+      idsToProcess.forEach(id => {
+        const tx = bankTransactions.find(t => t.id === id);
+        if (!tx) return;
+        const smart = smartCategorizeTransaction(tx.description, tx.amount, tx.date);
+        const docRef = doc(db, `users/${accountId}/transactions`, id);
+        batch.update(docRef, {
+          category: smart.category,
+          flowType: smart.flowType,
+          nature: smart.flowType === 'FIXED_EXPENSE' ? 'fixe' : smart.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+          isSubscription: smart.isSubscription,
+          subscriptionDay: smart.subscriptionDay || null,
+          updatedAt: new Date().toISOString()
+        });
+        updatedCount++;
+      });
+
+      await batch.commit();
+      setSelectedTxIds(new Set());
+      setNotification({
+        type: 'success',
+        message: `${updatedCount} opérations analysées et reclassées automatiquement par l'IA !`
+      });
+    } catch (err) {
+      console.error("Erreur auto-catégorisation:", err);
+      setNotification({
+        type: 'error',
+        message: "Erreur lors de l'analyse automatique des transactions."
       });
     }
   };
@@ -396,6 +556,8 @@ export const BankStatements: React.FC = () => {
         category: manualTx.category,
         flowType: manualTx.flowType,
         nature: manualTx.flowType === 'FIXED_EXPENSE' ? 'fixe' : manualTx.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+        isSubscription: Boolean(manualTx.isSubscription),
+        subscriptionDay: manualTx.isSubscription ? Number(manualTx.subscriptionDay) : null,
         accountName: finalAccount,
         bankName: finalBank,
         aiStatus: 'completed',
@@ -411,7 +573,9 @@ export const BankStatements: React.FC = () => {
         category: 'Alimentation & Courses',
         flowType: 'VARIABLE_EXPENSE',
         account: finalAccount,
-        customAccount: ''
+        customAccount: '',
+        isSubscription: false,
+        subscriptionDay: 1
       });
 
       setNotification({
@@ -460,7 +624,6 @@ export const BankStatements: React.FC = () => {
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);
 
-
         setFileStatusMessage("Analyse OCR et détection intelligente du compte par l'IA...");
         const analyzeDocument = httpsCallable(functions, 'analyzeDocument');
         const response = await analyzeDocument({ fileUrl: url, fileType: 'bank_statement', mimeType: file.type });
@@ -474,8 +637,9 @@ export const BankStatements: React.FC = () => {
             extractedTxs = result.data.transactions.map((t: any, i: number) => {
               const amt = Number(t.amount) || 0;
               const desc = t.description || t.label || 'Opération';
-              const cat = t.category || (amt > 0 ? 'Salaire & Revenus' : 'Autre');
-              const flow = classifyFlowType(cat, amt, desc);
+              const smart = smartCategorizeTransaction(desc, amt, t.date);
+              const cat = (t.category && t.category !== 'Autre') ? t.category : smart.category;
+              const flow = t.flowType || (cat === smart.category ? smart.flowType : classifyFlowType(cat, amt, desc));
               return {
                 id: `pdf_${Date.now()}_${i}`,
                 date: t.date || new Date().toISOString().substring(0, 10),
@@ -483,6 +647,9 @@ export const BankStatements: React.FC = () => {
                 amount: amt,
                 flowType: flow,
                 category: cat,
+                isSubscription: smart.isSubscription,
+                subscriptionDay: smart.subscriptionDay,
+                confidence: smart.confidence,
                 account: detectedAccountName,
                 bankName: detectedBankName
               };
@@ -521,7 +688,6 @@ export const BankStatements: React.FC = () => {
       const batch = writeBatch(db);
       const txRef = collection(db, `users/${accountId}/transactions`);
 
-
       uniqueTxs.forEach(tx => {
         const newDoc = doc(txRef);
         const monthKey = tx.date ? tx.date.substring(0, 7) : new Date().toISOString().substring(0, 7);
@@ -537,6 +703,8 @@ export const BankStatements: React.FC = () => {
           category: tx.category,
           flowType: tx.flowType,
           nature: tx.flowType === 'FIXED_EXPENSE' ? 'fixe' : tx.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+          isSubscription: Boolean(tx.isSubscription),
+          subscriptionDay: tx.subscriptionDay || null,
           accountName: tx.account || detectedAccountName || 'Compte Principal',
           bankName: tx.bankName || detectedBankName || 'Banque',
           aiStatus: 'completed',
@@ -892,6 +1060,104 @@ export const BankStatements: React.FC = () => {
         </Card>
       </div>
 
+      {/* Abonnements & Charges Récurrentes Détectés Banner */}
+      <Card className="glass-card p-5 border border-cyan-500/20 bg-gradient-to-r from-cyan-950/20 via-background to-blue-950/20 rounded-2xl shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="p-2.5 rounded-2xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex-shrink-0 mt-0.5">
+              <RotateCcw className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-foreground">
+                  Abonnements & Prélèvements Récurrents Détectés
+                </h3>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                  {subscriptionSummary.count} actif{subscriptionSummary.count > 1 ? 's' : ''}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                L'IA analyse vos libellés et extrait automatiquement vos services récurrents avec leur jour de prélèvement.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground font-medium">Coût Mensuel</div>
+              <div className="text-lg font-extrabold text-cyan-400 font-mono">
+                {subscriptionSummary.totalMonthly.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+              </div>
+            </div>
+
+            <div className="h-8 w-px bg-border/60 hidden sm:block" />
+
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground font-medium">Projection Annuelle</div>
+              <div className="text-lg font-extrabold text-foreground font-mono">
+                {subscriptionSummary.totalAnnual.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSelectedFilter(selectedFilter === 'SUBSCRIPTION' ? 'ALL' : 'SUBSCRIPTION')}
+                className={`text-xs border-cyan-500/30 hover:bg-cyan-500/10 transition-colors ${
+                  selectedFilter === 'SUBSCRIPTION' ? 'bg-cyan-500/20 text-cyan-300' : 'text-foreground'
+                }`}
+              >
+                {selectedFilter === 'SUBSCRIPTION' ? 'Afficher tout' : 'Filtrer ces abonnements'}
+              </Button>
+
+              {subscriptionSummary.count > 0 && (
+                <button
+                  onClick={() => setShowSubscriptionDetails(!showSubscriptionDetails)}
+                  className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+                  title={showSubscriptionDetails ? "Masquer la liste" : "Afficher la liste"}
+                >
+                  {showSubscriptionDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Subscription Chips Row when expanded */}
+        {showSubscriptionDetails && subscriptionSummary.count > 0 && (
+          <div className="mt-4 pt-4 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 animate-in fade-in">
+            {subscriptionSummary.items.map(sub => (
+              <div
+                key={sub.id}
+                onClick={() => handleOpenEditModal(sub)}
+                className="p-3 rounded-xl bg-card/60 dark:bg-white/[0.03] border border-border/60 hover:border-cyan-500/40 cursor-pointer transition-all flex items-center justify-between group"
+                title="Cliquer pour modifier l'affectation"
+              >
+                <div className="min-w-0 pr-2">
+                  <div className="text-xs font-bold text-foreground truncate group-hover:text-cyan-400 transition-colors">
+                    {sub.description}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5 font-medium">
+                    <Calendar className="w-3 h-3 text-cyan-400" />
+                    <span>
+                      {sub.subscriptionDay ? `Prélevé le ${sub.subscriptionDay}` : 'Date variable'}
+                    </span>
+                    <span className="opacity-40">•</span>
+                    <span className="truncate">{sub.account || 'Compte Principal'}</span>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className="text-xs font-bold font-mono text-cyan-400">
+                    {Math.abs(sub.amount).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
       {/* Interactive Control Bar */}
       <Card className="glass-card p-4 border border-border/60">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -911,58 +1177,76 @@ export const BankStatements: React.FC = () => {
           {/* Quick Flow Filter Pills */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
             {[
-              { id: 'ALL', label: 'Toutes' },
-              { id: 'INCOME', label: 'Revenus' },
-              { id: 'FIXED', label: 'Fixes' },
-              { id: 'VARIABLE', label: 'Variables' },
-              { id: 'SAVINGS', label: 'Épargne / Neutre' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setSelectedFilter(tab.id)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-all whitespace-nowrap ${
-                  selectedFilter === tab.id
-                    ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
-                    : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+              { id: 'ALL', label: 'Toutes', icon: null },
+              { id: 'INCOME', label: 'Revenus', icon: null },
+              { id: 'FIXED', label: 'Charges Fixes', icon: null },
+              { id: 'VARIABLE', label: 'Dépenses Courantes', icon: null },
+              { id: 'SUBSCRIPTION', label: `Abonnements (${subscriptionSummary.count})`, icon: RotateCcw },
+              { id: 'SAVINGS', label: 'Épargne / Neutre', icon: null },
+            ].map(tab => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setSelectedFilter(tab.id)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                    selectedFilter === tab.id
+                      ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
+                      : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
+                  }`}
+                >
+                  {Icon && <Icon className="w-3.5 h-3.5" />}
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Bulk Actions when selected */}
-          {selectedTxIds.size > 0 && (
-            <div className="flex items-center gap-2 animate-in fade-in flex-wrap">
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => setIsBulkAccountModalOpen(true)}
-                className="flex items-center gap-1.5 text-xs"
-              >
-                <Landmark className="w-3.5 h-3.5" />
-                Changer de compte ({selectedTxIds.size})
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => setIsBulkCategoryModalOpen(true)}
-                className="flex items-center gap-1.5 text-xs"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                Reclasser ({selectedTxIds.size})
-              </Button>
-              <Button 
-                size="sm" 
-                variant="destructive"
-                onClick={handleDeleteSelected}
-                className="flex items-center gap-1.5 text-xs"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Supprimer ({selectedTxIds.size})
-              </Button>
-            </div>
-          )}
+          {/* AI Auto-Categorize & Bulk Actions */}
+          <div className="flex items-center gap-2 animate-in fade-in flex-wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleAutoCategorizeSelected}
+              className="flex items-center gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/10"
+              title="L'IA analyse tous les libellés sans catégorie ou les lignes sélectionnées"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{selectedTxIds.size > 0 ? `Auto-catégoriser (${selectedTxIds.size})` : "Recatégoriser par l'IA"}</span>
+            </Button>
+
+            {selectedTxIds.size > 0 && (
+              <>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => setIsBulkAccountModalOpen(true)}
+                  className="flex items-center gap-1.5 text-xs"
+                >
+                  <Landmark className="w-3.5 h-3.5" />
+                  Changer de compte ({selectedTxIds.size})
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => setIsBulkCategoryModalOpen(true)}
+                  className="flex items-center gap-1.5 text-xs"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  Reclasser ({selectedTxIds.size})
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="destructive"
+                  onClick={handleDeleteSelected}
+                  className="flex items-center gap-1.5 text-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Supprimer ({selectedTxIds.size})
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </Card>
 
@@ -1046,7 +1330,15 @@ export const BankStatements: React.FC = () => {
                       </td>
 
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        {getFlowBadge(tx.flowType)}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {getFlowBadge(tx.flowType)}
+                          {(tx.isSubscription || tx.category === 'Abonnements & Télécom') && (
+                            <Badge variant="subscription" className="flex items-center gap-1 py-0.5">
+                              <RotateCcw className="w-2.5 h-2.5" />
+                              <span>Abonnement {tx.subscriptionDay ? `(le ${tx.subscriptionDay})` : ''}</span>
+                            </Badge>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3.5 px-4">
@@ -1074,13 +1366,22 @@ export const BankStatements: React.FC = () => {
                       </td>
 
                       <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => handleDelete(tx.id)}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-                          title="Supprimer la transaction"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditModal(tx)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                            title="Modifier l'affectation manuelle (Catégorie, Flux, Abonnement)"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(tx.id)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                            title="Supprimer la transaction"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1196,6 +1497,45 @@ export const BankStatements: React.FC = () => {
                 </select>
               </div>
 
+              {/* Manual Subscription Toggle & Day */}
+              <div className="p-3 rounded-xl bg-secondary/40 dark:bg-white/[0.02] border border-border/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+                    <label htmlFor="manualSubToggle" className="text-xs font-bold text-foreground cursor-pointer">
+                      Abonnement récurrent
+                    </label>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="manualSubToggle"
+                    checked={manualTx.isSubscription}
+                    onChange={e => setManualTx({ ...manualTx, isSubscription: e.target.checked })}
+                    className="rounded border-border text-primary cursor-pointer w-4 h-4"
+                  />
+                </div>
+
+                {manualTx.isSubscription && (
+                  <div className="pt-2 border-t border-border/40 flex items-center justify-between gap-3 animate-in fade-in">
+                    <label className="text-xs text-muted-foreground font-medium">
+                      Jour habituel de prélèvement :
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground">Le</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={manualTx.subscriptionDay}
+                        onChange={e => setManualTx({ ...manualTx, subscriptionDay: parseInt(e.target.value, 10) || 1 })}
+                        className="w-16 p-1.5 text-xs text-center rounded-lg bg-background border border-border/80 text-foreground font-bold font-mono focus:ring-1 focus:ring-primary outline-none"
+                      />
+                      <span className="text-xs font-semibold text-muted-foreground">du mois</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 pt-4 border-t border-border/60">
                 <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
                   Annuler
@@ -1280,6 +1620,173 @@ export const BankStatements: React.FC = () => {
                 Appliquer
               </Button>
             </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Edit / Manual Override Transaction */}
+      {isEditModalOpen && editingTx && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <Card className="w-full max-w-md p-6 bg-card border border-border/80 shadow-2xl rounded-2xl">
+            <div className="flex items-center justify-between pb-4 border-b border-border/60">
+              <div>
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Pencil className="w-4 h-4 text-primary" />
+                  Modifier l'affectation
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Corrigez manuellement la catégorie, le type de flux et l'abonnement
+                </p>
+              </div>
+              <button 
+                onClick={() => { setIsEditModalOpen(false); setEditingTx(null); }} 
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditModal} className="space-y-4 mt-4">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                  Libellé de l'opération
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.description}
+                  onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                    Montant (€)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editForm.amount}
+                    onChange={e => setEditForm({ ...editForm, amount: e.target.value })}
+                    className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                    Compte Bancaire
+                  </label>
+                  <select
+                    value={editForm.account}
+                    onChange={e => setEditForm({ ...editForm, account: e.target.value })}
+                    className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                  >
+                    {availableAccounts.map(acc => (
+                      <option key={acc} value={acc}>{acc}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                  Catégorie
+                </label>
+                <select
+                  value={editForm.category}
+                  onChange={e => {
+                    const newCat = e.target.value;
+                    const autoFlow = classifyFlowType(newCat, parseFloat(editForm.amount) || -10, editForm.description);
+                    setEditForm({ 
+                      ...editForm, 
+                      category: newCat,
+                      flowType: autoFlow,
+                      isSubscription: newCat === 'Abonnements & Télécom' ? true : editForm.isSubscription
+                    });
+                  }}
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-semibold"
+                >
+                  {CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                  Type de Flux Financier
+                </label>
+                <select
+                  value={editForm.flowType}
+                  onChange={e => setEditForm({ ...editForm, flowType: e.target.value as FlowType })}
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-semibold"
+                >
+                  <option value="VARIABLE_EXPENSE">Dépense Courante (Alimentation, Loisirs, Shopping)</option>
+                  <option value="FIXED_EXPENSE">Charge Fixe (Loyer, Abonnements, Énergie, Assurances)</option>
+                  <option value="INCOME">Revenu (Salaire, Primes, Aides, Dividendes)</option>
+                  <option value="SAVINGS_TRANSFER">Épargne / Virement Interne (Neutralisé)</option>
+                </select>
+              </div>
+
+              {/* Subscription Toggle & Day selector */}
+              <div className="p-3 rounded-xl bg-secondary/40 dark:bg-white/[0.02] border border-border/60 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RotateCcw className="w-4 h-4 text-cyan-400" />
+                    <label htmlFor="editSubToggle" className="text-xs font-bold text-foreground cursor-pointer">
+                      Abonnement ou Prélèvement Récurrent
+                    </label>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="editSubToggle"
+                    checked={editForm.isSubscription}
+                    onChange={e => setEditForm({ ...editForm, isSubscription: e.target.checked })}
+                    className="rounded border-border text-primary cursor-pointer w-4 h-4"
+                  />
+                </div>
+
+                {editForm.isSubscription && (
+                  <div className="pt-2 border-t border-border/40 flex items-center justify-between gap-3 animate-in fade-in">
+                    <label className="text-xs text-muted-foreground font-medium">
+                      Jour habituel de prélèvement :
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground">Le</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={editForm.subscriptionDay}
+                        onChange={e => setEditForm({ ...editForm, subscriptionDay: parseInt(e.target.value, 10) || 1 })}
+                        className="w-16 p-1.5 text-xs text-center rounded-lg bg-background border border-border/80 text-foreground font-bold font-mono focus:ring-1 focus:ring-primary outline-none"
+                      />
+                      <span className="text-xs font-semibold text-muted-foreground">du mois</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-border/60">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => { setIsEditModalOpen(false); setEditingTx(null); }}
+                >
+                  Annuler
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="bg-primary text-primary-foreground shadow-lg shadow-primary/20 flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  Enregistrer
+                </Button>
+              </div>
+            </form>
           </Card>
         </div>
       )}

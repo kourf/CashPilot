@@ -11,6 +11,10 @@ export interface BankTransaction {
   category: string;
   subcategory?: string;
   account?: string;
+  bankName?: string;
+  isSubscription?: boolean;
+  subscriptionDay?: number;
+  confidence?: 'high' | 'medium' | 'low';
   isDuplicate?: boolean;
   status?: 'Reconciled' | 'Pending' | 'Internal Transfer';
   monthKey?: string;
@@ -32,6 +36,365 @@ export const CATEGORIES = [
   'Frais bancaires',
   'Autre'
 ] as const;
+
+export interface CategorizationResult {
+  category: string;
+  flowType: FlowType;
+  isSubscription: boolean;
+  subscriptionDay?: number;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+/**
+ * Analyse sémantique avancée des libellés bancaires pour détection automatique :
+ * - Catégorisation intelligente
+ * - Classification en Charges Fixes, Variables, Revenus ou Épargne
+ * - Détection des Abonnements récurrents avec date / jour de prélèvement
+ */
+export function smartCategorizeTransaction(
+  description: string,
+  amount: number,
+  dateStr?: string
+): CategorizationResult {
+  const norm = (description || '').toLowerCase();
+
+  // Extraction du jour du mois (1 à 31) si la date est disponible
+  let subscriptionDay: number | undefined = undefined;
+  if (dateStr) {
+    try {
+      const parts = dateStr.split(/[/-]/);
+      if (parts.length === 3) {
+        const day = parts[0].length === 4 ? parseInt(parts[2], 10) : parseInt(parts[0], 10);
+        if (!isNaN(day) && day >= 1 && day <= 31) {
+          subscriptionDay = day;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 1. REVENUS (Positifs ou libellés de rémunération / aides)
+  if (
+    amount > 0 ||
+    norm.includes('salaire') ||
+    norm.includes('remuneration') ||
+    norm.includes('rémunération') ||
+    norm.includes('paie') ||
+    norm.includes('virement recu') ||
+    norm.includes('virement reçu') ||
+    norm.includes('pole emploi') ||
+    norm.includes('france travail') ||
+    norm.includes('caf de') ||
+    norm.includes('cpam remboursement') ||
+    norm.includes('remboursement mutuelle') ||
+    norm.includes('dividende')
+  ) {
+    return {
+      category: 'Salaire & Revenus',
+      flowType: 'INCOME',
+      isSubscription: false,
+      confidence: 'high'
+    };
+  }
+
+  // 2. ÉPARGNE & VIREMENTS INTERNES (Neutralisés du reste à vivre)
+  if (
+    norm.includes('livret a') ||
+    norm.includes('ldds') ||
+    norm.includes('livret epargne') ||
+    norm.includes('livret épargne') ||
+    norm.includes('assurance vie') ||
+    norm.includes('bourse') ||
+    norm.includes('pea') ||
+    norm.includes('compte titres') ||
+    norm.includes('trade republic') ||
+    norm.includes('degiro') ||
+    norm.includes('binance') ||
+    norm.includes('coinbase') ||
+    norm.includes('virement interne') ||
+    norm.includes('virement de compte') ||
+    norm.includes('epargne') ||
+    norm.includes('épargne') ||
+    norm.includes('pel')
+  ) {
+    const isInternal = norm.includes('interne') || norm.includes('de compte');
+    return {
+      category: isInternal ? 'Virement Interne' : 'Épargne & Investissement',
+      flowType: 'SAVINGS_TRANSFER',
+      isSubscription: false,
+      confidence: 'high'
+    };
+  }
+
+  // 3. ABONNEMENTS RÉCURRENTS & TÉLÉCOMS (Charge Fixe + isSubscription: true avec date)
+  const isSubMatch = (
+    norm.includes('netflix') ||
+    norm.includes('spotify') ||
+    norm.includes('deezer') ||
+    norm.includes('apple.com') ||
+    norm.includes('apple bill') ||
+    norm.includes('itunes') ||
+    norm.includes('icloud') ||
+    norm.includes('amazon prime') ||
+    norm.includes('prime video') ||
+    norm.includes('disney') ||
+    norm.includes('youtube') ||
+    norm.includes('canal plus') ||
+    norm.includes('canal+') ||
+    norm.includes('paramount') ||
+    norm.includes('free mobile') ||
+    norm.includes('free telecom') ||
+    norm.includes('orange') ||
+    norm.includes('sfr') ||
+    norm.includes('bouygues') ||
+    norm.includes('sosh') ||
+    norm.includes('red by sfr') ||
+    norm.includes('prixtel') ||
+    norm.includes('basic fit') ||
+    norm.includes('fitness park') ||
+    norm.includes('keep cool') ||
+    norm.includes('neoness') ||
+    norm.includes('on air fitness') ||
+    norm.includes('chatgpt') ||
+    norm.includes('openai') ||
+    norm.includes('midjourney') ||
+    norm.includes('adobe') ||
+    norm.includes('google one') ||
+    norm.includes('google storage') ||
+    norm.includes('dropbox') ||
+    norm.includes('canva') ||
+    norm.includes('notion') ||
+    norm.includes('playstation network') ||
+    norm.includes('psn') ||
+    norm.includes('xbox game') ||
+    norm.includes('nintendo') ||
+    norm.includes('le monde') ||
+    norm.includes('mediapart') ||
+    norm.includes('figaro') ||
+    norm.includes('abonnement')
+  );
+
+  if (isSubMatch) {
+    return {
+      category: 'Abonnements & Télécom',
+      flowType: 'FIXED_EXPENSE',
+      isSubscription: true,
+      subscriptionDay,
+      confidence: 'high'
+    };
+  }
+
+  // 4. LOGEMENT & ÉNERGIE & ASSURANCES (Charges Fixes)
+  if (
+    norm.includes('loyer') ||
+    norm.includes('bail') ||
+    norm.includes('prelevement loyer') ||
+    norm.includes('foncier') ||
+    norm.includes('copropriete') ||
+    norm.includes('copropriété') ||
+    norm.includes('syndic') ||
+    norm.includes('edf') ||
+    norm.includes('engie') ||
+    norm.includes('totalenergies') ||
+    norm.includes('total energies') ||
+    norm.includes('enedis') ||
+    norm.includes('veolia') ||
+    norm.includes('suez') ||
+    norm.includes('eau de paris') ||
+    norm.includes('assurance') ||
+    norm.includes('axa') ||
+    norm.includes('allianz') ||
+    norm.includes('macif') ||
+    norm.includes('maif') ||
+    norm.includes('matmut') ||
+    norm.includes('generali') ||
+    norm.includes('direct assurance') ||
+    norm.includes('impot') ||
+    norm.includes('impôt') ||
+    norm.includes('dgfip')
+  ) {
+    const isRecurring = norm.includes('assurance') || norm.includes('edf') || norm.includes('engie');
+    return {
+      category: 'Logement & Loyer',
+      flowType: 'FIXED_EXPENSE',
+      isSubscription: isRecurring,
+      subscriptionDay: isRecurring ? subscriptionDay : undefined,
+      confidence: 'high'
+    };
+  }
+
+  // 5. FRAIS BANCAIRES (Charge Fixe)
+  if (
+    norm.includes('frais bancaires') ||
+    norm.includes('cotisation carte') ||
+    norm.includes('tenue de compte') ||
+    norm.includes('commission') ||
+    norm.includes('agios') ||
+    norm.includes('interets debiteurs') ||
+    norm.includes('intérêts débiteurs')
+  ) {
+    const isCardFee = norm.includes('cotisation') || norm.includes('tenue');
+    return {
+      category: 'Frais bancaires',
+      flowType: 'FIXED_EXPENSE',
+      isSubscription: isCardFee,
+      subscriptionDay: isCardFee ? subscriptionDay : undefined,
+      confidence: 'high'
+    };
+  }
+
+  // 6. ALIMENTATION & SUPERMARCHÉS (Dépense Variable)
+  if (
+    norm.includes('carrefour') ||
+    norm.includes('auchan') ||
+    norm.includes('leclerc') ||
+    norm.includes('lidl') ||
+    norm.includes('aldi') ||
+    norm.includes('intermarche') ||
+    norm.includes('intermarché') ||
+    norm.includes('monoprix') ||
+    norm.includes('franprix') ||
+    norm.includes('super u') ||
+    norm.includes('hyper u') ||
+    norm.includes('casino') ||
+    norm.includes('picard') ||
+    norm.includes('biocoop') ||
+    norm.includes('naturalia') ||
+    norm.includes('grand frais') ||
+    norm.includes('boulangerie') ||
+    norm.includes('paul') ||
+    norm.includes('boucherie') ||
+    norm.includes('primeur') ||
+    norm.includes('marche') ||
+    norm.includes('marché') ||
+    norm.includes('coop')
+  ) {
+    return {
+      category: 'Alimentation & Courses',
+      flowType: 'VARIABLE_EXPENSE',
+      isSubscription: false,
+      confidence: 'high'
+    };
+  }
+
+  // 7. TRANSPORTS & CARBURANT (Dépense Variable ou Abonnement)
+  if (
+    norm.includes('total') ||
+    norm.includes('bp ') ||
+    norm.includes('shell') ||
+    norm.includes('esso') ||
+    norm.includes('station') ||
+    norm.includes('carburant') ||
+    norm.includes('essence') ||
+    norm.includes('diesel') ||
+    norm.includes('peage') ||
+    norm.includes('péage') ||
+    norm.includes('aprr') ||
+    norm.includes('vinci autoroutes') ||
+    norm.includes('sanef') ||
+    norm.includes('sncf') ||
+    norm.includes('ratp') ||
+    norm.includes('navigo') ||
+    norm.includes('tcl') ||
+    norm.includes('uber') ||
+    norm.includes('bolt') ||
+    norm.includes('blablacar') ||
+    norm.includes('air france') ||
+    norm.includes('easyjet') ||
+    norm.includes('ryanair') ||
+    norm.includes('parking') ||
+    norm.includes('norauto') ||
+    norm.includes('feu vert') ||
+    norm.includes('garage')
+  ) {
+    const isNavigo = norm.includes('navigo') || norm.includes('abonnement transport');
+    return {
+      category: 'Transports & Carburant',
+      flowType: isNavigo ? 'FIXED_EXPENSE' : 'VARIABLE_EXPENSE',
+      isSubscription: isNavigo,
+      subscriptionDay: isNavigo ? subscriptionDay : undefined,
+      confidence: 'high'
+    };
+  }
+
+  // 8. RESTAURANTS & LOISIRS (Dépense Variable)
+  if (
+    norm.includes('restaurant') ||
+    norm.includes('brasserie') ||
+    norm.includes('bistrot') ||
+    norm.includes('cafe') ||
+    norm.includes('café') ||
+    norm.includes('bar ') ||
+    norm.includes('mcdonald') ||
+    norm.includes('burger king') ||
+    norm.includes('kfc') ||
+    norm.includes('subway') ||
+    norm.includes('starbucks') ||
+    norm.includes('pizza') ||
+    norm.includes('domino') ||
+    norm.includes('sushi') ||
+    norm.includes('uber eats') ||
+    norm.includes('deliveroo') ||
+    norm.includes('just eat') ||
+    norm.includes('cinema') ||
+    norm.includes('cinéma') ||
+    norm.includes('ugc') ||
+    norm.includes('pathe') ||
+    norm.includes('pathé') ||
+    norm.includes('theatre') ||
+    norm.includes('théâtre') ||
+    norm.includes('concert') ||
+    norm.includes('fnac') ||
+    norm.includes('darty') ||
+    norm.includes('steam') ||
+    norm.includes('playstation') ||
+    norm.includes('decathlon') ||
+    norm.includes('cultura') ||
+    norm.includes('musee') ||
+    norm.includes('musée') ||
+    norm.includes('bowling') ||
+    norm.includes('billeterie')
+  ) {
+    return {
+      category: 'Restaurants & Loisirs',
+      flowType: 'VARIABLE_EXPENSE',
+      isSubscription: false,
+      confidence: 'high'
+    };
+  }
+
+  // 9. SANTÉ (Dépense Variable)
+  if (
+    norm.includes('pharmacie') ||
+    norm.includes('doctolib') ||
+    norm.includes('medecin') ||
+    norm.includes('médecin') ||
+    norm.includes('dentiste') ||
+    norm.includes('optique') ||
+    norm.includes('opticien') ||
+    norm.includes('kine') ||
+    norm.includes('kiné') ||
+    norm.includes('laboratoire') ||
+    norm.includes('hopital') ||
+    norm.includes('hôpital') ||
+    norm.includes('clinique')
+  ) {
+    return {
+      category: 'Santé',
+      flowType: 'VARIABLE_EXPENSE',
+      isSubscription: false,
+      confidence: 'high'
+    };
+  }
+
+  // 10. DÉFAUT INTELLIGENT
+  return {
+    category: 'Autre',
+    flowType: 'VARIABLE_EXPENSE',
+    isSubscription: false,
+    confidence: 'low'
+  };
+}
+
 
 /**
  * Détermine le type de flux financier selon la catégorie, le montant et le libellé
@@ -340,19 +703,21 @@ export function parseCsvBankFile(
               formattedDate = new Date().toISOString().substring(0, 10);
             }
 
-            const category = amount > 0 ? 'Salaire & Revenus' : 'Autre';
-            const flowType = classifyFlowType(category, amount, description);
+            const catResult = smartCategorizeTransaction(description, amount, formattedDate);
 
             parsed.push({
               id: `csv_${Date.now()}_${idx}`,
               date: formattedDate,
               description,
               amount,
-              flowType,
-              category,
+              flowType: catResult.flowType,
+              category: catResult.category,
+              isSubscription: catResult.isSubscription,
+              subscriptionDay: catResult.subscriptionDay,
+              confidence: catResult.confidence,
               account: finalAccount,
               bankName: finalBank,
-              status: flowType === 'SAVINGS_TRANSFER' ? 'Internal Transfer' : 'Reconciled'
+              status: catResult.flowType === 'SAVINGS_TRANSFER' ? 'Internal Transfer' : 'Reconciled'
             });
           });
 
@@ -365,4 +730,26 @@ export function parseCsvBankFile(
     });
   });
 }
+
+export interface SubscriptionSummary {
+  totalMonthly: number;
+  totalAnnual: number;
+  count: number;
+  items: BankTransaction[];
+}
+
+/**
+ * Calcule les métriques d'abonnements récurrents et charges associées
+ */
+export function calculateSubscriptionSummary(transactions: BankTransaction[]): SubscriptionSummary {
+  const subs = transactions.filter(t => t.isSubscription || t.category === 'Abonnements & Télécom');
+  const totalMonthly = subs.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0);
+  return {
+    totalMonthly,
+    totalAnnual: totalMonthly * 12,
+    count: subs.length,
+    items: subs
+  };
+}
+
 
