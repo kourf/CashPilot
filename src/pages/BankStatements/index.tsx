@@ -90,6 +90,7 @@ export const BankStatements: React.FC = () => {
   // Upload & File states
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [fileStatusMessage, setFileStatusMessage] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -899,9 +900,30 @@ export const BankStatements: React.FC = () => {
 
       {/* Clean Minimalist Upload Dropzone */}
       {isUploading && (
-        <Card className="p-8 border-dashed border-2 border-primary/40 hover:border-primary/60 bg-card/60 backdrop-blur-md text-center transition-all animate-in fade-in-50 rounded-2xl relative shadow-sm">
+        <Card 
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+              handleFileUpload(e.dataTransfer.files[0]);
+            }
+          }}
+          className={`p-8 border-dashed border-2 transition-all duration-300 rounded-2xl relative shadow-sm text-center ${
+            isDragging 
+              ? 'border-primary bg-primary/10 ring-2 ring-primary/30 scale-[1.01]' 
+              : 'border-primary/40 hover:border-primary/60 bg-card/60 backdrop-blur-md'
+          }`}
+        >
           <button 
-            onClick={() => setIsUploading(false)}
+            onClick={() => {
+              setIsUploading(false);
+              setIsDragging(false);
+            }}
             className="absolute top-4 right-4 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
             title="Fermer"
           >
@@ -911,15 +933,12 @@ export const BankStatements: React.FC = () => {
           <div 
             className="flex flex-col items-center justify-center gap-3 py-4 cursor-pointer group"
             onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                handleFileUpload(e.dataTransfer.files[0]);
-              }
-            }}
           >
-            <div className="p-4 rounded-2xl bg-primary/10 text-primary shadow-inner ring-1 ring-primary/20 group-hover:scale-105 group-hover:bg-primary/15 transition-all duration-300">
+            <div className={`p-4 rounded-2xl transition-all duration-300 shadow-inner ${
+              isDragging
+                ? 'bg-primary/20 text-primary scale-110 ring-2 ring-primary/40'
+                : 'bg-primary/10 text-primary ring-1 ring-primary/20 group-hover:scale-105 group-hover:bg-primary/15'
+            }`}>
               {isProcessingFile ? (
                 <Loader2 className="w-8 h-8 animate-spin" />
               ) : (
@@ -952,7 +971,7 @@ export const BankStatements: React.FC = () => {
               size="sm" 
               variant="outline" 
               disabled={isProcessingFile}
-              className="mt-2 pointer-events-none"
+              className="mt-2 pointer-events-none font-semibold text-xs border-primary/30 group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300"
             >
               {isProcessingFile ? "Extraction en cours..." : "Sélectionner un fichier"}
             </Button>
