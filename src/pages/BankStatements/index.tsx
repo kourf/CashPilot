@@ -13,7 +13,10 @@ import {
   Calendar,
   Layers,
   FileSpreadsheet,
-  AlertCircle
+  Landmark,
+  Wallet,
+  CreditCard,
+  Check
 } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -23,7 +26,9 @@ import {
   CATEGORIES, 
   classifyFlowType, 
   calculateBankMetrics, 
+  calculateAccountSummaries,
   checkDuplicateTransactions, 
+  detectAccountFromFilename,
   parseCsvBankFile,
   type FlowType, 
   type BankTransaction 
@@ -45,15 +50,22 @@ export const BankStatements: React.FC = () => {
   // Local state for interactive features
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
+  const [selectedAccount, setSelectedAccount] = useState<string>('ALL');
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
+  
+  // Modals & Panels
   const [isUploading, setIsUploading] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
+  const [isBulkAccountModalOpen, setIsBulkAccountModalOpen] = useState(false);
   const [bulkTargetCategory, setBulkTargetCategory] = useState<string>(CATEGORIES[0]);
+  const [bulkTargetAccount, setBulkTargetAccount] = useState<string>('');
   
-  // File processing states
+  // Upload & File states
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [fileStatusMessage, setFileStatusMessage] = useState<string | null>(null);
+  const [targetUploadAccount, setTargetUploadAccount] = useState<string>('AUTO');
+  const [customUploadAccount, setCustomUploadAccount] = useState<string>('');
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -64,10 +76,11 @@ export const BankStatements: React.FC = () => {
     amount: '',
     category: 'Alimentation & Courses',
     flowType: 'VARIABLE_EXPENSE' as FlowType,
-    account: 'Compte Courant'
+    account: 'Compte Courant',
+    customAccount: ''
   });
 
-  // Convert raw Firestore transactions to BankTransaction models with strict flowType
+  // Convert raw Firestore transactions to BankTransaction models with strict flowType and accountName
   const bankTransactions: BankTransaction[] = useMemo(() => {
     return rawTransactions.map(t => {
       const id = String(t.id || `tx_${t.date}_${t.amount}_${Math.random()}`);
@@ -75,6 +88,8 @@ export const BankStatements: React.FC = () => {
       const amount = Number(t.amount) || 0;
       const category = t.category || (amount > 0 ? 'Salaire & Revenus' : 'Autre');
       const flowType: FlowType = t.flowType || classifyFlowType(category, amount, desc);
+      const account = t.accountName || t.account || 'Compte Principal';
+      const bankName = t.bankName || (account.includes(' - ') ? account.split(' - ')[0] : account);
 
       return {
         id,
@@ -83,7 +98,8 @@ export const BankStatements: React.FC = () => {
         amount,
         flowType,
         category,
-        account: t.accountName || t.account || 'Compte Principal',
+        account,
+        bankName,
         status: flowType === 'SAVINGS_TRANSFER' ? 'Internal Transfer' : 'Reconciled',
         monthKey: t.monthKey || (t.date ? t.date.substring(0, 7) : undefined),
         rawLabel: t.rawLabel,
@@ -92,21 +108,41 @@ export const BankStatements: React.FC = () => {
     });
   }, [rawTransactions]);
 
-  // Financial Metrics Calculation (Finary separation rules: Savings/Transfers neutralised)
-  const metrics = useMemo(() => {
-    // If a month is selected, compute metrics on that month
-    const scopedTxs = selectedMonth === 'all' 
-      ? bankTransactions 
-      : bankTransactions.filter(t => (t.monthKey === selectedMonth || t.date.startsWith(selectedMonth)));
-      
-    return calculateBankMetrics(scopedTxs);
+  // List of all distinct bank accounts discovered across transactions
+  const availableAccounts = useMemo(() => {
+    const set = new Set<string>();
+    bankTransactions.forEach(t => {
+      if (t.account) set.add(t.account);
+    });
+    if (set.size === 0) set.add('Compte Courant');
+    return Array.from(set);
+  }, [bankTransactions]);
+
+  // Transactions filtered by selected month (for metrics and accounts breakdown)
+  const monthScopedTransactions = useMemo(() => {
+    if (selectedMonth === 'all') return bankTransactions;
+    return bankTransactions.filter(t => t.monthKey === selectedMonth || t.date.startsWith(selectedMonth));
   }, [bankTransactions, selectedMonth]);
 
-  // Filtered & Searched Transaction List
+  // Financial summary per bank account for the selected period
+  const accountSummaries = useMemo(() => {
+    return calculateAccountSummaries(monthScopedTransactions);
+  }, [monthScopedTransactions]);
+
+  // Financial Metrics (Calculated either for all accounts consolidated, or scoped to a specific account)
+  const metrics = useMemo(() => {
+    const scopedTxs = selectedAccount === 'ALL'
+      ? monthScopedTransactions
+      : monthScopedTransactions.filter(t => t.account === selectedAccount);
+
+    return calculateBankMetrics(scopedTxs);
+  }, [monthScopedTransactions, selectedAccount]);
+
+  // Filtered & Searched Transaction List for the table
   const filteredTransactions = useMemo(() => {
-    return bankTransactions.filter(t => {
-      // Month scope filter
-      if (selectedMonth !== 'all' && t.monthKey !== selectedMonth && !t.date.startsWith(selectedMonth)) {
+    return monthScopedTransactions.filter(t => {
+      // Account filter
+      if (selectedAccount !== 'ALL' && t.account !== selectedAccount) {
         return false;
       }
 
@@ -117,7 +153,8 @@ export const BankStatements: React.FC = () => {
         const matchCat = t.category.toLowerCase().includes(search);
         const matchAmt = String(t.amount).includes(search);
         const matchAcc = (t.account || '').toLowerCase().includes(search);
-        if (!matchDesc && !matchCat && !matchAmt && !matchAcc) return false;
+        const matchBank = (t.bankName || '').toLowerCase().includes(search);
+        if (!matchDesc && !matchCat && !matchAmt && !matchAcc && !matchBank) return false;
       }
 
       // Flow type filter
@@ -129,7 +166,7 @@ export const BankStatements: React.FC = () => {
       if (selectedFilter === 'SAVINGS') return t.flowType === 'SAVINGS_TRANSFER';
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [bankTransactions, searchTerm, selectedFilter, selectedMonth]);
+  }, [monthScopedTransactions, selectedAccount, searchTerm, selectedFilter]);
 
   // Auto-hide notification
   useEffect(() => {
@@ -282,7 +319,43 @@ export const BankStatements: React.FC = () => {
     }
   };
 
-  // 6. Manual Transaction Submission
+  // 6. Bulk Account Reassignment
+  const handleBulkAccountApply = async () => {
+    const count = selectedTxIds.size;
+    const targetAccount = bulkTargetAccount.trim();
+    if (count === 0 || !targetAccount) return;
+
+    try {
+      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const batch = writeBatch(db);
+      const bankName = targetAccount.includes(' - ') ? targetAccount.split(' - ')[0] : targetAccount;
+
+      selectedTxIds.forEach(id => {
+        const docRef = doc(db, `users/${deviceId}/transactions`, id);
+        batch.update(docRef, {
+          accountName: targetAccount,
+          bankName,
+          updatedAt: new Date().toISOString()
+        });
+      });
+
+      await batch.commit();
+      setIsBulkAccountModalOpen(false);
+      setSelectedTxIds(new Set());
+      setNotification({
+        type: 'success',
+        message: `${count} transactions associées au compte "${targetAccount}".`
+      });
+    } catch (err) {
+      console.error("Erreur assignation compte:", err);
+      setNotification({
+        type: 'error',
+        message: "Erreur lors de l'assignation de compte en lot."
+      });
+    }
+  };
+
+  // 7. Manual Transaction Submission
   const handleCreateManualTx = async (e: React.FormEvent) => {
     e.preventDefault();
     const rawAmt = parseFloat(manualTx.amount.replace(',', '.'));
@@ -294,6 +367,11 @@ export const BankStatements: React.FC = () => {
       alert("Veuillez indiquer un libellé.");
       return;
     }
+
+    const finalAccount = manualTx.account === 'CUSTOM'
+      ? (manualTx.customAccount.trim() || 'Compte Personnalisé')
+      : manualTx.account;
+    const finalBank = finalAccount.includes(' - ') ? finalAccount.split(' - ')[0] : finalAccount;
 
     try {
       const deviceId = localStorage.getItem('deviceId') || 'default-user';
@@ -314,7 +392,8 @@ export const BankStatements: React.FC = () => {
         category: manualTx.category,
         flowType: manualTx.flowType,
         nature: manualTx.flowType === 'FIXED_EXPENSE' ? 'fixe' : manualTx.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
-        accountName: manualTx.account || 'Compte Principal',
+        accountName: finalAccount,
+        bankName: finalBank,
         aiStatus: 'completed',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -327,12 +406,13 @@ export const BankStatements: React.FC = () => {
         amount: '',
         category: 'Alimentation & Courses',
         flowType: 'VARIABLE_EXPENSE',
-        account: 'Compte Courant'
+        account: finalAccount,
+        customAccount: ''
       });
 
       setNotification({
         type: 'success',
-        message: "Opération ajoutée avec succès !"
+        message: `Opération ajoutée avec succès sur "${finalAccount}" !`
       });
     } catch (err) {
       console.error("Erreur ajout manuel:", err);
@@ -343,7 +423,7 @@ export const BankStatements: React.FC = () => {
     }
   };
 
-  // 7. File Upload & Extraction (CSV or PDF)
+  // 8. File Upload & Extraction with Multi-Account AI Detection
   const handleFileUpload = async (file: File) => {
     setIsProcessingFile(true);
     setFileStatusMessage(`Analyse de ${file.name}...`);
@@ -351,60 +431,79 @@ export const BankStatements: React.FC = () => {
     try {
       const deviceId = localStorage.getItem('deviceId') || 'default-user';
       let extractedTxs: BankTransaction[] = [];
+      let detectedBankName = '';
+      let detectedAccountName = '';
+
+      // Determine explicit target account if selected
+      const explicitAccount = targetUploadAccount === 'CUSTOM'
+        ? (customUploadAccount.trim() || undefined)
+        : targetUploadAccount !== 'AUTO'
+        ? targetUploadAccount
+        : undefined;
 
       if (file.name.endsWith('.csv') || file.type.includes('csv') || file.type.includes('text')) {
-        // Direct Client CSV Parsing
+        // Direct Client CSV Parsing with account detection
         setFileStatusMessage("Lecture et détection des colonnes CSV...");
-        extractedTxs = await parseCsvBankFile(file);
+        const fileDetection = detectAccountFromFilename(file.name);
+        detectedBankName = fileDetection.bankName;
+        detectedAccountName = explicitAccount || fileDetection.accountName;
+
+        extractedTxs = await parseCsvBankFile(file, detectedAccountName, detectedBankName);
       } else {
-        // PDF or Image Upload to Firebase Cloud Function
+        // PDF or Image Upload to Firebase Cloud Function (Gemini Multi-Account extraction)
         setFileStatusMessage("Téléversement sécurisé vers Firebase Storage...");
         const storageRef = ref(storage, `users/${deviceId}/uploads/statements/${Date.now()}_${file.name}`);
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);
 
-        setFileStatusMessage("Analyse OCR et extraction IA en cours...");
+        setFileStatusMessage("Analyse OCR et détection intelligente du compte par l'IA...");
         const analyzeDocument = httpsCallable(functions, 'analyzeDocument');
         const response = await analyzeDocument({ fileUrl: url, fileType: 'bank_statement', mimeType: file.type });
         const result = response.data as any;
 
-        if (result.success && result.data?.transactions) {
-          extractedTxs = result.data.transactions.map((t: any, i: number) => {
-            const amt = Number(t.amount) || 0;
-            const desc = t.description || t.label || 'Opération';
-            const cat = t.category || (amt > 0 ? 'Salaire & Revenus' : 'Autre');
-            const flow = classifyFlowType(cat, amt, desc);
-            return {
-              id: `pdf_${Date.now()}_${i}`,
-              date: t.date || new Date().toISOString().substring(0, 10),
-              description: desc,
-              amount: amt,
-              flowType: flow,
-              category: cat,
-              account: 'Compte Relevé PDF'
-            };
-          });
+        if (result.success && result.data) {
+          detectedBankName = result.data.bankName || 'Banque';
+          detectedAccountName = explicitAccount || result.data.accountName || `${detectedBankName} - ${result.data.accountType || 'Compte'}`;
+
+          if (result.data.transactions) {
+            extractedTxs = result.data.transactions.map((t: any, i: number) => {
+              const amt = Number(t.amount) || 0;
+              const desc = t.description || t.label || 'Opération';
+              const cat = t.category || (amt > 0 ? 'Salaire & Revenus' : 'Autre');
+              const flow = classifyFlowType(cat, amt, desc);
+              return {
+                id: `pdf_${Date.now()}_${i}`,
+                date: t.date || new Date().toISOString().substring(0, 10),
+                description: desc,
+                amount: amt,
+                flowType: flow,
+                category: cat,
+                account: detectedAccountName,
+                bankName: detectedBankName
+              };
+            });
+          }
         }
       }
 
       if (extractedTxs.length === 0) {
         setNotification({
           type: 'info',
-          message: "Aucune transaction exploitable n'a été détectée dans ce fichier."
+          message: "Aucune transaction exploitable n'a été détectée dans ce relevé."
         });
         setIsProcessingFile(false);
         setFileStatusMessage(null);
         return;
       }
 
-      // Check Duplicates against existing bank transactions
+      // Check Duplicates against existing transactions
       setFileStatusMessage("Vérification des doublons...");
       const { duplicatesCount, uniqueTxs } = checkDuplicateTransactions(extractedTxs, bankTransactions);
 
       if (uniqueTxs.length === 0) {
         setNotification({
           type: 'info',
-          message: `Les ${duplicatesCount} transactions importées sont déjà présentes dans vos relevés.`
+          message: `Les ${duplicatesCount} transactions importées sont déjà présentes pour ce compte.`
         });
         setIsProcessingFile(false);
         setFileStatusMessage(null);
@@ -413,7 +512,7 @@ export const BankStatements: React.FC = () => {
       }
 
       // Save Unique Transactions in Firestore batch
-      setFileStatusMessage(`Sauvegarde de ${uniqueTxs.length} opérations...`);
+      setFileStatusMessage(`Sauvegarde de ${uniqueTxs.length} opérations pour "${detectedAccountName}"...`);
       const batch = writeBatch(db);
       const txRef = collection(db, `users/${deviceId}/transactions`);
 
@@ -432,7 +531,8 @@ export const BankStatements: React.FC = () => {
           category: tx.category,
           flowType: tx.flowType,
           nature: tx.flowType === 'FIXED_EXPENSE' ? 'fixe' : tx.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
-          accountName: tx.account || 'Import',
+          accountName: tx.account || detectedAccountName || 'Compte Principal',
+          bankName: tx.bankName || detectedBankName || 'Banque',
           aiStatus: 'completed',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -443,14 +543,14 @@ export const BankStatements: React.FC = () => {
 
       setNotification({
         type: 'success',
-        message: `Import réussi : ${uniqueTxs.length} opérations ajoutées (${duplicatesCount} doublons ignorés).`
+        message: `Import réussi : ${uniqueTxs.length} opérations rattachées à "${detectedAccountName}" (${duplicatesCount} doublons ignorés).`
       });
       setIsUploading(false);
     } catch (err: any) {
-      console.error("Erreur import fichier:", err);
+      console.error("Erreur import relevé:", err);
       setNotification({
         type: 'error',
-        message: "Erreur lors de l'analyse du fichier : " + (err.message || 'Format non supporté.')
+        message: "Erreur lors de l'analyse du relevé : " + (err.message || 'Format non supporté.')
       });
     } finally {
       setIsProcessingFile(false);
@@ -492,20 +592,20 @@ export const BankStatements: React.FC = () => {
         </div>
       )}
 
-      {/* Header Title & Actions */}
+      {/* Header Title & Top Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse" />
             <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-              Gestion de Trésorerie & Audit
+              Gestion de Trésorerie Multi-Comptes & Audit
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight mt-1 text-foreground">
             Relevés Bancaires
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Contrôle d'audit, classification financière précise & neutralisation de l'épargne.
+            Gérez vos différents comptes bancaires au sein d'un même mois avec classification et neutralisation de l'épargne.
           </p>
         </div>
 
@@ -546,15 +646,111 @@ export const BankStatements: React.FC = () => {
         </div>
       </div>
 
-      {/* Upload Dropzone Drawer */}
+      {/* MULTI-ACCOUNTS BREAKDOWN & SELECTOR BAR */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Landmark className="w-4 h-4 text-primary" />
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Comptes Bancaires Actifs
+            </span>
+          </div>
+          {selectedAccount !== 'ALL' && (
+            <button
+              onClick={() => setSelectedAccount('ALL')}
+              className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+            >
+              Afficher tous les comptes (Consolidé)
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+          {/* Consolidated button */}
+          <button
+            onClick={() => setSelectedAccount('ALL')}
+            className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 flex-shrink-0 border ${
+              selectedAccount === 'ALL'
+                ? 'bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/20'
+                : 'bg-card/80 dark:bg-white/[0.03] text-muted-foreground hover:text-foreground border-border/60'
+            }`}
+          >
+            <Wallet className="w-3.5 h-3.5" />
+            <span>Tous les comptes (Consolidé)</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+              selectedAccount === 'ALL' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
+            }`}>
+              {monthScopedTransactions.length}
+            </span>
+          </button>
+
+          {/* Account Pills */}
+          {accountSummaries.map(acc => {
+            const isSelected = selectedAccount === acc.accountName;
+            const isPos = acc.netCashFlow >= 0;
+
+            return (
+              <button
+                key={acc.accountName}
+                onClick={() => setSelectedAccount(acc.accountName)}
+                className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 flex-shrink-0 border ${
+                  isSelected
+                    ? 'bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/20'
+                    : 'bg-card/80 dark:bg-white/[0.03] text-foreground hover:border-primary/40 border-border/60'
+                }`}
+              >
+                <Landmark className="w-3.5 h-3.5 opacity-75" />
+                <span className="max-w-[150px] truncate">{acc.accountName}</span>
+                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-lg ${
+                  isSelected
+                    ? 'bg-primary-foreground/20 text-primary-foreground'
+                    : isPos ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
+                }`}>
+                  {isPos ? '+' : ''}{acc.netCashFlow.toFixed(0)} €
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Upload Dropzone Drawer with Target Account Option */}
       {isUploading && (
-        <Card className="p-8 border-dashed border-2 border-primary/40 bg-card/60 backdrop-blur-md text-center transition-all animate-in fade-in-50 rounded-2xl relative">
+        <Card className="p-8 border-dashed border-2 border-primary/40 bg-card/60 backdrop-blur-md text-center transition-all animate-in fade-in-50 rounded-2xl relative space-y-4">
           <button 
             onClick={() => setIsUploading(false)}
             className="absolute top-4 right-4 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
+
+          {/* Account Target Selector */}
+          <div className="max-w-md mx-auto flex flex-col sm:flex-row items-center justify-center gap-2 text-xs">
+            <span className="font-semibold text-muted-foreground whitespace-nowrap">Rattacher au compte :</span>
+            <select
+              value={targetUploadAccount}
+              onChange={e => setTargetUploadAccount(e.target.value)}
+              className="bg-card border border-border/80 rounded-xl px-3 py-1.5 text-foreground font-semibold outline-none cursor-pointer focus:ring-1 focus:ring-primary"
+            >
+              <option value="AUTO">🤖 Détection automatique par IA</option>
+              {availableAccounts.map(acc => (
+                <option key={acc} value={acc}>Compte : {acc}</option>
+              ))}
+              <option value="CUSTOM">+ Créer un nouveau compte...</option>
+            </select>
+          </div>
+
+          {targetUploadAccount === 'CUSTOM' && (
+            <div className="max-w-xs mx-auto">
+              <input
+                type="text"
+                placeholder="Ex: BoursoBank - Compte Pro, Revolut..."
+                value={customUploadAccount}
+                onChange={e => setCustomUploadAccount(e.target.value)}
+                className="w-full text-xs p-2 rounded-xl bg-background border border-border/80 text-foreground focus:outline-none focus:ring-1 focus:ring-primary text-center font-medium"
+              />
+            </div>
+          )}
 
           <div 
             className="flex flex-col items-center justify-center gap-3 py-4 cursor-pointer"
@@ -577,10 +773,10 @@ export const BankStatements: React.FC = () => {
 
             <div>
               <p className="text-base font-semibold text-foreground">
-                {isProcessingFile ? fileStatusMessage : "Glissez-déposez votre relevé bancaire (PDF ou CSV)"}
+                {isProcessingFile ? fileStatusMessage : "Glissez-déposez votre relevé bancaire (PDF, CSV, image)"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Déduplication automatique, détection intelligente des flux & classification instantanée
+                L'IA analyse le document, identifie l'établissement bancaire et déduplique automatiquement
               </p>
             </div>
 
@@ -588,7 +784,7 @@ export const BankStatements: React.FC = () => {
               type="file" 
               ref={fileInputRef} 
               className="hidden" 
-              accept=".csv,.pdf,text/csv,application/pdf"
+              accept=".csv,.pdf,text/csv,application/pdf,image/*"
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
                   handleFileUpload(e.target.files[0]);
@@ -602,19 +798,19 @@ export const BankStatements: React.FC = () => {
               disabled={isProcessingFile}
               className="mt-2 pointer-events-none"
             >
-              {isProcessingFile ? "Traitement en cours..." : "Sélectionner un fichier"}
+              {isProcessingFile ? "Extraction en cours..." : "Sélectionner un fichier"}
             </Button>
           </div>
         </Card>
       )}
 
-      {/* Top Metrics Strip (Finary-grade luxury cards) */}
+      {/* Top Metrics Strip (Dynamic: Consolidated or Scoped to Selected Account) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Inflows */}
         <Card className="glass-card p-5 border border-border/60 hover:border-emerald-500/40 transition-all">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Revenus Réels
+              Revenus {selectedAccount !== 'ALL' ? `(${selectedAccount})` : 'Réels'}
             </span>
             <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500">
               <ArrowDownLeft className="w-4 h-4" />
@@ -624,7 +820,9 @@ export const BankStatements: React.FC = () => {
             <div className="text-2xl font-extrabold tracking-tight text-foreground">
               +{metrics.income.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Salaires et encaissements réels</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {selectedAccount === 'ALL' ? 'Total des encaissements consolidés' : `Encaissements sur ${selectedAccount}`}
+            </p>
           </div>
         </Card>
 
@@ -670,7 +868,7 @@ export const BankStatements: React.FC = () => {
         <Card className="glass-card p-5 border border-border/60 hover:border-primary/40 transition-all">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Reste à Vivre Réel
+              Reste à Vivre {selectedAccount !== 'ALL' ? 'Compte' : 'Global'}
             </span>
             <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
               <Sparkles className="w-4 h-4" />
@@ -697,7 +895,7 @@ export const BankStatements: React.FC = () => {
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Rechercher libellé, commerçant, catégorie, montant..."
+              placeholder="Rechercher libellé, compte, commerçant, montant..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 text-xs md:text-sm rounded-xl bg-background/80 border border-border/60 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground transition-all"
@@ -729,7 +927,16 @@ export const BankStatements: React.FC = () => {
 
           {/* Bulk Actions when selected */}
           {selectedTxIds.size > 0 && (
-            <div className="flex items-center gap-2 animate-in fade-in">
+            <div className="flex items-center gap-2 animate-in fade-in flex-wrap">
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => setIsBulkAccountModalOpen(true)}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <Landmark className="w-3.5 h-3.5" />
+                Changer de compte ({selectedTxIds.size})
+              </Button>
               <Button 
                 size="sm" 
                 variant="outline"
@@ -753,7 +960,7 @@ export const BankStatements: React.FC = () => {
         </div>
       </Card>
 
-      {/* Transactions Table */}
+      {/* Transactions Table with Bank Account Column */}
       <Card className="glass-card overflow-hidden border border-border/60">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs md:text-sm border-collapse">
@@ -768,6 +975,7 @@ export const BankStatements: React.FC = () => {
                   />
                 </th>
                 <th className="py-3.5 px-4">Date</th>
+                <th className="py-3.5 px-4">Compte Bancaire</th>
                 <th className="py-3.5 px-4">Description</th>
                 <th className="py-3.5 px-4">Type de Flux</th>
                 <th className="py-3.5 px-4">Catégorie</th>
@@ -778,11 +986,15 @@ export const BankStatements: React.FC = () => {
             <tbody className="divide-y divide-border/40">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-16 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <FileSpreadsheet className="w-8 h-8 opacity-40 text-muted-foreground" />
                       <p className="text-sm font-medium">Aucune transaction trouvée pour ces critères.</p>
-                      <p className="text-xs text-muted-foreground">Importez un relevé ou ajoutez une opération manuelle pour commencer.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedAccount !== 'ALL' 
+                          ? `Aucune opération enregistrée pour le compte "${selectedAccount}".`
+                          : "Importez un relevé bancaire ou ajoutez une opération pour débuter."}
+                      </p>
                     </div>
                   </td>
                 </tr>
@@ -811,7 +1023,19 @@ export const BankStatements: React.FC = () => {
                         {tx.date}
                       </td>
 
-                      <td className="py-3.5 px-4 font-semibold text-foreground max-w-[280px] truncate" title={tx.description}>
+                      {/* Account Badge with Quick Filter */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <button
+                          onClick={() => setSelectedAccount(tx.account || 'Compte Principal')}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-secondary/60 dark:bg-white/[0.05] border border-border/60 hover:border-primary/50 text-foreground transition-all"
+                          title="Filtrer uniquement ce compte"
+                        >
+                          <Landmark className="w-3 h-3 text-primary opacity-80" />
+                          <span className="max-w-[140px] truncate">{tx.account || 'Compte Principal'}</span>
+                        </button>
+                      </td>
+
+                      <td className="py-3.5 px-4 font-semibold text-foreground max-w-[260px] truncate" title={tx.description}>
                         {tx.description}
                       </td>
 
@@ -875,6 +1099,34 @@ export const BankStatements: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateManualTx} className="space-y-4 mt-4">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Compte Bancaire</label>
+                <select
+                  value={manualTx.account}
+                  onChange={e => setManualTx({ ...manualTx, account: e.target.value })}
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                >
+                  {availableAccounts.map(acc => (
+                    <option key={acc} value={acc}>{acc}</option>
+                  ))}
+                  <option value="CUSTOM">+ Nouveau compte personnalisé...</option>
+                </select>
+              </div>
+
+              {manualTx.account === 'CUSTOM' && (
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Nom du nouveau compte</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: BoursoBank - Compte Pro, Revolut..."
+                    value={manualTx.customAccount}
+                    onChange={e => setManualTx({ ...manualTx, customAccount: e.target.value })}
+                    className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1">Date</label>
                 <input
@@ -947,6 +1199,50 @@ export const BankStatements: React.FC = () => {
                 </Button>
               </div>
             </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Bulk Account Reassignment */}
+      {isBulkAccountModalOpen && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <Card className="w-full max-w-sm p-6 bg-card border border-border/80 shadow-2xl rounded-2xl">
+            <h3 className="text-base font-bold text-foreground mb-2 flex items-center gap-2">
+              <Landmark className="w-4 h-4 text-primary" /> Changer de compte bancaire
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              Rattacher les {selectedTxIds.size} opérations sélectionnées à un autre compte.
+            </p>
+
+            <select
+              value={bulkTargetAccount}
+              onChange={e => setBulkTargetAccount(e.target.value)}
+              className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground mb-4"
+            >
+              <option value="">Sélectionnez un compte...</option>
+              {availableAccounts.map(acc => (
+                <option key={acc} value={acc}>{acc}</option>
+              ))}
+              <option value="CUSTOM">+ Nouveau compte personnalisé...</option>
+            </select>
+
+            {bulkTargetAccount === 'CUSTOM' && (
+              <input
+                type="text"
+                placeholder="Ex: BoursoBank - Compte Pro"
+                onChange={e => setBulkTargetAccount(e.target.value)}
+                className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground mb-4"
+              />
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => setIsBulkAccountModalOpen(false)}>
+                Annuler
+              </Button>
+              <Button size="sm" onClick={handleBulkAccountApply} disabled={!bulkTargetAccount || bulkTargetAccount === 'CUSTOM'}>
+                Appliquer
+              </Button>
+            </div>
           </Card>
         </div>
       )}

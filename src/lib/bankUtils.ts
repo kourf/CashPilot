@@ -206,10 +206,90 @@ export function parseAmount(val: any): number | null {
 }
 
 /**
- * Parser de fichier CSV automatique
+ * Détection automatique de la banque et du nom de compte à partir du nom de fichier
  */
-export function parseCsvBankFile(file: File): Promise<BankTransaction[]> {
+export function detectAccountFromFilename(filename: string): { bankName: string; accountName: string } {
+  const lower = (filename || '').toLowerCase();
+  
+  if (lower.includes('bourso') || lower.includes('boursorama')) {
+    return { bankName: 'BoursoBank', accountName: 'BoursoBank - Compte Courant' };
+  }
+  if (lower.includes('revolut')) {
+    return { bankName: 'Revolut', accountName: 'Revolut EUR' };
+  }
+  if (lower.includes('bnp') || lower.includes('paribas')) {
+    return { bankName: 'BNP Paribas', accountName: 'BNP Paribas - Compte Courant' };
+  }
+  if (lower.includes('credit_agricole') || lower.includes('agricole') || lower.includes('ca_')) {
+    return { bankName: 'Crédit Agricole', accountName: 'Crédit Agricole' };
+  }
+  if (lower.includes('sg') || lower.includes('societe_generale') || lower.includes('societegenerale')) {
+    return { bankName: 'Société Générale', accountName: 'Société Générale' };
+  }
+  if (lower.includes('n26')) {
+    return { bankName: 'N26', accountName: 'N26' };
+  }
+  if (lower.includes('livret') || lower.includes('ldds')) {
+    return { bankName: 'Épargne', accountName: 'Livret Épargne' };
+  }
+  if (lower.includes('pro')) {
+    return { bankName: 'Compte Pro', accountName: 'Compte Pro' };
+  }
+
+  return { bankName: 'Banque Principale', accountName: 'Compte Courant' };
+}
+
+export interface AccountSummary {
+  accountName: string;
+  txCount: number;
+  income: number;
+  expenses: number;
+  savings: number;
+  netCashFlow: number;
+}
+
+/**
+ * Calcule la synthèse financière par compte bancaire distinct
+ */
+export function calculateAccountSummaries(transactions: BankTransaction[]): AccountSummary[] {
+  const map = new Map<string, { count: number; income: number; expenses: number; savings: number }>();
+
+  transactions.forEach(t => {
+    const acc = t.account || 'Compte Principal';
+    if (!map.has(acc)) {
+      map.set(acc, { count: 0, income: 0, expenses: 0, savings: 0 });
+    }
+    const curr = map.get(acc)!;
+    curr.count += 1;
+    const amt = Math.abs(Number(t.amount) || 0);
+    if (t.flowType === 'INCOME') curr.income += amt;
+    else if (t.flowType === 'FIXED_EXPENSE' || t.flowType === 'VARIABLE_EXPENSE') curr.expenses += amt;
+    else if (t.flowType === 'SAVINGS_TRANSFER') curr.savings += amt;
+  });
+
+  return Array.from(map.entries()).map(([accountName, stats]) => ({
+    accountName,
+    txCount: stats.count,
+    income: stats.income,
+    expenses: stats.expenses,
+    savings: stats.savings,
+    netCashFlow: stats.income - stats.expenses - stats.savings
+  })).sort((a, b) => b.txCount - a.txCount);
+}
+
+/**
+ * Parser de fichier CSV automatique avec assignation multi-comptes
+ */
+export function parseCsvBankFile(
+  file: File,
+  targetAccountName?: string,
+  targetBankName?: string
+): Promise<BankTransaction[]> {
   return new Promise((resolve, reject) => {
+    const detected = detectAccountFromFilename(file.name);
+    const finalAccount = targetAccountName || detected.accountName;
+    const finalBank = targetBankName || detected.bankName;
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -270,7 +350,8 @@ export function parseCsvBankFile(file: File): Promise<BankTransaction[]> {
               amount,
               flowType,
               category,
-              account: 'Compte Principal',
+              account: finalAccount,
+              bankName: finalBank,
               status: flowType === 'SAVINGS_TRANSFER' ? 'Internal Transfer' : 'Reconciled'
             });
           });
@@ -284,3 +365,4 @@ export function parseCsvBankFile(file: File): Promise<BankTransaction[]> {
     });
   });
 }
+

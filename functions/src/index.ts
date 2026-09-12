@@ -70,38 +70,45 @@ Standardise les noms de produits (ex: "COCA COLA 1L" devient "Coca-Cola â€”
         },
       };
     } else {
-      // RelevÃ© bancaire
+      // Relevé bancaire
       prompt = `Tu es un expert en analyse de finances personnelles. 
-Analyse ce relevÃ© bancaire (PDF ou CSV). Extrais chaque transaction prÃ©cisÃ©ment.
-IMPORTANT: CashPilot nâ€™est pas une application comptable. N'inclus AUCUNE information de TVA.
-DÃ©tecte les revenus, dÃ©penses, remboursements, virements internes, Ã©pargne, abonnements, frais bancaires, crÃ©dits, paiements en plusieurs fois.
-Classe en type fixe, variable ou exceptionnelle.`;
+Analyse ce relevé bancaire (PDF, image ou document). Extrais chaque transaction précisément.
+IMPORTANT: Identifie avec rigueur :
+1. Le nom de la banque (ex: BoursoBank, BNP Paribas, Revolut, Crédit Agricole, N26, CIC, Société Générale, etc.).
+2. Le type de compte (Courant, Épargne, Pro, Joint, etc.).
+3. Le numéro masqué ou identifiant s'il apparaît (ex: ...4819).
+4. Le nom synthétique du compte bancaire (ex: "BoursoBank - Compte Courant ...4819" ou "Revolut EUR").
+CashPilot n’est pas une application comptable : n'inclus AUCUNE information de TVA.
+Détecte les revenus, dépenses, remboursements, virements internes, épargne, abonnements, frais bancaires, crédits, paiements en plusieurs fois.
+Classe chaque opération en type fixe, variable ou virement/épargne.`;
 
       schema = {
         type: Type.OBJECT,
         properties: {
-          bankName: { type: Type.STRING, description: "Nom de la banque (ex: CrÃ©dit Agricole, Revolut)" },
-          accountType: { type: Type.STRING, description: "Type de compte (courant, Ã©pargne, joint, etc.)" },
-          statementPeriod: { type: Type.STRING, description: "PÃ©riode couverte par le relevÃ© (ex: Juin 2026)" },
+          bankName: { type: Type.STRING, description: "Nom de la banque (ex: BoursoBank, BNP Paribas, Revolut, Crédit Agricole)" },
+          accountType: { type: Type.STRING, description: "Type de compte (courant, épargne, pro, joint, etc.)" },
+          accountNumber: { type: Type.STRING, description: "Numéro masqué du compte ou identifiant si présent (ex: ...4819)" },
+          accountName: { type: Type.STRING, description: "Nom complet du compte bancaire (ex: BoursoBank - Compte Courant, Revolut EUR)" },
+          statementPeriod: { type: Type.STRING, description: "Période couverte par le relevé (ex: Juin 2026)" },
           transactions: {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
               properties: {
                 date: { type: Type.STRING, description: "Date au format YYYY-MM-DD" },
-                description: { type: Type.STRING, description: "LibellÃ© de la transaction nettoyÃ©" },
-                amount: { type: Type.NUMBER, description: "Montant (nÃ©gatif pour une dÃ©pense, positif pour un revenu)" },
-                balance: { type: Type.NUMBER, description: "Solde aprÃ¨s opÃ©ration si disponible" },
-                operationType: { type: Type.STRING, description: "Type d'opÃ©ration (CB, PrÃ©lÃ¨vement, Virement, etc.)" },
-                category: { type: Type.STRING, description: "CatÃ©gorie principale (Revenus, Logement, Alimentation, Transports, SantÃ©, Loisirs, Shopping, Abonnements, Frais bancaires, ImpÃ´ts, Assurance, Ã‰pargne, Remboursements, Autres)" },
-                subCategory: { type: Type.STRING, description: "Sous-catÃ©gorie intelligente" },
+                description: { type: Type.STRING, description: "Libellé de la transaction nettoyé" },
+                amount: { type: Type.NUMBER, description: "Montant (négatif pour une dépense, positif pour un revenu)" },
+                balance: { type: Type.NUMBER, description: "Solde après opération si disponible" },
+                operationType: { type: Type.STRING, description: "Type d'opération (CB, Prélèvement, Virement, etc.)" },
+                category: { type: Type.STRING, description: "Catégorie principale (Revenus, Logement, Alimentation, Transports, Santé, Loisirs, Shopping, Abonnements, Frais bancaires, Impôts, Assurance, Épargne, Remboursements, Autres)" },
+                subCategory: { type: Type.STRING, description: "Sous-catégorie intelligente" },
                 isIncomeOrExpense: { type: Type.STRING, description: "income, expense, ou transfer" },
                 isRefund: { type: Type.BOOLEAN, description: "Est-ce un remboursement ?" },
-                isSavings: { type: Type.BOOLEAN, description: "Est-ce un transfert vers une Ã©pargne ?" },
+                isSavings: { type: Type.BOOLEAN, description: "Est-ce un transfert vers une épargne ?" },
                 expenseType: { type: Type.STRING, description: "fixe, variable, ou exceptionnelle" },
-                isSubscription: { type: Type.BOOLEAN, description: "Est-ce un abonnement rÃ©current ?" },
+                isSubscription: { type: Type.BOOLEAN, description: "Est-ce un abonnement récurrent ?" },
                 isBankFee: { type: Type.BOOLEAN, description: "Est-ce un frais bancaire ?" },
-                isCreditOrLoan: { type: Type.BOOLEAN, description: "Est-ce un remboursement de crÃ©dit/prÃªt ?" },
+                isCreditOrLoan: { type: Type.BOOLEAN, description: "Est-ce un remboursement de crédit/prêt ?" },
                 isInstallment: { type: Type.BOOLEAN, description: "Est-ce un paiement en plusieurs fois (Klarna, Alma, etc.) ?" },
                 isInternalTransfer: { type: Type.BOOLEAN, description: "Est-ce un virement interne entre comptes ?" },
                 confidenceLevel: { type: Type.STRING, description: "Confiance de l'IA (high, medium, low)" }
@@ -111,6 +118,7 @@ Classe en type fixe, variable ou exceptionnelle.`;
         }
       };
     }
+
 
     // 3. Appeler Gemini avec Structure Outputs
     const result = await ai.models.generateContent({
