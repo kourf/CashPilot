@@ -17,6 +17,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { collection, writeBatch, doc } from 'firebase/firestore';
 import { cn } from '../../lib/utils';
+import { getActiveAccountId } from '../../lib/userUtils';
+
 
 export default function Receipts() {
   const [isDragging, setIsDragging] = useState(false);
@@ -44,8 +46,8 @@ export default function Receipts() {
   const analyzeFile = async (file: File) => {
     try {
       setAnalyzingFile(true);
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
-      const storageRef = ref(storage, `users/${deviceId}/uploads/receipts/${Date.now()}_${file.name}`);
+      const accountId = getActiveAccountId();
+      const storageRef = ref(storage, `users/${accountId}/uploads/receipts/${Date.now()}_${file.name}`);
       
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
@@ -78,11 +80,12 @@ export default function Receipts() {
     setSaving(true);
     
     try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const accountId = getActiveAccountId();
       const batch = writeBatch(db);
-      const receiptsRef = collection(db, `users/${deviceId}/receipts`);
+      const receiptsRef = collection(db, `users/${accountId}/receipts`);
       
       const newDocRef = doc(receiptsRef);
+
       batch.set(newDocRef, {
         id: newDocRef.id,
         storeName: extractedData.storeName || "Inconnu",

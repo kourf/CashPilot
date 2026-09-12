@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useMemo } from '
 import { db } from '../lib/firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { getAvailableMonths, type Transaction } from '../lib/kpiUtils';
+import { getActiveAccountId } from '../lib/userUtils';
+
 
 interface TransactionsContextType {
   transactions: Transaction[];
@@ -62,11 +64,14 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }, 8000);
 
     try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const accountId = getActiveAccountId();
+
+
       const q = query(
-        collection(db, `users/${deviceId}/transactions`),
+        collection(db, `users/${accountId}/transactions`),
         orderBy('date', 'desc')
       );
+
 
       unsubscribe = onSnapshot(q, (snapshot) => {
         const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as unknown as Transaction[];

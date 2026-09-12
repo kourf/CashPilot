@@ -22,6 +22,8 @@ import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { useTransactions } from '../../context/TransactionsContext';
+import { getActiveAccountId } from '../../lib/userUtils';
+
 import { 
   CATEGORIES, 
   classifyFlowType, 
@@ -184,8 +186,8 @@ export const BankStatements: React.FC = () => {
     const newFlowType = classifyFlowType(newCategory, tx.amount, tx.description);
 
     try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
-      const docRef = doc(db, `users/${deviceId}/transactions`, id);
+      const accountId = getActiveAccountId();
+      const docRef = doc(db, `users/${accountId}/transactions`, id);
       
       await updateDoc(docRef, {
         category: newCategory,
@@ -212,8 +214,9 @@ export const BankStatements: React.FC = () => {
     if (!window.confirm("Supprimer définitivement cette transaction ?")) return;
 
     try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
-      await deleteDoc(doc(db, `users/${deviceId}/transactions`, id));
+      const accountId = getActiveAccountId();
+      await deleteDoc(doc(db, `users/${accountId}/transactions`, id));
+
 
       setSelectedTxIds(prev => {
         const next = new Set(prev);
@@ -259,11 +262,11 @@ export const BankStatements: React.FC = () => {
     if (!window.confirm(`Supprimer ces ${count} transactions sélectionnées ?`)) return;
 
     try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const accountId = getActiveAccountId();
       const batch = writeBatch(db);
 
       selectedTxIds.forEach(id => {
-        const docRef = doc(db, `users/${deviceId}/transactions`, id);
+        const docRef = doc(db, `users/${accountId}/transactions`, id);
         batch.delete(docRef);
       });
 
@@ -288,13 +291,13 @@ export const BankStatements: React.FC = () => {
     if (count === 0) return;
 
     try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const accountId = getActiveAccountId();
       const batch = writeBatch(db);
 
       selectedTxIds.forEach(id => {
         const tx = bankTransactions.find(t => t.id === id);
         const flow = tx ? classifyFlowType(bulkTargetCategory, tx.amount, tx.description) : 'VARIABLE_EXPENSE';
-        const docRef = doc(db, `users/${deviceId}/transactions`, id);
+        const docRef = doc(db, `users/${accountId}/transactions`, id);
         batch.update(docRef, {
           category: bulkTargetCategory,
           flowType: flow,
@@ -326,12 +329,13 @@ export const BankStatements: React.FC = () => {
     if (count === 0 || !targetAccount) return;
 
     try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const accountId = getActiveAccountId();
       const batch = writeBatch(db);
       const bankName = targetAccount.includes(' - ') ? targetAccount.split(' - ')[0] : targetAccount;
 
       selectedTxIds.forEach(id => {
-        const docRef = doc(db, `users/${deviceId}/transactions`, id);
+        const docRef = doc(db, `users/${accountId}/transactions`, id);
+
         batch.update(docRef, {
           accountName: targetAccount,
           bankName,
@@ -374,8 +378,8 @@ export const BankStatements: React.FC = () => {
     const finalBank = finalAccount.includes(' - ') ? finalAccount.split(' - ')[0] : finalAccount;
 
     try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
-      const txCollection = collection(db, `users/${deviceId}/transactions`);
+      const accountId = getActiveAccountId();
+      const txCollection = collection(db, `users/${accountId}/transactions`);
       const newDocRef = doc(txCollection);
 
       const finalAmount = manualTx.flowType === 'INCOME' ? Math.abs(rawAmt) : -Math.abs(rawAmt);
@@ -429,7 +433,7 @@ export const BankStatements: React.FC = () => {
     setFileStatusMessage(`Analyse de ${file.name}...`);
 
     try {
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const accountId = getActiveAccountId();
       let extractedTxs: BankTransaction[] = [];
       let detectedBankName = '';
       let detectedAccountName = '';
@@ -452,9 +456,10 @@ export const BankStatements: React.FC = () => {
       } else {
         // PDF or Image Upload to Firebase Cloud Function (Gemini Multi-Account extraction)
         setFileStatusMessage("Téléversement sécurisé vers Firebase Storage...");
-        const storageRef = ref(storage, `users/${deviceId}/uploads/statements/${Date.now()}_${file.name}`);
+        const storageRef = ref(storage, `users/${accountId}/uploads/statements/${Date.now()}_${file.name}`);
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);
+
 
         setFileStatusMessage("Analyse OCR et détection intelligente du compte par l'IA...");
         const analyzeDocument = httpsCallable(functions, 'analyzeDocument');
@@ -514,7 +519,8 @@ export const BankStatements: React.FC = () => {
       // Save Unique Transactions in Firestore batch
       setFileStatusMessage(`Sauvegarde de ${uniqueTxs.length} opérations pour "${detectedAccountName}"...`);
       const batch = writeBatch(db);
-      const txRef = collection(db, `users/${deviceId}/transactions`);
+      const txRef = collection(db, `users/${accountId}/transactions`);
+
 
       uniqueTxs.forEach(tx => {
         const newDoc = doc(txRef);
