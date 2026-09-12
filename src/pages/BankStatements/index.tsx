@@ -1,1047 +1,989 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { 
+  ArrowDownLeft, 
+  ArrowUpRight, 
+  ArrowLeftRight, 
+  Search, 
+  Upload, 
+  Plus, 
+  Trash2, 
+  Sparkles, 
+  X,
+  Loader2,
+  Calendar,
+  Layers,
+  FileSpreadsheet,
+  AlertCircle
+} from 'lucide-react';
+import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { UploadCloud, AlertCircle, CheckCircle2, FileText, ClipboardPaste, Search, Loader2, Trash2, Filter, Plus, Info } from 'lucide-react';
-import { httpsCallable } from 'firebase/functions';
-import { collection, writeBatch, doc } from 'firebase/firestore';
-
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, functions } from '../../lib/firebase';
-import { Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Sankey, Legend } from 'recharts';
-import Papa from 'papaparse';
-import { cn } from '../../lib/utils';
-import { calculateKpis, filterByMonth, formatMonthLabel, buildSankeyData, buildCategoryBreakdown, type Transaction } from '../../lib/kpiUtils';
+import { Badge } from '../../components/ui/badge';
 import { useTransactions } from '../../context/TransactionsContext';
+import { 
+  CATEGORIES, 
+  classifyFlowType, 
+  calculateBankMetrics, 
+  checkDuplicateTransactions, 
+  parseCsvBankFile,
+  type FlowType, 
+  type BankTransaction 
+} from '../../lib/bankUtils';
+import { db, storage, functions } from '../../lib/firebase';
+import { doc, deleteDoc, writeBatch, collection, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { httpsCallable } from 'firebase/functions';
 
-
-type ViewState = 'dashboard' | 'upload' | 'mapping' | 'validation';
-
-// --- UTILS ---
-const parseAmount = (val: any): number | null => {
-  if (val === null || val === undefined || val === '') return null;
-  if (typeof val === 'number') return isNaN(val) ? null : val;
-  let str = String(val).trim();
-  if (str === '') return null;
-
-  let isNegative = false;
-  if (str.endsWith('-')) { isNegative = true; str = str.slice(0, -1).trim(); }
-  else if (str.startsWith('-')) { isNegative = true; str = str.substring(1).trim(); }
-  if (str.startsWith('+')) { str = str.substring(1).trim(); }
-
-  str = str.replace(/[€$a-zA-Z\s]/g, '');
-
-  const commaCount = (str.match(/,/g) || []).length;
-  const dotCount = (str.match(/\./g) || []).length;
-
-  if (commaCount > 0 && dotCount > 0) {
-    const lastComma = str.lastIndexOf(',');
-    const lastDot = str.lastIndexOf('.');
-    if (lastComma > lastDot) { str = str.replace(/\./g, '').replace(',', '.'); }
-    else { str = str.replace(/,/g, ''); }
-  } else if (commaCount === 1 && dotCount === 0) {
-    str = str.replace(',', '.');
-  } else if (commaCount > 1 && dotCount === 0) {
-    str = str.replace(/,/g, '');
-  } else if (dotCount > 1 && commaCount === 0) {
-    str = str.replace(/\./g, '');
-  }
-
-  const parsed = parseFloat(str);
-  if (isNaN(parsed)) return null;
-  return isNegative ? -parsed : parsed;
-};
-
-const getMonthKey = (dateStr: string) => {
-  if (!dateStr) return new Date().toISOString().substring(0, 7);
-  const parts = dateStr.split(/[/-]/);
-  if (parts.length >= 3) {
-    if (parts[2].length === 4) { // DD/MM/YYYY
-      return `${parts[2]}-${parts[1].padStart(2, '0')}`;
-    } else if (parts[0].length === 4) { // YYYY-MM-DD
-      return `${parts[0]}-${parts[1].padStart(2, '0')}`;
-    }
-  }
-  return new Date().toISOString().substring(0, 7);
-};
-
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
-  constructor(props: {children: React.ReactNode}) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("BankStatements ErrorBoundary:", error, errorInfo);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="p-10 flex flex-col items-center justify-center text-center animate-in fade-in">
-          <AlertCircle className="w-16 h-16 text-destructive mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Erreur d'affichage</h2>
-          <p className="text-muted-foreground mb-6">Une donnée corrompue (ex: montant invalide) a causé un crash de l'interface.</p>
-          <div className="flex gap-4">
-            <Button onClick={() => window.location.reload()}>Recharger la page</Button>
-            <Button variant="outline" onClick={() => window.location.href = '/'}>Retour Accueil</Button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-function BankStatementsContent() {
-  const [view, setView] = useState<ViewState>('dashboard');
-  
-  // Données globales et réactives avec 0 ms de latence (cache chaud en mémoire & IndexedDB)
-  const {
-    transactions,
-    loading,
+export const BankStatements: React.FC = () => {
+  const { 
+    transactions: rawTransactions, 
+    loading: contextLoading,
     selectedMonth,
     setSelectedMonth,
     availableMonths
   } = useTransactions();
-  
-  // Upload States
-  const [isDragging, setIsDragging] = useState(false);
-  const [analyzingFile, setAnalyzingFile] = useState<string | null>(null);
-  
-  // CSV States
-  const [csvRawData, setCsvRawData] = useState<any[]>([]);
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [csvMapping, setCsvMapping] = useState({ date: '', description: '', amount: '' });
-  const [pasteMode, setPasteMode] = useState(false);
-  const [pasteData, setPasteData] = useState('');
-  
-  // Validation States
-  const [extractedData, setExtractedData] = useState<any | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [diagnosticReport, setDiagnosticReport] = useState<any | null>(null);
-  
-  // Filters for Dashboard Table
+
+  // Local state for interactive features
   const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
+  const [isUploading, setIsUploading] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
+  const [bulkTargetCategory, setBulkTargetCategory] = useState<string>(CATEGORIES[0]);
+  
+  // File processing states
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [fileStatusMessage, setFileStatusMessage] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Form state for manual transaction
+  const [manualTx, setManualTx] = useState({
+    date: new Date().toISOString().substring(0, 10),
+    description: '',
+    amount: '',
+    category: 'Alimentation & Courses',
+    flowType: 'VARIABLE_EXPENSE' as FlowType,
+    account: 'Compte Courant'
+  });
 
-  // Draft persistence
-  useEffect(() => {
-    const saved = localStorage.getItem('draftBankStatement');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.extractedData) {
-          setExtractedData(parsed.extractedData);
-          setView(parsed.view || 'validation');
-        }
-      } catch(e) { console.error(e); }
-    }
-  }, []);
+  // Convert raw Firestore transactions to BankTransaction models with strict flowType
+  const bankTransactions: BankTransaction[] = useMemo(() => {
+    return rawTransactions.map(t => {
+      const id = String(t.id || `tx_${t.date}_${t.amount}_${Math.random()}`);
+      const desc = t.description || t.cleanLabel || t.rawLabel || 'Opération';
+      const amount = Number(t.amount) || 0;
+      const category = t.category || (amount > 0 ? 'Salaire & Revenus' : 'Autre');
+      const flowType: FlowType = t.flowType || classifyFlowType(category, amount, desc);
 
-  useEffect(() => {
-    if ((view === 'validation' || view === 'mapping') && extractedData) {
-      localStorage.setItem('draftBankStatement', JSON.stringify({ view, extractedData }));
-    } else if (view === 'dashboard') {
-      localStorage.removeItem('draftBankStatement');
-    }
-  }, [view, extractedData]);
-
-  const filteredTransactions = useMemo(() => filterByMonth(transactions, selectedMonth), [transactions, selectedMonth]);
-
-  const kpis = useMemo(() => {
-    const calculated = calculateKpis(filteredTransactions);
-    return {
-      ...calculated,
-      nbTx: calculated.txCount,
-      topCat: calculated.topCategory,
-      biggestExp: { val: calculated.topDepense, name: 'Plus grosse dǸpense' },
-      reste: calculated.resteAVivre
-    };
-  }, [filteredTransactions]);
-
-  const pieData = useMemo(() => buildCategoryBreakdown(filteredTransactions).slice(0, 5), [filteredTransactions]);
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
-  const sankeyData = useMemo(() => buildSankeyData(kpis as any, pieData), [kpis, pieData]);
-
-  // --- FILE HANDLING ---
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setIsDragging(false);
-    if (e.dataTransfer.files?.length) processFile(e.dataTransfer.files[0]);
-  };
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) processFile(e.target.files[0]);
-  };
-
-  const guessMapping = (headers: string[]) => {
-    const guess = {
-      date: headers.find(h => h.toLowerCase().includes('date')) || '',
-      description: headers.find(h => h.toLowerCase().includes('libell') || h.toLowerCase().includes('desc')) || '',
-      amount: headers.find(h => h.toLowerCase().includes('montant') || h.toLowerCase().includes('valeur') || h.toLowerCase().includes('amount') || h.toLowerCase() === 'montant(s)') || ''
-    };
-    setCsvMapping(guess);
-  };
-
-  const handlePasteSubmit = () => {
-    if (!pasteData) return;
-    const rows = pasteData.trim().split('\n').map(r => r.split('\t'));
-    if (rows.length < 2) {
-      alert("Format invalide. Assurez-vous de coller plusieurs lignes (y compris les en-tǦtes) sǸparǸes par des tabulations.");
-      return;
-    }
-    const headers = rows[0].map(h => h.trim());
-    const data = rows.slice(1).map(row => {
-      const obj: any = {};
-      headers.forEach((h, i) => obj[h] = row[i]?.trim() || '');
-      return obj;
+      return {
+        id,
+        date: t.date || new Date().toISOString().substring(0, 10),
+        description: desc,
+        amount,
+        flowType,
+        category,
+        account: t.accountName || t.account || 'Compte Principal',
+        status: flowType === 'SAVINGS_TRANSFER' ? 'Internal Transfer' : 'Reconciled',
+        monthKey: t.monthKey || (t.date ? t.date.substring(0, 7) : undefined),
+        rawLabel: t.rawLabel,
+        cleanLabel: t.cleanLabel
+      };
     });
-    setCsvHeaders(headers);
-    setCsvRawData(data);
-    guessMapping(headers);
-    setView('mapping');
-  };
+  }, [rawTransactions]);
 
-  const processFile = async (file: File) => {
-    if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        dynamicTyping: false,
-        complete: (results) => {
-          if (results.data && results.data.length > 0) {
-            const headers = Object.keys(results.data[0]);
-            setCsvHeaders(headers);
-            setCsvRawData(results.data);
-            guessMapping(headers);
-            setView('mapping');
-          }
-        }
-      });
-    } else {
-      await analyzePDF(file);
-    }
-  };
-
-  const analyzePDF = async (file: File) => {
-    try {
-      setAnalyzingFile("Analyse du PDF en cours...");
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
-      const storageRef = ref(storage, `users/${deviceId}/uploads/statements/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-
-      const analyzeDocument = httpsCallable(functions, 'analyzeDocument');
-      const response = await analyzeDocument({ fileUrl: url, fileType: 'statement', mimeType: file.type });
+  // Financial Metrics Calculation (Finary separation rules: Savings/Transfers neutralised)
+  const metrics = useMemo(() => {
+    // If a month is selected, compute metrics on that month
+    const scopedTxs = selectedMonth === 'all' 
+      ? bankTransactions 
+      : bankTransactions.filter(t => (t.monthKey === selectedMonth || t.date.startsWith(selectedMonth)));
       
-      const result = response.data as any;
-      if (result.success && result.data?.transactions) {
-        setExtractedData(result.data);
-        setView('validation');
-      } else {
-        alert("Erreur lors de l'analyse: " + (result.error || "Format non reconnu"));
+    return calculateBankMetrics(scopedTxs);
+  }, [bankTransactions, selectedMonth]);
+
+  // Filtered & Searched Transaction List
+  const filteredTransactions = useMemo(() => {
+    return bankTransactions.filter(t => {
+      // Month scope filter
+      if (selectedMonth !== 'all' && t.monthKey !== selectedMonth && !t.date.startsWith(selectedMonth)) {
+        return false;
       }
-    } catch (error: any) {
-      console.error(error);
-      alert("Erreur serveur lors de l'analyse du PDF. (Timeout ou erreur rǸseau)");
-    } finally {
-      setAnalyzingFile(null);
+
+      // Text search filter
+      const search = searchTerm.toLowerCase().trim();
+      if (search) {
+        const matchDesc = t.description.toLowerCase().includes(search);
+        const matchCat = t.category.toLowerCase().includes(search);
+        const matchAmt = String(t.amount).includes(search);
+        const matchAcc = (t.account || '').toLowerCase().includes(search);
+        if (!matchDesc && !matchCat && !matchAmt && !matchAcc) return false;
+      }
+
+      // Flow type filter
+      if (selectedFilter === 'ALL') return true;
+      if (selectedFilter === 'INCOME') return t.flowType === 'INCOME';
+      if (selectedFilter === 'FIXED') return t.flowType === 'FIXED_EXPENSE';
+      if (selectedFilter === 'VARIABLE') return t.flowType === 'VARIABLE_EXPENSE';
+      if (selectedFilter === 'EXPENSE') return t.flowType === 'FIXED_EXPENSE' || t.flowType === 'VARIABLE_EXPENSE';
+      if (selectedFilter === 'SAVINGS') return t.flowType === 'SAVINGS_TRANSFER';
+      return true;
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [bankTransactions, searchTerm, selectedFilter, selectedMonth]);
+
+  // Auto-hide notification
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  // 1. Inline Category Change with Firestore sync
+  const handleCategoryChange = async (id: string, newCategory: string) => {
+    const tx = bankTransactions.find(t => t.id === id);
+    if (!tx) return;
+
+    const newFlowType = classifyFlowType(newCategory, tx.amount, tx.description);
+
+    try {
+      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const docRef = doc(db, `users/${deviceId}/transactions`, id);
+      
+      await updateDoc(docRef, {
+        category: newCategory,
+        flowType: newFlowType,
+        nature: newFlowType === 'FIXED_EXPENSE' ? 'fixe' : newFlowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+        updatedAt: new Date().toISOString()
+      });
+
+      setNotification({
+        type: 'success',
+        message: `Catégorie mise à jour : ${newCategory}`
+      });
+    } catch (err) {
+      console.error("Erreur lors de la mise à jour de la catégorie:", err);
+      setNotification({
+        type: 'error',
+        message: "Échec de la synchronisation Firestore."
+      });
     }
   };
 
-  const processCSVMapping = async () => {
-    if (!csvMapping.date || !csvMapping.description || !csvMapping.amount) {
-      alert("Veuillez mapper au moins la date, le libellé et la colonne de montant.");
+  // 2. Single Delete with Firestore sync
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Supprimer définitivement cette transaction ?")) return;
+
+    try {
+      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      await deleteDoc(doc(db, `users/${deviceId}/transactions`, id));
+
+      setSelectedTxIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+
+      setNotification({
+        type: 'info',
+        message: "Transaction supprimée avec succès."
+      });
+    } catch (err) {
+      console.error("Erreur suppression transaction:", err);
+      setNotification({
+        type: 'error',
+        message: "Impossible de supprimer la transaction."
+      });
+    }
+  };
+
+  // 3. Selection Handlers
+  const handleToggleSelect = (id: string) => {
+    setSelectedTxIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedTxIds.size === filteredTransactions.length) {
+      setSelectedTxIds(new Set());
+    } else {
+      setSelectedTxIds(new Set(filteredTransactions.map(t => t.id)));
+    }
+  };
+
+  // 4. Bulk Delete with writeBatch
+  const handleDeleteSelected = async () => {
+    const count = selectedTxIds.size;
+    if (count === 0) return;
+    if (!window.confirm(`Supprimer ces ${count} transactions sélectionnées ?`)) return;
+
+    try {
+      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const batch = writeBatch(db);
+
+      selectedTxIds.forEach(id => {
+        const docRef = doc(db, `users/${deviceId}/transactions`, id);
+        batch.delete(docRef);
+      });
+
+      await batch.commit();
+      setSelectedTxIds(new Set());
+      setNotification({
+        type: 'info',
+        message: `${count} transactions supprimées en lot.`
+      });
+    } catch (err) {
+      console.error("Erreur suppression groupée:", err);
+      setNotification({
+        type: 'error',
+        message: "Erreur lors de la suppression en lot."
+      });
+    }
+  };
+
+  // 5. Bulk Category Update
+  const handleBulkCategoryApply = async () => {
+    const count = selectedTxIds.size;
+    if (count === 0) return;
+
+    try {
+      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const batch = writeBatch(db);
+
+      selectedTxIds.forEach(id => {
+        const tx = bankTransactions.find(t => t.id === id);
+        const flow = tx ? classifyFlowType(bulkTargetCategory, tx.amount, tx.description) : 'VARIABLE_EXPENSE';
+        const docRef = doc(db, `users/${deviceId}/transactions`, id);
+        batch.update(docRef, {
+          category: bulkTargetCategory,
+          flowType: flow,
+          nature: flow === 'FIXED_EXPENSE' ? 'fixe' : flow === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+          updatedAt: new Date().toISOString()
+        });
+      });
+
+      await batch.commit();
+      setIsBulkCategoryModalOpen(false);
+      setSelectedTxIds(new Set());
+      setNotification({
+        type: 'success',
+        message: `${count} transactions reclassées en "${bulkTargetCategory}".`
+      });
+    } catch (err) {
+      console.error("Erreur réassignation groupée:", err);
+      setNotification({
+        type: 'error',
+        message: "Erreur lors du changement de catégorie en lot."
+      });
+    }
+  };
+
+  // 6. Manual Transaction Submission
+  const handleCreateManualTx = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const rawAmt = parseFloat(manualTx.amount.replace(',', '.'));
+    if (isNaN(rawAmt) || rawAmt === 0) {
+      alert("Veuillez saisir un montant numérique valide.");
       return;
     }
-    
-    setAnalyzingFile("CatǸgorisation intelligente en cours...");
-    
-    try {
-      // Format mapped data
-      const mappedData = csvRawData.map((row, index) => {
-        let amt: number | null = null;
-        let rawAmt = '';
-        
-        if (csvMapping.amount) {
-           rawAmt = String(row[csvMapping.amount] || '');
-           amt = parseAmount(rawAmt);
-        }
+    if (!manualTx.description.trim()) {
+      alert("Veuillez indiquer un libellé.");
+      return;
+    }
 
-        return {
-          originalLine: index + 2,
-          date: row[csvMapping.date] || '',
-          description: row[csvMapping.description] || '',
-          amount: amt,
-          _rawAmount: rawAmt
-        };
+    try {
+      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      const txCollection = collection(db, `users/${deviceId}/transactions`);
+      const newDocRef = doc(txCollection);
+
+      const finalAmount = manualTx.flowType === 'INCOME' ? Math.abs(rawAmt) : -Math.abs(rawAmt);
+      const monthKey = manualTx.date.substring(0, 7);
+
+      await writeBatch(db).set(newDocRef, {
+        id: newDocRef.id,
+        date: manualTx.date,
+        monthKey,
+        rawLabel: manualTx.description,
+        cleanLabel: manualTx.description,
+        amount: finalAmount,
+        direction: finalAmount > 0 ? 'credit' : 'debit',
+        category: manualTx.category,
+        flowType: manualTx.flowType,
+        nature: manualTx.flowType === 'FIXED_EXPENSE' ? 'fixe' : manualTx.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+        accountName: manualTx.account || 'Compte Principal',
+        aiStatus: 'completed',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }).commit();
+
+      setIsAddModalOpen(false);
+      setManualTx({
+        date: new Date().toISOString().substring(0, 10),
+        description: '',
+        amount: '',
+        category: 'Alimentation & Courses',
+        flowType: 'VARIABLE_EXPENSE',
+        account: 'Compte Courant'
       });
 
-      // Valid items to send to AI (we don't want to break the AI with null amounts)
-      const validForAi = mappedData.filter(t => t.description && t.amount !== null && t.amount !== 0);
-      
-      let finalTransactions = mappedData.map(t => ({
-        ...t,
-        category: 'Autres',
-        nature: 'variable',
-        aiStatus: 'pending',
-        categorizationMode: 'manual'
-      }));
+      setNotification({
+        type: 'success',
+        message: "Opération ajoutée avec succès !"
+      });
+    } catch (err) {
+      console.error("Erreur ajout manuel:", err);
+      setNotification({
+        type: 'error',
+        message: "Échec de l'enregistrement de l'opération."
+      });
+    }
+  };
 
-      // Call AI
-      const categorizeTransactions = httpsCallable(functions, 'categorizeTransactions');
-      try {
-        const response = await categorizeTransactions({ transactions: validForAi });
+  // 7. File Upload & Extraction (CSV or PDF)
+  const handleFileUpload = async (file: File) => {
+    setIsProcessingFile(true);
+    setFileStatusMessage(`Analyse de ${file.name}...`);
+
+    try {
+      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      let extractedTxs: BankTransaction[] = [];
+
+      if (file.name.endsWith('.csv') || file.type.includes('csv') || file.type.includes('text')) {
+        // Direct Client CSV Parsing
+        setFileStatusMessage("Lecture et détection des colonnes CSV...");
+        extractedTxs = await parseCsvBankFile(file);
+      } else {
+        // PDF or Image Upload to Firebase Cloud Function
+        setFileStatusMessage("Téléversement sécurisé vers Firebase Storage...");
+        const storageRef = ref(storage, `users/${deviceId}/uploads/statements/${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(storageRef);
+
+        setFileStatusMessage("Analyse OCR et extraction IA en cours...");
+        const analyzeDocument = httpsCallable(functions, 'analyzeDocument');
+        const response = await analyzeDocument({ fileUrl: url, fileType: 'bank_statement', mimeType: file.type });
         const result = response.data as any;
-        
+
         if (result.success && result.data?.transactions) {
-          // Merge AI results back into finalTransactions
-          finalTransactions = finalTransactions.map(t => {
-            const aiTx = result.data.transactions.find((tx: any) => tx.description === t.description && tx.amount === t.amount);
-            if (aiTx) {
-              return { ...t, ...aiTx, aiStatus: 'completed', categorizationMode: 'ai' };
-            }
-            return t;
+          extractedTxs = result.data.transactions.map((t: any, i: number) => {
+            const amt = Number(t.amount) || 0;
+            const desc = t.description || t.label || 'Opération';
+            const cat = t.category || (amt > 0 ? 'Salaire & Revenus' : 'Autre');
+            const flow = classifyFlowType(cat, amt, desc);
+            return {
+              id: `pdf_${Date.now()}_${i}`,
+              date: t.date || new Date().toISOString().substring(0, 10),
+              description: desc,
+              amount: amt,
+              flowType: flow,
+              category: cat,
+              account: 'Compte Relevé PDF'
+            };
           });
         }
-      } catch (e) {
-        console.error("AI Error:", e);
-        // We gracefully fallback to the manual list if AI fails.
       }
-      
-      setExtractedData({ transactions: finalTransactions, bankName: 'Import CSV' });
-      setView('validation');
-    } catch (error) {
-      console.error(error);
-      alert("Erreur fatale lors du mapping.");
-    } finally {
-      setAnalyzingFile(null);
-    }
-  };
 
-  const validateAndSave = async () => {
-    if (!extractedData || !extractedData.transactions || extractedData.transactions.length === 0) {
-      alert("Aucune transaction  sauvegarder.");
-      return;
-    }
-    
-    setSaving(true);
-    setAnalyzingFile("Validation locale en cours...");
-
-    // 1. Validation Locale et Normalisation
-    const normalizedTransactions: any[] = [];
-    for (let i = 0; i < extractedData.transactions.length; i++) {
-      const tx = extractedData.transactions[i];
-      if (!tx) continue;
-
-      const normTx: any = {
-        date: tx.date || "",
-        amount: Number(tx.amount),
-        _rawAmount: tx._rawAmount || String(tx.amount || ""),
-        description: tx.description || tx.rawLabel || tx.cleanLabel || "",
-        category: tx.category || "Autres",
-        subcategory: tx.subcategory || tx.subCategory || "",
-        nature: tx.nature || tx.expenseType || tx.type || "variable",
-        isSubscription: Boolean(tx.isSubscription),
-        isBankFee: Boolean(tx.isBankFee),
-        accountName: tx.accountName || "Compte Principal",
-        sourceDocumentId: tx.sourceDocumentId || ""
-      };
-
-      if (isNaN(normTx.amount) || !isFinite(normTx.amount)) {
-         normTx.amount = null;
+      if (extractedTxs.length === 0) {
+        setNotification({
+          type: 'info',
+          message: "Aucune transaction exploitable n'a été détectée dans ce fichier."
+        });
+        setIsProcessingFile(false);
+        setFileStatusMessage(null);
+        return;
       }
-      normalizedTransactions.push(normTx);
-    }
 
-    setAnalyzingFile("VǸrification des doublons...");
+      // Check Duplicates against existing bank transactions
+      setFileStatusMessage("Vérification des doublons...");
+      const { duplicatesCount, uniqueTxs } = checkDuplicateTransactions(extractedTxs, bankTransactions);
 
-    // 2. Duplicate Check Local
-    let duplicatesCount = 0;
-    const finalTransactionsToSave: any[] = [];
-    
-    normalizedTransactions.forEach((tx: any) => {
-      // Find if an existing transaction has the exact same date, amount, and similar description
-      const isDuplicate = transactions.some((existingTx: any) => {
-        return existingTx.date === tx.date && 
-               Number(existingTx.amount) === Number(tx.amount) &&
-               (existingTx.rawLabel === tx.description || existingTx.cleanLabel === tx.description);
-      });
-      
-      if (isDuplicate) {
-        duplicatesCount++;
-      } else {
-        finalTransactionsToSave.push(tx);
+      if (uniqueTxs.length === 0) {
+        setNotification({
+          type: 'info',
+          message: `Les ${duplicatesCount} transactions importées sont déjà présentes dans vos relevés.`
+        });
+        setIsProcessingFile(false);
+        setFileStatusMessage(null);
+        setIsUploading(false);
+        return;
       }
-    });
 
-    if (finalTransactionsToSave.length === 0) {
-      alert(`Les ${duplicatesCount} transactions importǸes existent dǸj. Aucune nouvelle donnǸe ajoutǸe.`);
-      setSaving(false);
-      setAnalyzingFile(null);
-      setExtractedData(null);
-      setView('dashboard');
-      return;
-    }
-
-    setAnalyzingFile("Sauvegarde Firestore en cours...");
-
-    try {
-      const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => resolve("OFFLINE_QUEUED"), 8000);
-      });
-
-      const deviceId = localStorage.getItem('deviceId') || 'default-user';
+      // Save Unique Transactions in Firestore batch
+      setFileStatusMessage(`Sauvegarde de ${uniqueTxs.length} opérations...`);
       const batch = writeBatch(db);
       const txRef = collection(db, `users/${deviceId}/transactions`);
 
-      finalTransactionsToSave.forEach((tx: any) => {
-        const newDocRef = doc(txRef);
-        const monthKey = getMonthKey(tx.date);
-        
-        batch.set(newDocRef, {
-          id: newDocRef.id,
+      uniqueTxs.forEach(tx => {
+        const newDoc = doc(txRef);
+        const monthKey = tx.date ? tx.date.substring(0, 7) : new Date().toISOString().substring(0, 7);
+
+        batch.set(newDoc, {
+          id: newDoc.id,
           date: tx.date,
           monthKey,
           rawLabel: tx.description,
           cleanLabel: tx.description,
-          amount: Number(tx.amount),
-          direction: Number(tx.amount) > 0 ? 'credit' : 'debit',
+          amount: tx.amount,
+          direction: tx.amount > 0 ? 'credit' : 'debit',
           category: tx.category,
-          subcategory: tx.subcategory,
-          nature: tx.nature || 'autre',
-          bankName: extractedData.bankName || 'Inconnu',
-          accountName: tx.accountName,
-          sourceDocumentId: tx.sourceDocumentId,
+          flowType: tx.flowType,
+          nature: tx.flowType === 'FIXED_EXPENSE' ? 'fixe' : tx.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+          accountName: tx.account || 'Import',
           aiStatus: 'completed',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
       });
 
-      const raceResult = await Promise.race([batch.commit(), timeoutPromise]);
-      
-      if (raceResult === "OFFLINE_QUEUED") {
-        alert(`OpǸration en attente (hors ligne). ${finalTransactionsToSave.length} ajoutǸes, ${duplicatesCount} doublons ignorǸs.`);
-      } else {
-        if (duplicatesCount > 0) {
-          alert(`Sauvegarde rǸussie : ${finalTransactionsToSave.length} ajoutǸes, ${duplicatesCount} doublons ignorǸs.`);
-        } else {
-          alert(`Sauvegarde rǸussie : ${finalTransactionsToSave.length} transactions ajoutǸes.`);
-        }
-      }
-      setExtractedData(null);
-      setDiagnosticReport(null);
-      setView('dashboard');
-    } catch (error: any) {
-      console.error("Save Error:", error);
-      alert("�%chec de la sauvegarde : " + (error.message || "Erreur interne"));
+      await batch.commit();
+
+      setNotification({
+        type: 'success',
+        message: `Import réussi : ${uniqueTxs.length} opérations ajoutées (${duplicatesCount} doublons ignorés).`
+      });
+      setIsUploading(false);
+    } catch (err: any) {
+      console.error("Erreur import fichier:", err);
+      setNotification({
+        type: 'error',
+        message: "Erreur lors de l'analyse du fichier : " + (err.message || 'Format non supporté.')
+      });
     } finally {
-      setSaving(false);
-      setAnalyzingFile(null);
+      setIsProcessingFile(false);
+      setFileStatusMessage(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const filteredDashboardTx = useMemo(() => {
-    return filteredTransactions.filter(t => {
-      const matchSearch = (t.description || t.rawLabel || t.cleanLabel || '').toLowerCase().includes(searchTerm.toLowerCase());
-      const matchCat = categoryFilter === 'All' || t.category === categoryFilter;
-      return matchSearch && matchCat;
-    });
-  }, [filteredTransactions, searchTerm, categoryFilter]);
-
-  const categories = ['All', ...Array.from(new Set(filteredTransactions.map(t => t.category || 'Autres')))];
+  const getFlowBadge = (type: FlowType) => {
+    switch (type) {
+      case 'INCOME':
+        return <Badge variant="income">Revenu</Badge>;
+      case 'FIXED_EXPENSE':
+        return <Badge variant="fixed">Charge Fixe</Badge>;
+      case 'VARIABLE_EXPENSE':
+        return <Badge variant="variable">Courante</Badge>;
+      case 'SAVINGS_TRANSFER':
+        return <Badge variant="savings">Épargne / Neutre</Badge>;
+    }
+  };
 
   return (
-    <div className="p-6 md:p-10 space-y-8 animate-in fade-in pb-20">
+    <div className="space-y-8 animate-in fade-in duration-500 pb-28 md:pb-12 max-w-7xl mx-auto p-4 md:p-8">
       
-      {/* HEADER */}
-      <div className="flex justify-between items-end">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Relevés Bancaires</h1>
-          <p className="text-muted-foreground mt-1">Gérez, analysez et importez vos relevés financiers.</p>
+      {/* Toast Notification Banner */}
+      {notification && (
+        <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-lg transition-all animate-in slide-in-from-top-2 ${
+          notification.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' :
+          notification.type === 'error' ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' :
+          'bg-primary/10 border-primary/30 text-primary'
+        }`}>
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-5 h-5 flex-shrink-0" />
+            <span className="text-sm font-medium">{notification.message}</span>
+          </div>
+          <button onClick={() => setNotification(null)} className="p-1 hover:opacity-75">
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <div className="flex gap-2">
-          {view === 'dashboard' && availableMonths.length > 0 && (
-            <div className="flex items-center gap-2 bg-background border rounded-md px-3 py-1.5 shadow-sm mr-2">
-              <Filter className="w-4 h-4 text-muted-foreground" />
-              <select 
-                className="bg-transparent text-sm font-medium outline-none text-foreground cursor-pointer"
+      )}
+
+      {/* Header Title & Actions */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse" />
+            <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+              Gestion de Trésorerie & Audit
+            </span>
+          </div>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight mt-1 text-foreground">
+            Relevés Bancaires
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Contrôle d'audit, classification financière précise & neutralisation de l'épargne.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Month Selector */}
+          {availableMonths.length > 0 && (
+            <div className="flex items-center gap-2 bg-card/80 dark:bg-[#10141e]/80 border border-border/80 dark:border-white/[0.08] rounded-xl px-3 py-2 shadow-sm">
+              <Calendar className="w-4 h-4 text-primary" />
+              <select
+                className="bg-transparent text-xs md:text-sm font-semibold outline-none text-foreground cursor-pointer"
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
+                onChange={e => setSelectedMonth(e.target.value)}
               >
-                <option value="all">Tous les mois</option>
+                <option value="all">Toutes périodes</option>
                 {availableMonths.map(m => (
-                  <option key={m} value={m}>{formatMonthLabel(m)}</option>
+                  <option key={m} value={m} className="dark:bg-[#10141e]">{m}</option>
                 ))}
               </select>
             </div>
           )}
-          {view === 'dashboard' && (
-            <Button onClick={() => setView('upload')}>
-              <Plus className="w-4 h-4 mr-2" /> Nouveau relevé
-            </Button>
-          )}
-          {view !== 'dashboard' && transactions.length > 0 && (
-            <Button variant="outline" onClick={() => setView('dashboard')}>
-              Retour au Dashboard
-            </Button>
-          )}
+
+          <Button 
+            variant="secondary"
+            onClick={() => setIsUploading(!isUploading)}
+            className="flex items-center gap-2 border border-border/40 shadow-sm"
+          >
+            <Upload className="w-4 h-4 text-primary" />
+            Importer un relevé
+          </Button>
+
+          <Button 
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-4 h-4" />
+            Ajouter une opération
+          </Button>
         </div>
       </div>
 
-      {analyzingFile && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-          <div className="bg-card p-6 rounded-xl border shadow-lg flex flex-col items-center">
-            <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
-            <h3 className="text-lg font-bold">{analyzingFile}</h3>
-            <p className="text-sm text-muted-foreground mt-2">Veuillez patienter...</p>
-          </div>
-        </div>
-      )}
+      {/* Upload Dropzone Drawer */}
+      {isUploading && (
+        <Card className="p-8 border-dashed border-2 border-primary/40 bg-card/60 backdrop-blur-md text-center transition-all animate-in fade-in-50 rounded-2xl relative">
+          <button 
+            onClick={() => setIsUploading(false)}
+            className="absolute top-4 right-4 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
 
-      {/* --- DASHBOARD VIEW --- */}
-      {view === 'dashboard' && (
-        <div className="space-y-6">
-          
-          {/* LUXURY DROPZONE */}
-          <Card className={cn("glass-card border-primary/30", transactions.length === 0 ? "bg-primary/[0.03]" : "")}>
-            <CardContent className={transactions.length === 0 ? "p-8" : "p-3 md:p-4"}>
-              <div 
-                className={cn(
-                  "border-2 border-dashed rounded-2xl flex items-center transition-all duration-300 cursor-pointer group relative overflow-hidden", 
-                  isDragging 
-                    ? 'border-primary bg-primary/10 shadow-glow-cyan' 
-                    : 'border-border/80 dark:border-white/[0.1] hover:border-primary/50 hover:bg-secondary/40 dark:hover:bg-white/[0.02]',
-                  transactions.length === 0 
-                    ? "p-8 flex-col justify-center text-center" 
-                    : "p-3 md:p-4 flex-row gap-3.5 justify-start"
-                )}
-                onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => document.getElementById('file-upload-dash')?.click()}
-              >
-                <input type="file" id="file-upload-dash" className="hidden" accept=".pdf,.csv" onChange={handleFileInput} />
-                <div className={cn(
-                  "rounded-2xl bg-gradient-to-br from-primary/15 to-cyan-500/15 text-primary flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 shadow-sm", 
-                  transactions.length === 0 ? "w-16 h-16 mb-3" : "w-10 h-10"
-                )}>
-                  <UploadCloud size={transactions.length === 0 ? 28 : 20} className="stroke-[2.2]" />
-                </div>
-                <div>
-                  <h3 className={cn("font-bold text-foreground", transactions.length === 0 ? "text-base mb-1" : "text-xs md:text-sm")}>
-                    Glissez-déposez un relevé PDF ou CSV pour commencer
-                  </h3>
-                  {transactions.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      Les KPIs et graphiques ci-dessous s'animeront automatiquement avec vos données réelles.
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-muted-foreground hidden sm:block">
-                      Cliquez pour ajouter un nouveau relevé et enrichir votre historique multi-mois.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* KPIs Grid */}
-          <div className="grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-5">
-            <Card className="glass-card border-primary/30">
-              <CardContent className="pt-4 p-4">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Revenus du mois</span>
-                <p className="text-xl md:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
-                  {loading ? <div className="h-7 w-24 bg-muted animate-pulse rounded mt-1"></div> : `+${kpis.revenus.toFixed(2)} €`}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="glass-card">
-              <CardContent className="pt-4 p-4">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Dépenses réelles</span>
-                <p className="text-xl md:text-2xl font-black text-foreground mt-1">
-                  {loading ? <div className="h-7 w-24 bg-muted animate-pulse rounded mt-1"></div> : `-${kpis.depenses.toFixed(2)} €`}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="glass-card border-primary/40 bg-gradient-to-br from-card to-primary/[0.04]">
-              <CardContent className="pt-4 p-4">
-                <span className="text-xs font-semibold text-primary uppercase tracking-wider block">Reste à vivre</span>
-                <p className="text-xl md:text-2xl font-black text-foreground mt-1">
-                  {loading ? <div className="h-7 w-24 bg-muted animate-pulse rounded mt-1"></div> : `${kpis.reste.toFixed(2)} €`}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="glass-card">
-              <CardContent className="pt-4 p-4">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Rythme journalier</span>
-                <p className="text-xl md:text-2xl font-black text-foreground mt-1">
-                  {loading ? <div className="h-7 w-24 bg-muted animate-pulse rounded mt-1"></div> : `${(kpis.reste > 0 ? kpis.reste / 30 : 0).toFixed(2)} €`}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="glass-card col-span-2 sm:col-span-1">
-              <CardContent className="pt-4 p-4">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Top Catégorie</span>
-                <p className="text-lg md:text-xl font-bold text-foreground mt-1 truncate">
-                  {loading ? <div className="h-7 w-20 bg-muted animate-pulse rounded mt-1"></div> : (kpis.topCat || 'Général')}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-          
-          {/* Sub KPIs */}
-          <div className="grid gap-3 grid-cols-3 md:grid-cols-6 text-xs font-medium">
-            <div className="glass-card rounded-xl p-3 text-center">
-              <span className="block text-muted-foreground text-[11px] mb-0.5">Fixes</span>
-              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm">{kpis.fixe.toFixed(0)} €</span>}
-            </div>
-            <div className="glass-card rounded-xl p-3 text-center">
-              <span className="block text-muted-foreground text-[11px] mb-0.5">Variables</span>
-              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm">{kpis.variable.toFixed(0)} €</span>}
-            </div>
-            <div className="glass-card rounded-xl p-3 text-center">
-              <span className="block text-muted-foreground text-[11px] mb-0.5">Imprévus</span>
-              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm">{kpis.exceptionnelle.toFixed(0)} €</span>}
-            </div>
-            <div className="glass-card rounded-xl p-3 text-center">
-              <span className="block text-muted-foreground text-[11px] mb-0.5">Épargne</span>
-              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm text-primary">{kpis.epargne.toFixed(0)} €</span>}
-            </div>
-            <div className="glass-card rounded-xl p-3 text-center">
-              <span className="block text-muted-foreground text-[11px] mb-0.5">Abonnements</span>
-              {loading ? <div className="h-4 w-8 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm">{kpis.abonnements}</span>}
-            </div>
-            <div className="glass-card rounded-xl p-3 text-center">
-              <span className="block text-muted-foreground text-[11px] mb-0.5">Frais Bancaires</span>
-              {loading ? <div className="h-4 w-12 mx-auto bg-muted animate-pulse rounded"></div> : <span className="font-bold text-sm text-rose-500">{kpis.frais.toFixed(2)} €</span>}
-            </div>
-          </div>
-
-          {/* Charts */}
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card className="glass-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-bold">Flux des Finances (Sankey)</CardTitle>
-              </CardHeader>
-              <CardContent className="h-[280px]">
-                {sankeyData?.nodes?.length > 0 && sankeyData?.links?.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <Sankey data={sankeyData} nodePadding={50} margin={{ left: 20, right: 20, top: 20, bottom: 20 }}
-                      link={{ stroke: 'hsl(var(--border))' }} node={{ fill: 'hsl(var(--primary))' }} />
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-muted-foreground text-xs flex-col">
-                    <Info className="w-8 h-8 mb-2 opacity-25" />
-                    Pas assez de données pour générer le diagramme de flux.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            
-            <Card className="glass-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-bold">Répartition des Dépenses</CardTitle>
-              </CardHeader>
-              <CardContent className="h-[280px]">
-                {pieData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={4} dataKey="value" nameKey="name">
-                        {pieData.map((_entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                      </Pie>
-                      <RechartsTooltip 
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--card))',
-                          borderRadius: '0.875rem',
-                          border: '1px solid hsl(var(--border))',
-                          fontSize: '12px'
-                        }}
-                        formatter={(value: any, name: any, props: any) => [`${Number(value).toFixed(2)} € (${(props?.payload?.percentage || 0).toFixed(1)} %)`, name]} 
-                      />
-                      <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '11px' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-muted-foreground text-xs flex-col">
-                    <Info className="w-8 h-8 mb-2 opacity-25" />
-                    Aucune dépense catégorisée pour ce mois.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Transactions Table (Apple Wallet / HyperOS style) */}
-          <Card className="glass-card">
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
-              <div>
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Grand Livre</span>
-                <CardTitle className="text-base font-bold mt-0.5">Toutes les transactions</CardTitle>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" />
-                  <input 
-                    type="text" 
-                    placeholder="Filtrer..." 
-                    className="pl-8.5 pr-3 h-9 text-xs rounded-xl border border-border/80 bg-background/80 outline-none w-36 sm:w-48 transition-all focus:w-56 focus:border-primary" 
-                    value={searchTerm} 
-                    onChange={e => setSearchTerm(e.target.value)} 
-                  />
-                </div>
-                <select 
-                  className="h-9 text-xs rounded-xl border border-border/80 bg-background/80 px-2.5 outline-none cursor-pointer" 
-                  value={categoryFilter} 
-                  onChange={e => setCategoryFilter(e.target.value)}
-                >
-                  {categories.map(c => <option key={String(c)} value={String(c)} className="dark:bg-[#10141e]">{String(c)}</option>)}
-                </select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-2xl border border-border/70 dark:border-white/[0.06] overflow-hidden">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-secondary/50 dark:bg-white/[0.03] text-muted-foreground uppercase text-[11px] font-semibold border-b border-border/60">
-                    <tr>
-                      <th className="px-3.5 py-3">Date</th>
-                      <th className="px-3.5 py-3">Libellé</th>
-                      <th className="px-3.5 py-3">Catégorie</th>
-                      <th className="px-3.5 py-3">Nature</th>
-                      <th className="px-3.5 py-3 text-right">Montant</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50 dark:divide-white/[0.04]">
-                    {filteredDashboardTx.slice(0, 60).map((tx, i) => {
-                      const isPositive = (tx.amount || 0) > 0;
-                      return (
-                        <tr key={i} className="hover:bg-secondary/30 dark:hover:bg-white/[0.02] transition-colors">
-                          <td className="px-3.5 py-3 whitespace-nowrap font-mono text-muted-foreground">{tx.date}</td>
-                          <td className="px-3.5 py-3 max-w-[220px] truncate font-semibold text-foreground" title={tx.cleanLabel || tx.rawLabel}>
-                            {tx.cleanLabel || tx.rawLabel}
-                          </td>
-                          <td className="px-3.5 py-3">
-                            <span className="glass-pill text-[11px]">
-                              {tx.category || 'Autres'}
-                            </span>
-                          </td>
-                          <td className="px-3.5 py-3 text-muted-foreground capitalize">{tx.nature || '-'}</td>
-                          <td className={cn("px-3.5 py-3 text-right font-extrabold text-xs md:text-sm", isPositive ? "text-emerald-500" : "text-foreground")}>
-                            {isPositive ? '+' : ''}{Number(tx.amount || 0).toFixed(2)} €
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* --- UPLOAD VIEW --- */}
-      {view === 'upload' && (
-        <Card className="glass max-w-2xl mx-auto animate-in slide-in-from-bottom-4">
-          <CardHeader>
-            <CardTitle>Importer des données</CardTitle>
-            <p className="text-sm text-muted-foreground">Plusieurs méthodes d'import sont disponibles.</p>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <Button 
-                variant={!pasteMode ? "default" : "outline"} 
-                className="h-24 flex flex-col items-center justify-center gap-2"
-                onClick={() => setPasteMode(false)}
-              >
-                <FileText className="w-6 h-6" />
-                Fichier CSV / PDF
-              </Button>
-              <Button 
-                variant={pasteMode ? "default" : "outline"} 
-                className="h-24 flex flex-col items-center justify-center gap-2"
-                onClick={() => setPasteMode(true)}
-              >
-                <ClipboardPaste className="w-6 h-6" />
-                Copier / Coller (Excel)
-              </Button>
+          <div 
+            className="flex flex-col items-center justify-center gap-3 py-4 cursor-pointer"
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleFileUpload(e.dataTransfer.files[0]);
+              }
+            }}
+          >
+            <div className="p-4 rounded-2xl bg-primary/10 text-primary shadow-inner">
+              {isProcessingFile ? (
+                <Loader2 className="w-8 h-8 animate-spin" />
+              ) : (
+                <Upload className="w-8 h-8 animate-bounce" />
+              )}
             </div>
 
-            {!pasteMode ? (
-              <div 
-                className={cn("border-2 border-dashed rounded-xl p-12 flex flex-col items-center justify-center transition-colors cursor-pointer", isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50')}
-                onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => document.getElementById('file-upload')?.click()}
-              >
-                <input type="file" id="file-upload" className="hidden" accept=".pdf,.csv" onChange={handleFileInput} />
-                <div className="bg-primary/10 p-4 rounded-full mb-4 text-primary"><UploadCloud size={32} /></div>
-                <h3 className="font-medium text-lg mb-1">Glissez-déposez un fichier PDF ou CSV</h3>
-                <p className="text-sm text-muted-foreground text-center">L'IA extraira et normalisera les données.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <textarea 
-                  className="w-full h-48 p-4 border rounded-xl bg-background text-sm font-mono focus:ring-1 focus:ring-primary"
-                  placeholder="Collez ici vos lignes depuis Excel, Google Sheets ou Numbers (avec les entêtes)..."
-                  value={pasteData}
-                  onChange={e => setPasteData(e.target.value)}
-                />
-                <Button className="w-full" onClick={handlePasteSubmit}>Analyser les données copiées</Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* --- MAPPING VIEW (CSV Only) --- */}
-      {view === 'mapping' && (
-        <Card className="glass max-w-4xl mx-auto border-primary/50">
-          <CardHeader>
-            <CardTitle>Configuration des colonnes</CardTitle>
-            <p className="text-sm text-muted-foreground">Mappez les colonnes de votre fichier pour comprendre sa structure. Vous devez utiliser une colonne Montant unique.</p>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-3 bg-muted/30 p-4 rounded-xl border border-border/50">
-              <div>
-                <label className="text-sm font-medium mb-1 block">Date <span className="text-destructive">*</span></label>
-                <select className="w-full border rounded-md p-2 bg-background text-sm" value={csvMapping.date} onChange={e => setCsvMapping({...csvMapping, date: e.target.value})}>
-                  <option value="">Sélectionner...</option>
-                  {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">Libellé <span className="text-destructive">*</span></label>
-                <select className="w-full border rounded-md p-2 bg-background text-sm" value={csvMapping.description} onChange={e => setCsvMapping({...csvMapping, description: e.target.value})}>
-                  <option value="">Sélectionner...</option>
-                  {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">Montant (Signé) <span className="text-destructive">*</span></label>
-                <select className="w-full border rounded-md p-2 bg-background text-sm" value={csvMapping.amount} onChange={e => setCsvMapping({...csvMapping, amount: e.target.value})}>
-                  <option value="">Sélectionner...</option>
-                  {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div className="border rounded-md overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-muted text-muted-foreground text-xs uppercase">
-                  <tr>{csvHeaders.map(h => <th key={h} className="px-4 py-2">{h}</th>)}</tr>
-                </thead>
-                <tbody className="divide-y">
-                  {csvRawData.slice(0, 3).map((row, i) => (
-                    <tr key={i}>{csvHeaders.map(h => <td key={h} className="px-4 py-2 truncate max-w-[150px]">{String(row[h])}</td>)}</tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="p-2 text-center text-xs text-muted-foreground bg-muted/30 border-t">Aperçu des 3 premières lignes</div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setView('upload')}>Annuler</Button>
-              <Button onClick={processCSVMapping}>Envoyer à l'IA pour Catégorisation</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* --- VALIDATION VIEW --- */}
-      {view === 'validation' && extractedData && (
-        <Card className="glass animate-in zoom-in-95 duration-300 border-primary/50">
-          <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Validation de l'import</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                L'IA a traité {extractedData.transactions?.length || 0} opérations. Corrigez les erreurs en rouge si nécessaire.
+              <p className="text-base font-semibold text-foreground">
+                {isProcessingFile ? fileStatusMessage : "Glissez-déposez votre relevé bancaire (PDF ou CSV)"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Déduplication automatique, détection intelligente des flux & classification instantanée
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setView('mapping')} disabled={saving}>Retour Mapping</Button>
-              <Button onClick={validateAndSave} disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                {saving ? "Validation..." : "Valider et Sauvegarder"}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            
-            {diagnosticReport && (
-              <div className="mb-6 p-4 border border-destructive/50 bg-destructive/5 rounded-xl">
-                <div className="flex items-center gap-2 text-destructive font-semibold mb-3">
-                  <AlertCircle className="w-5 h-5" />
-                  Diagnostic Serveur : {diagnosticReport.invalidRows} transaction(s) corrompue(s) sur {diagnosticReport.totalRows || 0}
-                </div>
-                <div className="space-y-3">
-                  {diagnosticReport.details?.map((err: any, idx: number) => (
-                    <div key={idx} className="text-sm bg-background/50 p-3 rounded-lg border border-border/50">
-                      <div><span className="font-semibold">Ligne {err.row}</span> – Problème avec le champ <span className="font-semibold capitalize">{err.field}</span></div>
-                      <div className="text-muted-foreground mt-1 text-xs">
-                        Raison : {err.reason} <br/>
-                        Valeur détectée : <span className="font-mono bg-muted px-1 py-0.5 rounded text-destructive">{err.valuePreview}</span> <br/>
-                        {err.suggestedValue !== null && err.suggestedValue !== "" && err.suggestedValue !== undefined && (
-                          <span className="text-success mt-1 block">Correction suggérée : {err.suggestedValue}</span>
-                        )}
-                      </div>
-                      <div className="mt-2 flex gap-2">
-                        {err.suggestedValue !== null && err.suggestedValue !== "" && err.suggestedValue !== undefined && (
-                           <Button size="sm" variant="outline" onClick={() => {
-                             const newTx = [...extractedData.transactions];
-                             newTx[err.row - 1][err.field] = err.suggestedValue;
-                             setExtractedData({...extractedData, transactions: newTx});
-                             setDiagnosticReport(null);
-                           }}>Appliquer la correction</Button>
-                        )}
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => {
-                           const newTx = extractedData.transactions.filter((_: any, i: number) => i !== (err.row - 1));
-                           setExtractedData({...extractedData, transactions: newTx});
-                           setDiagnosticReport(null);
-                        }}>Supprimer la ligne</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            <div className="rounded-md border overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-muted text-muted-foreground text-xs uppercase">
-                  <tr>
-                    <th className="px-3 py-2 w-[10%]">Date</th>
-                    <th className="px-3 py-2 w-[30%]">Libellé</th>
-                    <th className="px-3 py-2 w-[20%]">Catégorie</th>
-                    <th className="px-3 py-2 w-[15%]">Nature</th>
-                    <th className="px-3 py-2 w-[15%] text-right">Montant</th>
-                    <th className="px-3 py-2 w-[10%] text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y max-h-[500px] overflow-auto block table-row-group">
-                  {extractedData.transactions?.map((tx: any, i: number) => {
-                    const isAmountInvalid = tx.amount === null || isNaN(tx.amount);
-                    const isDateInvalid = !tx.date;
-                    
-                    return (
-                    <tr key={i} className={cn("hover:bg-muted/50", (isAmountInvalid || isDateInvalid) ? "bg-destructive/5" : "")}>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {isDateInvalid ? (
-                          <input 
-                            type="text" 
-                            className="border border-destructive text-destructive bg-destructive/10 rounded px-2 py-1 w-full text-xs" 
-                            placeholder="Invalide"
-                            value={tx.date || ''}
-                            onChange={e => {
-                               const newTx = [...extractedData.transactions];
-                               newTx[i].date = e.target.value;
-                               setExtractedData({...extractedData, transactions: newTx});
-                            }}
-                          />
-                        ) : tx.date}
-                      </td>
-                      <td className="px-3 py-2 truncate max-w-[200px]" title={tx.description}>{tx.description}</td>
-                      <td className="px-3 py-2">
-                        <select 
-                          className="w-full bg-background border rounded px-2 py-1 text-xs"
-                          value={tx.category || ''}
-                          onChange={(e) => {
-                            const newTx = [...extractedData.transactions];
-                            newTx[i].category = e.target.value;
-                            setExtractedData({...extractedData, transactions: newTx});
-                          }}
-                        >
-                          <option value="Revenus">Revenus</option>
-                          <option value="Logement">Logement</option>
-                          <option value="Alimentation">Alimentation</option>
-                          <option value="Transports">Transports</option>
-                          <option value="SantǸ">SantǸ</option>
-                          <option value="Loisirs">Loisirs</option>
-                          <option value="Shopping">Shopping</option>
-                          <option value="Abonnements">Abonnements</option>
-                          <option value="Épargne">Épargne</option>
-                          <option value="Frais bancaires">Frais bancaires</option>
-                          <option value="Autres">Autres</option>
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <select 
-                          className="w-full bg-background border rounded px-2 py-1 text-xs"
-                          value={tx.nature || ''}
-                          onChange={(e) => {
-                            const newTx = [...extractedData.transactions];
-                            newTx[i].nature = e.target.value;
-                            setExtractedData({...extractedData, transactions: newTx});
-                          }}
-                        >
-                          <option value="fixe">Fixe</option>
-                          <option value="variable">Variable</option>
-                          <option value="exceptionnelle">Exceptionnelle</option>
-                          <option value="">-</option>
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">
-                        {isAmountInvalid ? (
-                          <div className="flex flex-col gap-1 items-end">
-                            <input 
-                              type="text" 
-                              className="border border-destructive text-destructive bg-destructive/10 rounded px-2 py-1 w-24 text-xs text-right" 
-                              placeholder="ex: -12.50"
-                              value={tx._rawAmount || ''}
-                              onChange={e => {
-                                 const newTx = [...extractedData.transactions];
-                                 newTx[i]._rawAmount = e.target.value;
-                                 newTx[i].amount = parseAmount(e.target.value);
-                                 setExtractedData({...extractedData, transactions: newTx});
-                              }}
-                            />
-                            <span className="text-[10px] text-destructive leading-tight">�? corriger</span>
-                          </div>
-                        ) : (
-                          <div className={cn("text-right font-bold", tx.amount > 0 ? 'text-success' : '')}>
-                            {tx.amount > 0 ? '+' : ''}{Number(tx.amount).toFixed(2)} �'�
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <Button variant="ghost" size="icon" onClick={() => {
-                          const newTx = extractedData.transactions.filter((_: any, idx: number) => idx !== i);
-                          setExtractedData({...extractedData, transactions: newTx});
-                        }}>
-                          <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive transition-colors" />
-                        </Button>
-                      </td>
-                    </tr>
-                  )})}
-                </tbody>
-              </table>
-            </div>
-            
-            {extractedData.transactions?.some((tx: any) => tx.amount === null || isNaN(tx.amount) || !tx.date) && (
-              <div className="mt-4 flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 p-3 rounded-lg">
-                <AlertCircle size={16} />
-                Il y a des donnǸes invalides (en rouge). Veuillez corriger les valeurs ou supprimer les lignes pour pouvoir sauvegarder.
-              </div>
-            )}
-            
-          </CardContent>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              accept=".csv,.pdf,text/csv,application/pdf"
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  handleFileUpload(e.target.files[0]);
+                }
+              }} 
+            />
+
+            <Button 
+              size="sm" 
+              variant="outline" 
+              disabled={isProcessingFile}
+              className="mt-2 pointer-events-none"
+            >
+              {isProcessingFile ? "Traitement en cours..." : "Sélectionner un fichier"}
+            </Button>
+          </div>
         </Card>
       )}
+
+      {/* Top Metrics Strip (Finary-grade luxury cards) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Inflows */}
+        <Card className="glass-card p-5 border border-border/60 hover:border-emerald-500/40 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Revenus Réels
+            </span>
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500">
+              <ArrowDownLeft className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-extrabold tracking-tight text-foreground">
+              +{metrics.income.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Salaires et encaissements réels</p>
+          </div>
+        </Card>
+
+        {/* Real Outflows */}
+        <Card className="glass-card p-5 border border-border/60 hover:border-rose-500/40 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Dépenses Réelles
+            </span>
+            <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-500">
+              <ArrowUpRight className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-extrabold tracking-tight text-rose-500">
+              -{metrics.realExpenses.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Fixes ({metrics.fixed.toFixed(0)}€) + Variables ({metrics.variable.toFixed(0)}€)
+            </p>
+          </div>
+        </Card>
+
+        {/* Savings & Transfers (Neutralised) */}
+        <Card className="glass-card p-5 border border-border/60 hover:border-purple-500/40 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Épargne & Trésorerie
+            </span>
+            <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500">
+              <ArrowLeftRight className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-extrabold tracking-tight text-purple-500">
+              {metrics.savings.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Virements internes neutralisés</p>
+          </div>
+        </Card>
+
+        {/* Net Cash Flow / Reste à Vivre Réel */}
+        <Card className="glass-card p-5 border border-border/60 hover:border-primary/40 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Reste à Vivre Réel
+            </span>
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+              <Sparkles className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className={`text-2xl font-extrabold tracking-tight ${metrics.resteAVivre >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {metrics.resteAVivre >= 0 ? '+' : ''}
+              {metrics.resteAVivre.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Solde net disponible : {metrics.netCashFlow >= 0 ? '+' : ''}{metrics.netCashFlow.toFixed(0)} €
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Interactive Control Bar */}
+      <Card className="glass-card p-4 border border-border/60">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          
+          {/* Search Input */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Rechercher libellé, commerçant, catégorie, montant..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 text-xs md:text-sm rounded-xl bg-background/80 border border-border/60 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground transition-all"
+            />
+          </div>
+
+          {/* Quick Flow Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+            {[
+              { id: 'ALL', label: 'Toutes' },
+              { id: 'INCOME', label: 'Revenus' },
+              { id: 'FIXED', label: 'Fixes' },
+              { id: 'VARIABLE', label: 'Variables' },
+              { id: 'SAVINGS', label: 'Épargne / Neutre' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setSelectedFilter(tab.id)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-all whitespace-nowrap ${
+                  selectedFilter === tab.id
+                    ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
+                    : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Bulk Actions when selected */}
+          {selectedTxIds.size > 0 && (
+            <div className="flex items-center gap-2 animate-in fade-in">
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => setIsBulkCategoryModalOpen(true)}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Reclasser ({selectedTxIds.size})
+              </Button>
+              <Button 
+                size="sm" 
+                variant="destructive"
+                onClick={handleDeleteSelected}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Supprimer ({selectedTxIds.size})
+              </Button>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Transactions Table */}
+      <Card className="glass-card overflow-hidden border border-border/60">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs md:text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-border/60 bg-secondary/30 dark:bg-white/[0.02] text-muted-foreground font-semibold text-[11px] uppercase tracking-wider">
+                <th className="py-3.5 px-4 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredTransactions.length > 0 && selectedTxIds.size === filteredTransactions.length}
+                    onChange={handleSelectAll}
+                    className="rounded border-border cursor-pointer"
+                  />
+                </th>
+                <th className="py-3.5 px-4">Date</th>
+                <th className="py-3.5 px-4">Description</th>
+                <th className="py-3.5 px-4">Type de Flux</th>
+                <th className="py-3.5 px-4">Catégorie</th>
+                <th className="py-3.5 px-4 text-right">Montant</th>
+                <th className="py-3.5 px-4 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/40">
+              {filteredTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <FileSpreadsheet className="w-8 h-8 opacity-40 text-muted-foreground" />
+                      <p className="text-sm font-medium">Aucune transaction trouvée pour ces critères.</p>
+                      <p className="text-xs text-muted-foreground">Importez un relevé ou ajoutez une opération manuelle pour commencer.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredTransactions.map(tx => {
+                  const isSelected = selectedTxIds.has(tx.id);
+                  const isPositive = tx.amount > 0;
+
+                  return (
+                    <tr
+                      key={tx.id}
+                      className={`transition-colors hover:bg-secondary/40 dark:hover:bg-white/[0.03] ${
+                        isSelected ? 'bg-primary/5' : ''
+                      }`}
+                    >
+                      <td className="py-3.5 px-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(tx.id)}
+                          className="rounded border-border cursor-pointer"
+                        />
+                      </td>
+
+                      <td className="py-3.5 px-4 whitespace-nowrap text-muted-foreground font-mono text-xs">
+                        {tx.date}
+                      </td>
+
+                      <td className="py-3.5 px-4 font-semibold text-foreground max-w-[280px] truncate" title={tx.description}>
+                        {tx.description}
+                      </td>
+
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        {getFlowBadge(tx.flowType)}
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <select
+                          value={tx.category}
+                          onChange={e => handleCategoryChange(tx.id, e.target.value)}
+                          className="bg-transparent text-xs font-semibold text-foreground border border-border/60 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer dark:bg-[#10141e]"
+                        >
+                          {CATEGORIES.map(cat => (
+                            <option key={cat} value={cat} className="dark:bg-[#10141e] text-foreground">
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap font-bold font-mono">
+                        <span className={
+                          tx.flowType === 'SAVINGS_TRANSFER' ? 'text-purple-500' :
+                          isPositive ? 'text-emerald-500' :
+                          'text-foreground'
+                        }>
+                          {isPositive ? '+' : ''}{tx.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          onClick={() => handleDelete(tx.id)}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                          title="Supprimer la transaction"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Modal: Add Manual Transaction */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <Card className="w-full max-w-md p-6 bg-card border border-border/80 shadow-2xl rounded-2xl">
+            <div className="flex items-center justify-between pb-4 border-b border-border/60">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Plus className="w-5 h-5 text-primary" /> Nouvelle Opération
+              </h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="p-1 rounded-lg text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateManualTx} className="space-y-4 mt-4">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Date</label>
+                <input
+                  type="date"
+                  required
+                  value={manualTx.date}
+                  onChange={e => setManualTx({ ...manualTx, date: e.target.value })}
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Libellé / Description</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Salaire, Loyer, Carrefour..."
+                  value={manualTx.description}
+                  onChange={e => setManualTx({ ...manualTx, description: e.target.value })}
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Montant (€)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="Ex: 45.50"
+                  value={manualTx.amount}
+                  onChange={e => setManualTx({ ...manualTx, amount: e.target.value })}
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Type de Flux</label>
+                <select
+                  value={manualTx.flowType}
+                  onChange={e => setManualTx({ ...manualTx, flowType: e.target.value as FlowType })}
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                >
+                  <option value="VARIABLE_EXPENSE">Dépense Courante (Variable)</option>
+                  <option value="FIXED_EXPENSE">Charge Fixe (Loyer, Abonnements)</option>
+                  <option value="INCOME">Revenu (Salaire, Entrée d'argent)</option>
+                  <option value="SAVINGS_TRANSFER">Épargne & Virement Neutre</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Catégorie</label>
+                <select
+                  value={manualTx.category}
+                  onChange={e => setManualTx({ ...manualTx, category: e.target.value })}
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                >
+                  {CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-border/60">
+                <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
+                  Annuler
+                </Button>
+                <Button type="submit" className="bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+                  Enregistrer
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Bulk Category Update */}
+      {isBulkCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <Card className="w-full max-w-sm p-6 bg-card border border-border/80 shadow-2xl rounded-2xl">
+            <h3 className="text-base font-bold text-foreground mb-2">Reclasser les opérations sélectionnées</h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              Attribuer une nouvelle catégorie à {selectedTxIds.size} transactions.
+            </p>
+
+            <select
+              value={bulkTargetCategory}
+              onChange={e => setBulkTargetCategory(e.target.value)}
+              className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground mb-6"
+            >
+              {CATEGORIES.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => setIsBulkCategoryModalOpen(false)}>
+                Annuler
+              </Button>
+              <Button size="sm" onClick={handleBulkCategoryApply}>
+                Appliquer
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
     </div>
   );
-}
+};
 
-export default function BankStatements() {
-  return (
-    <ErrorBoundary>
-      <BankStatementsContent />
-    </ErrorBoundary>
-  );
-}
+export default BankStatements;
