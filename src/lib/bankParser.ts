@@ -746,6 +746,24 @@ export function categorizeTransaction(
 }
 
 /**
+ * Nettoyage et normalisation des noms d'en-têtes CSV
+ */
+export function sanitizeHeader(header: string): string {
+  if (!header) return '';
+  return String(header)
+    .trim()
+    .toLowerCase()
+    .replace(/^["']|["']$/g, '')
+    // Remplacement des caractères corrompus d'encodage (ex: libell -> libelle)
+    .replace(/[\uFFFD\u00EF\u00BF\u00BD]/g, 'e')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Parseur universel de relevés bancaires multi-formats CSV (Société Générale, Fortuneo, Revolut, etc.)
  */
 export function parseCSVBankStatement(csvContent: string): { bankName: string; transactions: BankTransaction[] } {
@@ -763,7 +781,7 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
   let headerLineIndex = 0;
   let maxScore = -1;
   for (let i = 0; i < Math.min(15, rows.length); i++) {
-    const rowJoined = rows[i].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const rowJoined = rows[i].map(sanitizeHeader).join(' ');
     let score = 0;
     if (rowJoined.includes('date')) score += 3;
     if (rowJoined.includes('libelle') || rowJoined.includes('desc') || rowJoined.includes('operation')) score += 3;
@@ -775,35 +793,50 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
   }
 
   const rawHeaders = rows[headerLineIndex] || [];
-  const headers = rawHeaders.map(h => 
-    String(h || '').trim().toLowerCase().replace(/^["']|["']$/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  );
+  const headers = rawHeaders.map(sanitizeHeader);
 
-  const dateIdx = headers.findIndex(h => h.includes('date transaction') || h.includes('date operation') || h === 'date' || h.includes('date'));
+  // Repérer TOUTES les colonnes contenant une date (date opération, date valeur, etc.)
+  const dateColIndices = new Set<number>();
+  headers.forEach((h, idx) => {
+    if (h.includes('date')) {
+      dateColIndices.add(idx);
+    }
+  });
+
+  // Sélection de la date de l'opération (priorité à date opération / comptabilisation)
+  let dateIdx = headers.findIndex(h => 
+    h.includes('date operation') || 
+    h.includes('date transaction') || 
+    h.includes('date compta') || 
+    h === 'date'
+  );
+  if (dateIdx === -1) {
+    dateIdx = headers.findIndex(h => h.includes('date'));
+  }
   
   // 3. RÈGLE DEMANDÉE PAR L'UTILISATEUR :
   // Priorité absolue au « Libellé complet » pour capturer le vrai marchand
   // Et NE JAMAIS se focaliser sur « Catégorie » ou « Sous-Catégorie » de la banque
-  let fullDescIdx = headers.findIndex(h => 
-    h.includes('libelle complet') || 
-    h.includes('libell complet') || 
-    h === 'libelle_complet' || 
-    h.includes('libelle complementaire') ||
-    h.includes('libelle detaille') || 
-    h.includes('libelle enrichi') ||
-    h.includes('libelle etendu') ||
-    h.includes('libelle long') ||
-    h.includes('texte complet') ||
-    h.includes('informations complementaires') ||
-    h.includes('detail operation') ||
-    h.includes('details operation')
-  );
+  let fullDescIdx = headers.findIndex(h => {
+    return (
+      (h.includes('libelle') && h.includes('complet')) ||
+      (h.includes('libelle') && h.includes('detail')) ||
+      (h.includes('libelle') && h.includes('complementaire')) ||
+      (h.includes('libelle') && h.includes('enrichi')) ||
+      (h.includes('libelle') && h.includes('etendu')) ||
+      (h.includes('libelle') && h.includes('long')) ||
+      (h.includes('texte') && h.includes('complet')) ||
+      (h.includes('information') && h.includes('complementaire')) ||
+      (h.includes('detail') && h.includes('operation'))
+    );
+  });
 
-  // Fallback description index - en excluant rigoureusement toute colonne "Catégorie" ou "Sous-Catégorie"
+  // Fallback description index - en excluant rigoureusement toute colonne Date ou Catégorie / Sous-Catégorie
   let fallbackDescIdx = -1;
   if (fullDescIdx === -1) {
     fallbackDescIdx = headers.findIndex((h, idx) => {
-      if (h.includes('categorie') || h.includes('sous-cat') || h.includes('rubrique') || h.includes('classification')) return false; // STRICTEMENT IGNORÉ
+      if (dateColIndices.has(idx)) return false; // JAMAIS UNE COLONNE DATE
+      if (h.includes('categorie') || h.includes('sous cat') || h.includes('rubrique') || h.includes('classification')) return false; // STRICTEMENT IGNORÉ
       return h.includes('libelle operation') || 
              h.includes('libelle') || 
              h.includes('description') || 
@@ -813,7 +846,11 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
     });
   }
 
-  const amountIdx = headers.findIndex(h => h.includes('montant') || h.includes('valeur'));
+  // Montant : EXCLURE STRICTEMENT 'date valeur' (qui contient 'valeur' mais est une date !)
+  const amountIdx = headers.findIndex(h => 
+    h.includes('montant') || 
+    (h.includes('valeur') && !h.includes('date'))
+  );
   const debitIdx = headers.findIndex(h => h.includes('debit'));
   const creditIdx = headers.findIndex(h => h.includes('credit'));
 
@@ -835,7 +872,7 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
       }
     }
 
-    // 2. Sélection stricte du libellé complet (en ignorant totalement Catégorie & Sous-Catégorie)
+    // 2. Sélection stricte du libellé complet (en ignorant totalement Catégorie & Sous-Catégorie et colonnes de Date)
     let rawDescription = '';
     if (fullDescIdx >= 0 && cols[fullDescIdx] && String(cols[fullDescIdx]).trim()) {
       rawDescription = String(cols[fullDescIdx]).trim();
@@ -843,16 +880,22 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
       rawDescription = String(cols[fallbackDescIdx]).trim();
     } else {
       for (let c = 0; c < cols.length; c++) {
+        if (dateColIndices.has(c)) continue; // STRICTEMENT IGNORER LES DATES
+        if (c === amountIdx || c === debitIdx || c === creditIdx) continue;
         const hName = headers[c] || '';
-        if (c === dateIdx || c === amountIdx || c === debitIdx || c === creditIdx) continue;
-        if (hName.includes('categorie') || hName.includes('sous-cat') || hName.includes('rubrique') || hName.includes('classification')) continue; // STRICTEMENT IGNORÉ
+        if (hName.includes('categorie') || hName.includes('sous cat') || hName.includes('rubrique') || hName.includes('classification')) continue; // STRICTEMENT IGNORÉ
         const val = String(cols[c] || '').trim();
-        if (val.length > 3 && isNaN(Number(val.replace(',', '.')))) {
+        // Le libellé ne doit être ni un nombre, ni une date au format JJ/MM/AAAA ou AAAA-MM-JJ
+        if (
+          val.length > 2 && 
+          isNaN(Number(val.replace(',', '.'))) &&
+          !/^\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?$/.test(val) &&
+          !/^\d{4}-\d{2}-\d{2}$/.test(val)
+        ) {
           rawDescription = val;
           break;
         }
       }
-      if (!rawDescription) rawDescription = cols[1] || 'Opération Bancaire';
     }
 
     // 3. Parsing du montant

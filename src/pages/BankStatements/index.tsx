@@ -49,6 +49,34 @@ import { doc, deleteDoc, writeBatch, collection, updateDoc } from 'firebase/fire
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 
+/**
+ * Lecture robuste du contenu d'un fichier avec détection d'encodage (UTF-8, Windows-1252, ISO-8859-1)
+ */
+export async function readBankStatementFileText(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const utf8Decoder = new TextDecoder('utf-8', { fatal: false });
+  let text = utf8Decoder.decode(buffer);
+
+  // Si des caractères de substitution (\uFFFD) sont détectés, décoder en Windows-1252 / ISO-8859-1
+  if (text.includes('\uFFFD') || text.includes('\u00EF\u00BF\u00BD')) {
+    try {
+      const winDecoder = new TextDecoder('windows-1252', { fatal: false });
+      const winText = winDecoder.decode(buffer);
+      if (!winText.includes('\uFFFD')) {
+        return winText;
+      }
+      text = winText;
+    } catch {
+      try {
+        const isoDecoder = new TextDecoder('iso-8859-1', { fatal: false });
+        return isoDecoder.decode(buffer);
+      } catch {}
+    }
+  }
+
+  return text;
+}
+
 export const BankStatements: React.FC = () => {
   const { 
     transactions: rawTransactions, 
@@ -621,7 +649,7 @@ export const BankStatements: React.FC = () => {
       if (file.name.endsWith('.csv') || file.type.includes('csv') || file.type.includes('text')) {
         // Direct Client CSV Parsing with intelligent bank signature & merchant extraction
         setFileStatusMessage("Lecture et détection intelligente du relevé...");
-        const text = await file.text();
+        const text = await readBankStatementFileText(file);
         const { bankName: detectedBank, transactions: parsedTxs } = parseCSVBankStatement(text);
         const fileDetection = detectAccountFromFilename(file.name);
 
@@ -685,9 +713,12 @@ export const BankStatements: React.FC = () => {
         return;
       }
 
-      // Check Duplicates against existing transactions
+      // Check Duplicates against existing transactions (en ignorant les anciennes transactions corrompues dont le libellé était une date)
       setFileStatusMessage("Vérification des doublons...");
-      const { duplicatesCount, uniqueTxs } = checkDuplicateTransactions(extractedTxs, bankTransactions);
+      const validExistingTxs = bankTransactions.filter(t => 
+        !/^\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?$/.test(t.description)
+      );
+      const { duplicatesCount, uniqueTxs } = checkDuplicateTransactions(extractedTxs, validExistingTxs);
 
       if (uniqueTxs.length === 0) {
         setNotification({
@@ -704,6 +735,17 @@ export const BankStatements: React.FC = () => {
       setFileStatusMessage(`Sauvegarde de ${uniqueTxs.length} opérations pour "${detectedAccountName}"...`);
       const batch = writeBatch(db);
       const txRef = collection(db, `users/${accountId}/transactions`);
+
+      // Nettoyage automatique des anciennes opérations corrompues (où la date avait été prise pour libellé)
+      const corruptedOldDocs = bankTransactions.filter(t => 
+        (t.account === detectedAccountName || t.bankName === detectedBankName) && 
+        /^\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?$/.test(t.description)
+      );
+      if (corruptedOldDocs.length > 0) {
+        corruptedOldDocs.forEach(oldTx => {
+          batch.delete(doc(db, `users/${accountId}/transactions`, oldTx.id));
+        });
+      }
 
       uniqueTxs.forEach(tx => {
         const newDoc = doc(txRef);
