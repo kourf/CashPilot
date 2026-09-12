@@ -27,6 +27,7 @@ import {
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
+import { BankFlowCharts } from '../../components/BankFlowCharts';
 import { useTransactions } from '../../context/TransactionsContext';
 import { getActiveAccountId } from '../../lib/userUtils';
 
@@ -1157,6 +1158,13 @@ export const BankStatements: React.FC = () => {
           </div>
         )}
       </Card>
+
+      {/* 2 Graphiques Synchronisés : Diagramme Sankey des Flux & Diagramme Circulaire des Dépenses */}
+      <BankFlowCharts
+        transactions={selectedAccount === 'ALL' ? monthScopedTransactions : monthScopedTransactions.filter(t => t.account === selectedAccount)}
+        selectedAccountName={selectedAccount === 'ALL' ? 'Tous les comptes (Consolidé)' : selectedAccount}
+        selectedMonthName={selectedMonth}
+      />
 
       {/* Interactive Control Bar */}
       <Card className="glass-card p-4 border border-border/60">
