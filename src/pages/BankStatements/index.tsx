@@ -37,6 +37,7 @@ import {
   detectAccountFromFilename,
   parseCSVBankStatement,
   smartCategorizeTransaction,
+  cleanMerchantDescription,
   calculateSubscriptionSummary,
   formatMonthLabel,
   type FlowType, 
@@ -111,13 +112,15 @@ export const BankStatements: React.FC = () => {
   const bankTransactions: BankTransaction[] = useMemo(() => {
     return rawTransactions.map(t => {
       const id = String(t.id || `tx_${t.date}_${t.amount}_${Math.random()}`);
-      const desc = t.description || t.cleanLabel || t.rawLabel || 'Opération';
+      // RÈGLE : Analyse rigoureusement le Libellé complet (rawLabel)
+      const rawDesc = t.rawLabel || t.description || t.cleanLabel || 'Opération';
+      const cleanDesc = t.cleanLabel || (t.description && t.description !== t.rawLabel ? t.description : cleanMerchantDescription(rawDesc));
       const amount = Number(t.amount) || 0;
       
-      // Auto-analyze label via smartCategorizeTransaction if category missing or 'Autre'
-      const smart = smartCategorizeTransaction(desc, amount, t.date);
+      // Auto-analyse intelligente du libellé complet si catégorie manquante ou 'Autre'
+      const smart = smartCategorizeTransaction(rawDesc, amount, t.date);
       const category = (t.category && t.category !== 'Autre') ? t.category : smart.category;
-      const flowType: FlowType = t.flowType || (category === smart.category ? smart.flowType : classifyFlowType(category, amount, desc));
+      const flowType: FlowType = t.flowType || (category === smart.category ? smart.flowType : classifyFlowType(category, amount, rawDesc));
       const account = t.accountName || t.account || 'Compte Principal';
       const bankName = t.bankName || (account.includes(' - ') ? account.split(' - ')[0] : account);
       const isSubscription = t.isSubscription !== undefined 
@@ -130,7 +133,7 @@ export const BankStatements: React.FC = () => {
       return {
         id,
         date: t.date || new Date().toISOString().substring(0, 10),
-        description: desc,
+        description: cleanDesc,
         amount,
         flowType,
         category,
@@ -141,8 +144,8 @@ export const BankStatements: React.FC = () => {
         confidence: smart.confidence,
         status: flowType === 'SAVINGS_TRANSFER' ? 'Internal Transfer' : 'Reconciled',
         monthKey: t.monthKey || (t.date ? t.date.substring(0, 7) : undefined),
-        rawLabel: t.rawLabel,
-        cleanLabel: t.cleanLabel
+        rawLabel: t.rawLabel || rawDesc,
+        cleanLabel: cleanDesc
       };
     });
   }, [rawTransactions]);
@@ -350,9 +353,13 @@ export const BankStatements: React.FC = () => {
       idsToProcess.forEach(id => {
         const tx = bankTransactions.find(t => t.id === id);
         if (!tx) return;
-        const smart = smartCategorizeTransaction(tx.description, tx.amount, tx.date);
+        const rawDesc = tx.rawLabel || tx.description;
+        const smart = smartCategorizeTransaction(rawDesc, tx.amount, tx.date);
+        const cleanDesc = tx.cleanLabel || cleanMerchantDescription(rawDesc);
         const docRef = doc(db, `users/${accountId}/transactions`, id);
         batch.update(docRef, {
+          description: cleanDesc,
+          cleanLabel: cleanDesc,
           category: smart.category,
           flowType: smart.flowType,
           nature: smart.flowType === 'FIXED_EXPENSE' ? 'fixe' : smart.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
@@ -706,8 +713,9 @@ export const BankStatements: React.FC = () => {
           id: newDoc.id,
           date: tx.date,
           monthKey,
-          rawLabel: tx.description,
-          cleanLabel: tx.description,
+          rawLabel: tx.rawLabel || tx.description,
+          cleanLabel: tx.cleanLabel || tx.description,
+          description: tx.cleanLabel || tx.description,
           amount: tx.amount,
           direction: tx.amount > 0 ? 'credit' : 'debit',
           category: tx.category,

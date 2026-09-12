@@ -250,12 +250,35 @@ export const categorizeTransactions = functions.region('europe-west1')
   }
 
   try {
-    const prompt = `Tu es un expert en finances personnelles. 
-CatÃ©gorise strictement ces transactions bancaires.
-DÃ©tecte les revenus, dÃ©penses, remboursements, virements internes, Ã©pargne, abonnements, frais bancaires, crÃ©dits.
-Classe en type fixe, variable ou exceptionnelle.
-Ne retourne que le JSON correspondant au schÃ©ma fourni, sans TVA.
-Transactions Ã  traiter : ${JSON.stringify(transactions)}`;
+    const prompt = `Tu es un expert en analyse de finances personnelles.
+Analyse rigoureusement ces opérations bancaires en te basant EXCLUSIVEMENT sur leur libellé complet ("fullLabel" ou "description").
+RÈGLE CRITIQUE ET OBLIGATOIRE : IGNORE totalement toute éventuelle ancienne colonne "Catégorie" ou "Sous-Catégorie" d'origine de la banque.
+
+Pour chaque opération :
+1. Extrais le nom propre nettoyé du commerçant ou tiers (cleanDescription), sans préfixes techniques (CARTE X..., VIR EUROPEEN, COMMERCE ELECTRONIQUE, etc.).
+2. Attribue STRICTEMENT l'une des catégories CashPilot suivantes :
+   - "Salaire & Revenus" (salaires, rémunérations, virements reçus)
+   - "Aides & Allocations" (France Travail, CAF, Pôle Emploi, prestations)
+   - "Logement & Énergie" (loyer, charges, EDF, Engie, TotalEnergies, eau, électricité, gaz)
+   - "Assurances" (Sogessur, Groupama, Macif, Maif, Allianz, AXA, mutuelle)
+   - "Abonnements & Télécom" (Orange, SFR, Free, Bouygues, Swype, Sosh, Netflix, Spotify, Canal+, Apple, Google Play)
+   - "Alimentation & Courses" (Carrefour, Leclerc, Auchan, Lidl, Aldi, Monoprix, boulangeries, boucheries)
+   - "Restaurants & Sorties" (restaurants, fast food, kebab, McDonald's, Uber Eats, Deliveroo)
+   - "Shopping & Maison" (Amazon, Bricorama, Leroy Merlin, AliExpress, vêtements, meubles)
+   - "Transports & Carburant" (Total, Shell, carburant, autoroutes, péages, SNCF, RATP, Uber, transports)
+   - "Santé" (pharmacie, médecin, dentiste, optique, remboursements CPAM/mutuelle)
+   - "Épargne & Investissement" (virements vers livrets A/LDDS, PEL, PEA, assurance vie, investissements)
+   - "Virement Interne" (virements entre propres comptes, Fortuneo, virements compte à compte)
+   - "Frais bancaires" (cotisation carte, frais tenue de compte, agios)
+   - "Autre"
+3. Détermine flowType :
+   - "SAVINGS_TRANSFER" pour virements internes, épargne, virements compte à compte, Fortuneo (neutralisés du reste à vivre).
+   - "INCOME" pour salaires, aides, remboursements et entrées positives.
+   - "FIXED_EXPENSE" pour charges fixes, loyer, énergie, assurances et abonnements.
+   - "VARIABLE_EXPENSE" pour toutes les dépenses courantes de consommation.
+4. isSubscription : true si abonnement récurrent ou prélèvement périodique.
+
+Transactions à traiter : ${JSON.stringify(transactions)}`;
 
     const schema: Schema = {
       type: Type.OBJECT,
@@ -265,24 +288,19 @@ Transactions Ã  traiter : ${JSON.stringify(transactions)}`;
           items: {
             type: Type.OBJECT,
             properties: {
-              date: { type: Type.STRING },
-              description: { type: Type.STRING },
-              amount: { type: Type.NUMBER },
-              category: { type: Type.STRING, description: "CatÃ©gorie principale" },
-              subCategory: { type: Type.STRING },
-              isIncomeOrExpense: { type: Type.STRING, description: "income, expense, ou transfer" },
-              isRefund: { type: Type.BOOLEAN },
-              isSavings: { type: Type.BOOLEAN },
-              expenseType: { type: Type.STRING, description: "fixe, variable, ou exceptionnelle" },
-              isSubscription: { type: Type.BOOLEAN },
-              isBankFee: { type: Type.BOOLEAN },
-              isCreditOrLoan: { type: Type.BOOLEAN },
-              isInstallment: { type: Type.BOOLEAN },
-              isInternalTransfer: { type: Type.BOOLEAN }
-            }
+              id: { type: Type.STRING },
+              cleanDescription: { type: Type.STRING, description: "Nom propre du commerçant nettoyé" },
+              category: { type: Type.STRING, description: "Catégorie CashPilot stricte" },
+              flowType: { type: Type.STRING, description: "INCOME, FIXED_EXPENSE, VARIABLE_EXPENSE, ou SAVINGS_TRANSFER" },
+              isSubscription: { type: Type.BOOLEAN, description: "Abonnement récurrent ou prélèvement mensuel" },
+              isInternalTransfer: { type: Type.BOOLEAN, description: "Virement interne ou épargne" },
+              confidenceLevel: { type: Type.STRING, description: "high, medium, low" }
+            },
+            required: ["category", "flowType"]
           }
         }
-      }
+      },
+      required: ["transactions"]
     };
 
     const result = await getAI().models.generateContent({
