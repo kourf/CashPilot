@@ -39,6 +39,7 @@ import {
   checkDuplicateTransactions, 
   detectAccountFromFilename,
   parseCsvBankFile,
+  parseCSVBankStatement,
   smartCategorizeTransaction,
   calculateSubscriptionSummary,
   formatMonthLabel,
@@ -54,6 +55,7 @@ import { httpsCallable } from 'firebase/functions';
 export const BankStatements: React.FC = () => {
   const { 
     transactions: rawTransactions, 
+    setTransactions: setRawTransactions,
     loading: contextLoading,
     selectedMonth,
     setSelectedMonth,
@@ -623,13 +625,21 @@ export const BankStatements: React.FC = () => {
         : undefined;
 
       if (file.name.endsWith('.csv') || file.type.includes('csv') || file.type.includes('text')) {
-        // Direct Client CSV Parsing with account detection
-        setFileStatusMessage("Lecture et détection des colonnes CSV...");
+        // Direct Client CSV Parsing with intelligent bank signature & merchant extraction
+        setFileStatusMessage("Lecture et détection intelligente du relevé...");
+        const text = await file.text();
+        const { bankName: detectedBank, transactions: parsedTxs } = parseCSVBankStatement(text);
         const fileDetection = detectAccountFromFilename(file.name);
-        detectedBankName = fileDetection.bankName;
-        detectedAccountName = explicitAccount || fileDetection.accountName;
 
-        extractedTxs = await parseCsvBankFile(file, detectedAccountName, detectedBankName);
+        detectedBankName = detectedBank !== 'Compte Courant' ? detectedBank : fileDetection.bankName;
+        detectedAccountName = explicitAccount || (detectedBankName ? `${detectedBankName} - Compte Courant` : fileDetection.accountName);
+
+        extractedTxs = parsedTxs.map((t, idx) => ({
+          ...t,
+          id: `csv_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+          account: detectedAccountName,
+          bankName: detectedBankName
+        }));
       } else {
         // PDF or Image Upload to Firebase Cloud Function (Gemini Multi-Account extraction)
         setFileStatusMessage("Téléversement sécurisé vers Firebase Storage...");

@@ -1,6 +1,6 @@
 ﻿export type FlowType = 'INCOME' | 'FIXED_EXPENSE' | 'VARIABLE_EXPENSE' | 'SAVINGS_TRANSFER';
 
-export interface ParsedTransaction {
+export interface BankTransaction {
   id: string;
   date: string; // YYYY-MM-DD
   description: string;
@@ -11,27 +11,224 @@ export interface ParsedTransaction {
   bankName?: string;
   isSubscription?: boolean;
   subscriptionDay?: number;
+  confidence?: 'high' | 'medium' | 'low';
+  status?: 'Reconciled' | 'Pending' | 'Internal Transfer';
+  monthKey?: string;
+  rawLabel?: string;
+  cleanLabel?: string;
+  [key: string]: any;
 }
 
-export const SUBSCRIPTION_KEYWORDS = [
-  'netflix', 'spotify', 'deezer', 'apple', 'apple bill', 'itunes', 'icloud',
-  'amazon prime', 'prime video', 'disney', 'youtube', 'canal+', 'canal plus',
-  'paramount', 'free mobile', 'free telecom', 'orange', 'sfr', 'bouygues', 'sosh',
-  'red by sfr', 'edf', 'engie', 'totalenergies', 'total energie', 'eni', 'direct energie',
-  'veolia', 'suez', 'eau de', 'basic fit', 'fitness park', 'neoness', 'keep cool',
-  'gymlib', 'salle de sport', 'assurance', 'mutuelle', 'allianz', 'axa', 'macif',
-  'maif', 'matmut', 'generali', 'alan', 'april', 'chatgpt', 'openai', 'midjourney',
-  'adobe', 'google one', 'google storage', 'microsoft 365', 'office 365', 'playstation network',
-  'psn', 'xbox game pass', 'nintendo switch online', 'le figaro', 'le monde', 'mediapart'
+export const CATEGORIES = [
+  'Salaire & Revenus',
+  'Aides & Allocations',
+  'Logement & Énergie',
+  'Logement & Loyer',
+  'Assurances',
+  'Abonnements & Télécom',
+  'Abonnements & Services',
+  'Alimentation & Courses',
+  'Transports & Carburant',
+  'Transports & Véhicule',
+  'Restaurants & Sorties',
+  'Restaurants & Loisirs',
+  'Shopping & Maison',
+  'Santé',
+  'Épargne & Investissement',
+  'Virement Interne',
+  'Frais bancaires',
+  'Autre'
 ];
 
-export const INTERNAL_TRANSFER_KEYWORDS = [
-  'virement interne', 'vir compte a compte', 'compte a compte', 'livret a', 'ldds', 'lep',
-  'compte epargne', 'vers livret', 'de livret', 'virement emis vers', 'virement recu de',
-  'vir sepa m dramé', 'virement drame', 'epargne', 'épargne', 'pel', 'cel', 'assurance vie',
-  'trade republic', 'degiro', 'binance', 'coinbase', 'pea', 'compte titres', 'bourse',
-  'vir interne', 'virement entre vos comptes', 'remise cheque epargne', 'placement'
-];
+/**
+ * Détection automatique du nom de la banque depuis les métadonnées, en-têtes et libellés du CSV
+ */
+export function detectBankName(csvContent: string): string {
+  const lower = (csvContent || '').toLowerCase();
+  if (
+    lower.includes('logitel') ||
+    lower.includes('sogessur') ||
+    lower.includes('gdb_') ||
+    lower.includes('carte x7791') ||
+    lower.includes('societe generale') ||
+    lower.includes('société générale')
+  ) {
+    return 'Société Générale';
+  }
+  if (lower.includes('fortuneo') || lower.includes('ftno')) {
+    return 'Fortuneo';
+  }
+  if (lower.includes('revolut')) {
+    return 'Revolut';
+  }
+  if (lower.includes('bnp paribas') || lower.includes('hellobank')) {
+    return 'BNP Paribas';
+  }
+  if (lower.includes('credit agricole') || lower.includes('crédit agricole') || lower.includes('ca-')) {
+    return 'Crédit Agricole';
+  }
+  if (lower.includes('bourso') || lower.includes('boursorama')) {
+    return 'BoursoBank';
+  }
+  if (lower.includes('n26')) {
+    return 'N26';
+  }
+  return 'Compte Courant';
+}
+
+/**
+ * Nettoie le libellé bancaire brut pour extraire le nom propre du commerçant / tiers
+ */
+export function cleanMerchantDescription(raw: string): string {
+  if (!raw) return 'Opération Bancaire';
+  let clean = raw.trim();
+  
+  // Supprime les préfixes techniques bancaires
+  clean = clean.replace(/^CARTE\s+X\d{4}\s+\d{2}\/\d{2}\s+/i, '');
+  clean = clean.replace(/^\d+\s+VIR\s+(EUROPEEN|INSTANTANE)?\s*(EMIS|RECU)?\s*(LOGITEL)?\s*(POUR|DE)?\s*:\s*/i, '');
+  clean = clean.replace(/^PRELEVEMENT\s+EUROPEEN\s+\d*\s*DE\s*:\s*/i, '');
+  clean = clean.replace(/^VIR\s+(INST\s+RE|RECU|EMIS)\s+\d*\s*(WERO)?\s*(DE|POUR)?\s*:\s*/i, '');
+  clean = clean.replace(/^PRLV\s+SEPA\s+/i, '');
+  clean = clean.replace(/^VIR\s+SEPA\s+/i, '');
+
+  // Supprime les suffixes et métadonnées parasites
+  clean = clean.replace(/\s+COMMERCE ELECTRONIQUE.*$/i, '');
+  clean = clean.replace(/\s+\d+,\d{2}\s+EUR.*$/i, '');
+  clean = clean.replace(/\s+\d+,\d{2}\s+CHF.*$/i, '');
+  clean = clean.replace(/\s+ID:\s*FR\w+/i, '');
+  clean = clean.replace(/\s+REF:\s*.*$/i, '');
+  clean = clean.replace(/\s+MANDAT\s*.*$/i, '');
+  clean = clean.replace(/\s+MOTIF:\s*.*$/i, '');
+  clean = clean.replace(/\s+CHEZ:\s*.*$/i, '');
+  clean = clean.replace(/\s+DATE:\s*\d{2}\/\d{2}\/\d{4}.*$/i, '');
+
+  return clean.replace(/\s+/g, ' ').trim() || raw.trim();
+}
+
+/**
+ * Classification financière stricte de chaque transaction
+ */
+export function classifyTransaction(rawDescription: string, amount: number): {
+  cleanDesc: string;
+  flowType: FlowType;
+  category: string;
+  isSubscription: boolean;
+} {
+  const descLower = (rawDescription || '').toLowerCase();
+  const cleanDesc = cleanMerchantDescription(rawDescription);
+
+  // 1. Mouvements internes, virements compte à compte & épargne (Neutralisés des dépenses de vie)
+  if (
+    descLower.includes('fortuneo') ||
+    descLower.includes('livret') ||
+    descLower.includes('drame kouroufia') ||
+    descLower.includes('kouroufia fortuneo') ||
+    descLower.includes('virement avec fortuneo') ||
+    descLower.includes('virement interne') ||
+    descLower.includes('compte a compte') ||
+    descLower.includes('vers livret') ||
+    descLower.includes('de livret') ||
+    descLower.includes('epargne') ||
+    descLower.includes('épargne') ||
+    descLower.includes('pel') ||
+    descLower.includes('cel') ||
+    descLower.includes('ldds') ||
+    descLower.includes('lep')
+  ) {
+    return {
+      cleanDesc: cleanDesc || 'Virement Interne / Épargne',
+      flowType: 'SAVINGS_TRANSFER',
+      category: 'Épargne & Investissement',
+      isSubscription: false,
+    };
+  }
+
+  // 2. Montants positifs -> Revenus & Aides
+  if (amount > 0) {
+    if (descLower.includes('france travail') || descLower.includes('pole emploi')) {
+      return { cleanDesc: 'France Travail (Allocation)', flowType: 'INCOME', category: 'Aides & Allocations', isSubscription: false };
+    }
+    if (descLower.includes('caf de') || descLower.includes('caf ')) {
+      return { cleanDesc: 'CAF (Allocations Familiales)', flowType: 'INCOME', category: 'Aides & Allocations', isSubscription: false };
+    }
+    if (descLower.includes('salaire') || descLower.includes('remuneration') || descLower.includes('rémunération') || descLower.includes('paie')) {
+      return { cleanDesc: cleanDesc || 'Salaire & Revenus', flowType: 'INCOME', category: 'Salaire & Revenus', isSubscription: false };
+    }
+    if (descLower.includes('groupama') || descLower.includes('generation') || descLower.includes('cpam') || descLower.includes('securite sociale') || descLower.includes('soin')) {
+      return { cleanDesc: cleanDesc || 'Remboursement Santé / Mutuelle', flowType: 'INCOME', category: 'Santé', isSubscription: false };
+    }
+    if (descLower.includes('wero') || descLower.includes('naistaba') || descLower.includes('el hani') || descLower.includes('revolut')) {
+      return { cleanDesc: cleanDesc || 'Virement Reçu', flowType: 'INCOME', category: 'Salaire & Revenus', isSubscription: false };
+    }
+    return { cleanDesc: cleanDesc || 'Revenu / Encaissement', flowType: 'INCOME', category: 'Salaire & Revenus', isSubscription: false };
+  }
+
+  // 3. Charges Fixes & Abonnements (Montants négatifs)
+  if (descLower.includes('totalenergies') || descLower.includes('edf') || descLower.includes('engie')) {
+    return { cleanDesc: 'TotalEnergies (Électricité & Gaz)', flowType: 'FIXED_EXPENSE', category: 'Logement & Énergie', isSubscription: true };
+  }
+  if (descLower.includes('groupama') || descLower.includes('sogessur') || descLower.includes('assurance') || descLower.includes('allianz') || descLower.includes('macif') || descLower.includes('axa')) {
+    return { cleanDesc: cleanDesc || 'Assurance', flowType: 'FIXED_EXPENSE', category: 'Assurances', isSubscription: true };
+  }
+  if (descLower.includes('orange') || descLower.includes('la poste mobile') || descLower.includes('free telecom') || descLower.includes('free mobile') || descLower.includes('sfr') || descLower.includes('bouygues') || descLower.includes('swype') || descLower.includes('sosh')) {
+    return { cleanDesc: cleanDesc || 'Abonnement Télécom & Internet', flowType: 'FIXED_EXPENSE', category: 'Abonnements & Télécom', isSubscription: true };
+  }
+  if (descLower.includes('google play') || descLower.includes('apple.com') || descLower.includes('spotify') || descLower.includes('netflix') || descLower.includes('amazon prime') || descLower.includes('icloud') || descLower.includes('deezer') || descLower.includes('disney')) {
+    return { cleanDesc: cleanDesc || 'Service Numérique / Abonnement', flowType: 'FIXED_EXPENSE', category: 'Abonnements & Télécom', isSubscription: true };
+  }
+  if (descLower.includes('loyer') || descLower.includes('bail') || descLower.includes('syndic')) {
+    return { cleanDesc: cleanDesc || 'Loyer & Charges Résidence', flowType: 'FIXED_EXPENSE', category: 'Logement & Énergie', isSubscription: true };
+  }
+  if (descLower.includes('frais') || descLower.includes('cotisation carte') || descLower.includes('agios') || descLower.includes('commission')) {
+    return { cleanDesc: cleanDesc || 'Frais Bancaires', flowType: 'FIXED_EXPENSE', category: 'Frais bancaires', isSubscription: false };
+  }
+
+  // 4. Dépenses Variables (Consommation courante)
+  if (
+    descLower.includes('boucherie') ||
+    descLower.includes('boulangerie') ||
+    descLower.includes('paniere') ||
+    descLower.includes('intermarche') ||
+    descLower.includes('intermarché') ||
+    descLower.includes('leclerc') ||
+    descLower.includes('carrefour') ||
+    descLower.includes('lidl') ||
+    descLower.includes('aldi') ||
+    descLower.includes('monoprix') ||
+    descLower.includes('super u') ||
+    descLower.includes('franprix') ||
+    descLower.includes('coop')
+  ) {
+    return { cleanDesc: cleanDesc || 'Alimentation & Courses', flowType: 'VARIABLE_EXPENSE', category: 'Alimentation & Courses', isSubscription: false };
+  }
+  if (
+    descLower.includes('kebab') ||
+    descLower.includes('restaurant') ||
+    descLower.includes('bosphore') ||
+    descLower.includes('dallmayr') ||
+    descLower.includes('uber *eats') ||
+    descLower.includes('uber eats') ||
+    descLower.includes('deliveroo') ||
+    descLower.includes('mcdo') ||
+    descLower.includes('burger')
+  ) {
+    return { cleanDesc: cleanDesc || 'Restaurant & Restauration Rapide', flowType: 'VARIABLE_EXPENSE', category: 'Restaurants & Sorties', isSubscription: false };
+  }
+  if (descLower.includes('bricorama') || descLower.includes('leroy merlin') || descLower.includes('gifi') || descLower.includes('ikea') || descLower.includes('castorama')) {
+    return { cleanDesc: cleanDesc || 'Bricolage & Maison', flowType: 'VARIABLE_EXPENSE', category: 'Shopping & Maison', isSubscription: false };
+  }
+  if (descLower.includes('amazon') || descLower.includes('cdiscount') || descLower.includes('aliexpress') || descLower.includes('xiaomi') || descLower.includes('ville-la-dis') || descLower.includes('shein')) {
+    return { cleanDesc: cleanDesc || 'Achats & E-Commerce', flowType: 'VARIABLE_EXPENSE', category: 'Shopping & Maison', isSubscription: false };
+  }
+  if (descLower.includes('sodi est') || descLower.includes('carter-cash') || descLower.includes('total') || descLower.includes('essence') || descLower.includes('sapn') || descLower.includes('peage') || descLower.includes('sncf') || descLower.includes('amende')) {
+    return { cleanDesc: cleanDesc || 'Transport & Véhicule', flowType: 'VARIABLE_EXPENSE', category: 'Transports & Carburant', isSubscription: false };
+  }
+  if (descLower.includes('doctolib') || descLower.includes('pharmacie') || descLower.includes('laboratoire') || descLower.includes('dentiste') || descLower.includes('medecin')) {
+    return { cleanDesc: cleanDesc || 'Santé & Pharmacie', flowType: 'VARIABLE_EXPENSE', category: 'Santé', isSubscription: false };
+  }
+
+  return { cleanDesc: cleanDesc || rawDescription, flowType: 'VARIABLE_EXPENSE', category: 'Autre', isSubscription: false };
+}
 
 /**
  * Formatage d'une clé de mois en libellé français élégant (ex: '2026-05' -> 'Mai 2026')
@@ -52,16 +249,14 @@ export function formatMonthLabel(monthKey: string): string {
 }
 
 /**
- * Analyse sémantique et financière d'une opération pour déterminer son flux et sa catégorie
+ * Fonction de catégorisation compatible avec les anciens appels
  */
 export function categorizeTransaction(
   description: string,
   amount: number,
   dateStr?: string
 ): { flowType: FlowType; category: string; isSubscription: boolean; subscriptionDay?: number } {
-  const desc = (description || '').toLowerCase();
-
-  // Extraction du jour du prélèvement si date fournie
+  const result = classifyTransaction(description, amount);
   let subscriptionDay: number | undefined = undefined;
   if (dateStr) {
     try {
@@ -72,300 +267,64 @@ export function categorizeTransaction(
       }
     } catch (e) {}
   }
-
-  // 1. Check for Internal Transfers & Savings first (Neutral flow)
-  const isInternal = INTERNAL_TRANSFER_KEYWORDS.some(k => desc.includes(k));
-  if (isInternal) {
-    return {
-      flowType: 'SAVINGS_TRANSFER',
-      category: 'Épargne & Investissement',
-      isSubscription: false,
-    };
-  }
-
-  // 2. Positive amounts -> Incomes
-  if (amount > 0) {
-    if (
-      desc.includes('salaire') ||
-      desc.includes('paye') ||
-      desc.includes('paie') ||
-      desc.includes('remuneration') ||
-      desc.includes('rémunération') ||
-      desc.includes('virement recu') ||
-      desc.includes('virement reçu') ||
-      desc.includes('pole emploi') ||
-      desc.includes('france travail') ||
-      desc.includes('caf') ||
-      desc.includes('cpam') ||
-      desc.includes('remboursement')
-    ) {
-      return { flowType: 'INCOME', category: 'Salaire & Revenus', isSubscription: false };
-    }
-    return { flowType: 'INCOME', category: 'Salaire & Revenus', isSubscription: false };
-  }
-
-  // 3. Subscriptions / Fixed expenses
-  const isSub = SUBSCRIPTION_KEYWORDS.some(k => desc.includes(k));
-  if (isSub) {
-    if (
-      desc.includes('edf') ||
-      desc.includes('engie') ||
-      desc.includes('totalenergies') ||
-      desc.includes('loyer') ||
-      desc.includes('bail') ||
-      desc.includes('eau')
-    ) {
-      return {
-        flowType: 'FIXED_EXPENSE',
-        category: 'Logement & Énergie',
-        isSubscription: true,
-        subscriptionDay
-      };
-    }
-    return {
-      flowType: 'FIXED_EXPENSE',
-      category: 'Abonnements & Services',
-      isSubscription: true,
-      subscriptionDay
-    };
-  }
-
-  if (
-    desc.includes('loyer') ||
-    desc.includes('immobilier') ||
-    desc.includes('syndic') ||
-    desc.includes('assurance habitation') ||
-    desc.includes('quittance')
-  ) {
-    return { flowType: 'FIXED_EXPENSE', category: 'Logement & Loyer', isSubscription: false };
-  }
-
-  if (
-    desc.includes('frais tenue') ||
-    desc.includes('cotisation carte') ||
-    desc.includes('commission d intervention') ||
-    desc.includes('agios')
-  ) {
-    return { flowType: 'FIXED_EXPENSE', category: 'Frais bancaires', isSubscription: false };
-  }
-
-  // 4. Variable Expenses by merchant / nature
-  if (
-    desc.includes('carrefour') ||
-    desc.includes('auchan') ||
-    desc.includes('lidl') ||
-    desc.includes('leclerc') ||
-    desc.includes('monoprix') ||
-    desc.includes('intermarche') ||
-    desc.includes('intermarché') ||
-    desc.includes('courses') ||
-    desc.includes('boulangerie') ||
-    desc.includes('aldi') ||
-    desc.includes('super u') ||
-    desc.includes('franprix') ||
-    desc.includes('biocoop') ||
-    desc.includes('picard') ||
-    desc.includes('boucherie') ||
-    desc.includes('primeur')
-  ) {
-    return { flowType: 'VARIABLE_EXPENSE', category: 'Alimentation & Courses', isSubscription: false };
-  }
-
-  if (
-    desc.includes('uber eats') ||
-    desc.includes('deliveroo') ||
-    desc.includes('just eat') ||
-    desc.includes('restaurant') ||
-    desc.includes('mcdo') ||
-    desc.includes('mcdonald') ||
-    desc.includes('burger king') ||
-    desc.includes('kfc') ||
-    desc.includes('subway') ||
-    desc.includes('pizza') ||
-    desc.includes('sushi') ||
-    desc.includes('brasserie') ||
-    desc.includes('bistrot') ||
-    desc.includes('cafe') ||
-    desc.includes('café') ||
-    desc.includes('bar ') ||
-    desc.includes('cinema') ||
-    desc.includes('cinéma') ||
-    desc.includes('ugc') ||
-    desc.includes('pathe')
-  ) {
-    return { flowType: 'VARIABLE_EXPENSE', category: 'Restaurants & Sorties', isSubscription: false };
-  }
-
-  if (
-    desc.includes('sncf') ||
-    desc.includes('ratp') ||
-    desc.includes('navigo') ||
-    desc.includes('tpg') ||
-    desc.includes('cff') ||
-    desc.includes('total') ||
-    desc.includes('esso') ||
-    desc.includes('bp ') ||
-    desc.includes('shell') ||
-    desc.includes('essence') ||
-    desc.includes('carburant') ||
-    desc.includes('peage') ||
-    desc.includes('péage') ||
-    desc.includes('station') ||
-    desc.includes('uber') ||
-    desc.includes('blablacar') ||
-    desc.includes('parking')
-  ) {
-    const isNavigo = desc.includes('navigo') || desc.includes('abonnement transport');
-    return {
-      flowType: isNavigo ? 'FIXED_EXPENSE' : 'VARIABLE_EXPENSE',
-      category: 'Transports & Véhicule',
-      isSubscription: isNavigo,
-      subscriptionDay: isNavigo ? subscriptionDay : undefined
-    };
-  }
-
-  if (
-    desc.includes('pharmacie') ||
-    desc.includes('doctolib') ||
-    desc.includes('medecin') ||
-    desc.includes('médecin') ||
-    desc.includes('laboratoire') ||
-    desc.includes('dentiste') ||
-    desc.includes('kine') ||
-    desc.includes('optique') ||
-    desc.includes('hopital')
-  ) {
-    return { flowType: 'VARIABLE_EXPENSE', category: 'Santé', isSubscription: false };
-  }
-
-  if (
-    desc.includes('amazon') ||
-    desc.includes('fnac') ||
-    desc.includes('darty') ||
-    desc.includes('zara') ||
-    desc.includes('h&m') ||
-    desc.includes('ikea') ||
-    desc.includes('decathlon') ||
-    desc.includes('leroy merlin') ||
-    desc.includes('castorama')
-  ) {
-    return { flowType: 'VARIABLE_EXPENSE', category: 'Shopping & Maison', isSubscription: false };
-  }
-
-  return { flowType: 'VARIABLE_EXPENSE', category: 'Autre', isSubscription: false };
+  return {
+    flowType: result.flowType,
+    category: result.category,
+    isSubscription: result.isSubscription,
+    subscriptionDay
+  };
 }
 
 /**
- * Détection et parsing universel de fichiers CSV bancaires
- * Évite rigoureusement de capturer des colonnes 'Compte' / 'Compte Bancaire' en guise de description !
+ * Parseur universel de relevés bancaires multi-formats CSV (Société Générale, Fortuneo, Revolut, etc.)
  */
-export function parseCSVBankStatement(
-  csvContent: string,
-  defaultAccount = 'Compte Courant',
-  defaultBank = 'Banque'
-): ParsedTransaction[] {
-  const allLines = csvContent.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-  if (allLines.length < 2) return [];
+export function parseCSVBankStatement(csvContent: string): { bankName: string; transactions: BankTransaction[] } {
+  const bankName = detectBankName(csvContent);
+  const lines = (csvContent || '').split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length < 2) return { bankName, transactions: [] };
 
-  // Détection du délimiteur et de la ligne d'en-tête réelle
+  // Détection de la ligne d'en-tête (cherche la ligne qui a les mots clés bancaires)
   let headerLineIndex = 0;
-  let bestKeywordScore = -1;
-
-  for (let i = 0; i < Math.min(10, allLines.length); i++) {
-    const lineNorm = allLines[i].toLowerCase();
+  let maxScore = -1;
+  for (let i = 0; i < Math.min(15, lines.length); i++) {
+    const lower = lines[i].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     let score = 0;
-    if (lineNorm.includes('date')) score += 3;
-    if (lineNorm.includes('libell') || lineNorm.includes('desc') || lineNorm.includes('motif') || lineNorm.includes('operation')) score += 3;
-    if (lineNorm.includes('montant') || lineNorm.includes('debit') || lineNorm.includes('credit') || lineNorm.includes('valeur')) score += 3;
-    if (score > bestKeywordScore) {
-      bestKeywordScore = score;
+    if (lower.includes('date')) score += 3;
+    if (lower.includes('libelle') || lower.includes('desc') || lower.includes('operation')) score += 3;
+    if (lower.includes('montant') || lower.includes('debit') || lower.includes('credit')) score += 3;
+    if (score > maxScore) {
+      maxScore = score;
       headerLineIndex = i;
     }
   }
 
-  const sampleLine = allLines[headerLineIndex];
+  const sampleLine = lines[headerLineIndex];
   const delimiter = sampleLine.includes(';') ? ';' : sampleLine.includes('\t') ? '\t' : ',';
-
-  const rawHeaders = allLines[headerLineIndex].split(delimiter).map(h => 
-    h.trim().replace(/^["']|["']$/g, '').toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  );
-
-  // Recherche des index de colonnes
-  const dateIdx = rawHeaders.findIndex(h => h.includes('date') || h.includes('jour'));
   
-  // Index du compte bancaire (si présent)
-  const accountIdx = rawHeaders.findIndex(h => 
-    (h.includes('compte') || h.includes('account') || h.includes('iban') || h.includes('rib')) &&
-    !h.includes('libell') && !h.includes('desc')
+  const headers = lines[headerLineIndex].split(delimiter).map(h => 
+    h.trim().toLowerCase().replace(/^["']|["']$/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   );
 
-  // Index des montants
-  const amountIdx = rawHeaders.findIndex(h => h.includes('montant') || h.includes('valeur') || h.includes('euros') || h.includes('total'));
-  const debitIdx = rawHeaders.findIndex(h => h.includes('debit'));
-  const creditIdx = rawHeaders.findIndex(h => h.includes('credit'));
+  const dateIdx = headers.findIndex(h => h.includes('date transaction') || h.includes('date operation') || h === 'date' || h.includes('date'));
+  
+  // Priorité absolue au « Libellé complet » pour capturer le vrai marchand et éliminer les buckets génériques
+  const fullDescIdx = headers.findIndex(h => h.includes('libelle complet') || h.includes('libell complet'));
+  const fallbackDescIdx = headers.findIndex(h => h.includes('libelle operation') || h.includes('libelle') || h.includes('description') || h.includes('motif') || h.includes('detail'));
+  
+  const amountIdx = headers.findIndex(h => h.includes('montant') || h.includes('valeur'));
+  const debitIdx = headers.findIndex(h => h.includes('debit'));
+  const creditIdx = headers.findIndex(h => h.includes('credit'));
 
-  // Index de la description (libellé du marchand ou de l'opération)
-  let descIdx = rawHeaders.findIndex(h => 
-    (h.includes('libell') || h.includes('desc') || h.includes('texte') || h.includes('operation') || 
-     h.includes('detail') || h.includes('motif') || h.includes('communication') || h.includes('nom') || 
-     h.includes('destinataire') || h.includes('beneficiaire') || h.includes('marchand')) &&
-    h !== 'compte' && h !== 'compte bancaire' && h !== 'type de compte'
-  );
+  const results: BankTransaction[] = [];
 
-  // Si non trouvé par mot clé direct, recherche de la meilleure colonne textuelle distincte
-  if (descIdx === -1) {
-    for (let c = 0; c < rawHeaders.length; c++) {
-      if (c !== dateIdx && c !== amountIdx && c !== debitIdx && c !== creditIdx && c !== accountIdx) {
-        descIdx = c;
-        break;
-      }
-    }
-  }
+  for (let i = headerLineIndex + 1; i < lines.length; i++) {
+    const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
+    if (cols.length < 2) continue;
 
-  // Échantillons pour vérifier si la colonne sélectionnée n'est pas un nom de compte redondant ('Compte Bancaire')
-  const rowsData: string[][] = [];
-  for (let i = headerLineIndex + 1; i < allLines.length; i++) {
-    const rawCols = allLines[i].split(delimiter);
-    if (rawCols.length >= 2) {
-      rowsData.push(rawCols.map(c => c.trim().replace(/^["']|["']$/g, '')));
-    }
-  }
-
-  // Vérification intelligente anti-dummy 'Compte Bancaire' :
-  // Si la colonne descIdx a la valeur 'Compte Bancaire' ou 'Compte Courant' sur plus de 50% des lignes,
-  // alors cette colonne est le compte, et on bascule sur la vraie colonne de libellé avec du texte varié !
-  if (descIdx >= 0 && rowsData.length > 0) {
-    const valuesInDescCol = rowsData.map(r => (r[descIdx] || '').toLowerCase());
-    const isDummyAccountCol = valuesInDescCol.filter(v => v.includes('compte bancaire') || v === 'compte courant' || v === 'compte').length > rowsData.length * 0.5;
-    
-    if (isDummyAccountCol) {
-      let alternativeIdx = -1;
-      let maxDistinctValues = 0;
-      for (let c = 0; c < rawHeaders.length; c++) {
-        if (c !== dateIdx && c !== amountIdx && c !== debitIdx && c !== creditIdx && c !== descIdx) {
-          const distinct = new Set(rowsData.map(r => r[c] || '')).size;
-          if (distinct > maxDistinctValues) {
-            maxDistinctValues = distinct;
-            alternativeIdx = c;
-          }
-        }
-      }
-      if (alternativeIdx !== -1 && maxDistinctValues > 1) {
-        descIdx = alternativeIdx;
-      }
-    }
-  }
-
-  const results: ParsedTransaction[] = [];
-
-  rowsData.forEach((cols, i) => {
-    // 1. Extraction et normalisation de la date
+    // 1. Parsing de la date
     let rawDate = dateIdx >= 0 && cols[dateIdx] ? cols[dateIdx] : cols[0];
     let formattedDate = new Date().toISOString().split('T')[0];
-
     if (rawDate) {
-      // Gère JJ/MM/AAAA ou JJ-MM-AAAA
       const dmy = rawDate.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
       if (dmy) {
         formattedDate = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
@@ -374,60 +333,56 @@ export function parseCSVBankStatement(
       }
     }
 
-    // 2. Extraction du libellé réel
-    let description = descIdx >= 0 && cols[descIdx] ? cols[descIdx] : '';
-    description = description.replace(/\s+/g, ' ').trim();
-    if (!description || description.toLowerCase() === 'compte bancaire') {
-      const candidate = cols.find((val, idx) => 
-        idx !== dateIdx && idx !== amountIdx && idx !== debitIdx && idx !== creditIdx &&
-        val.length > 2 && !/^[\d.,+-]+$/.test(val) && val.toLowerCase() !== 'compte bancaire'
-      );
-      if (candidate) description = candidate.trim();
+    // 2. Sélection stricte du libellé complet
+    let rawDescription = '';
+    if (fullDescIdx >= 0 && cols[fullDescIdx]) {
+      rawDescription = cols[fullDescIdx];
+    } else if (fallbackDescIdx >= 0 && cols[fallbackDescIdx]) {
+      rawDescription = cols[fallbackDescIdx];
+    } else {
+      rawDescription = cols[1] || 'Opération Bancaire';
     }
-    if (!description) description = 'Opération Bancaire';
 
-    // 3. Extraction du montant
+    // 3. Parsing du montant
     let amount = 0;
     if (debitIdx >= 0 || creditIdx >= 0) {
-      const debitRaw = debitIdx >= 0 && cols[debitIdx] ? cols[debitIdx] : '';
-      const creditRaw = creditIdx >= 0 && cols[creditIdx] ? cols[creditIdx] : '';
-      const cleanDebit = debitRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-      const cleanCredit = creditRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-      const debit = parseFloat(cleanDebit) || 0;
-      const credit = parseFloat(cleanCredit) || 0;
-
-      if (credit !== 0) amount = Math.abs(credit);
-      else if (debit !== 0) amount = -Math.abs(debit);
+      const debitRaw = debitIdx >= 0 ? cols[debitIdx] : '';
+      const creditRaw = creditIdx >= 0 ? cols[creditIdx] : '';
+      const debit = parseFloat(debitRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0;
+      const credit = parseFloat(creditRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0;
+      amount = credit !== 0 ? Math.abs(credit) : -Math.abs(debit);
     } else if (amountIdx >= 0 && cols[amountIdx]) {
       const cleanAmt = cols[amountIdx].replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '');
       amount = parseFloat(cleanAmt) || 0;
-    } else {
-      const lastVal = cols[cols.length - 1] || '';
-      const cleanAmt = lastVal.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-      amount = parseFloat(cleanAmt) || 0;
     }
 
-    if (isNaN(amount) || amount === 0) return;
+    if (isNaN(amount) || amount === 0) continue;
 
-    // 4. Détermination du compte
-    const rowAccount = (accountIdx >= 0 && cols[accountIdx]) ? cols[accountIdx].trim() : defaultAccount;
+    const { cleanDesc, flowType, category, isSubscription } = classifyTransaction(rawDescription, amount);
 
-    // 5. Classification sémantique
-    const classification = categorizeTransaction(description, amount, formattedDate);
+    let subscriptionDay: number | undefined = undefined;
+    if (isSubscription && formattedDate) {
+      const dParts = formattedDate.split('-');
+      if (dParts.length === 3) subscriptionDay = parseInt(dParts[2], 10);
+    }
 
     results.push({
-      id: `tx_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
+      id: `tx_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 6)}`,
       date: formattedDate,
-      description,
+      description: cleanDesc,
+      rawLabel: rawDescription,
+      cleanLabel: cleanDesc,
       amount,
-      flowType: classification.flowType,
-      category: classification.category,
-      account: rowAccount || defaultAccount,
-      bankName: defaultBank,
-      isSubscription: classification.isSubscription,
-      subscriptionDay: classification.subscriptionDay
+      flowType,
+      category,
+      account: bankName,
+      bankName,
+      isSubscription,
+      subscriptionDay,
+      confidence: 'high',
+      status: flowType === 'SAVINGS_TRANSFER' ? 'Internal Transfer' : 'Reconciled'
     });
-  });
+  }
 
-  return results;
+  return { bankName, transactions: results };
 }
