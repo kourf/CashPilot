@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { getAvailableMonths, type Transaction } from '../lib/kpiUtils';
@@ -15,12 +15,12 @@ interface TransactionsContextType {
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
 }
 
-const TransactionsContext = createContext<TransactionsContextType | undefined>(undefined);
-
 const CACHE_KEY = 'cashpilot_tx_cache';
 
+const TransactionsContext = createContext<TransactionsContextType | undefined>(undefined);
+
 export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // 1. Initialisation instantanée depuis le cache local (0 ms de latence au montage)
+  // 1. Initialisation optimiste immédiate depuis le localStorage pour un chargement instantané (0 ms)
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
       const cached = localStorage.getItem(CACHE_KEY);
@@ -40,16 +40,18 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [loading, setLoading] = useState<boolean>(() => transactions.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const hasInitializedMonthRef = useRef(false);
 
   // Mois disponibles calculés à partir des transactions en mémoire
   const availableMonths = useMemo(() => getAvailableMonths(transactions), [transactions]);
 
-  // Si aucun mois sélectionné et qu'on a des mois disponibles, sélectionner le plus récent
+  // Initialisation unique au premier chargement sur le mois le plus récent (sans écraser le choix 'all' de l'utilisateur)
   useEffect(() => {
-    if (availableMonths.length > 0 && selectedMonth === 'all') {
+    if (!hasInitializedMonthRef.current && availableMonths.length > 0) {
       setSelectedMonth(availableMonths[0]);
+      hasInitializedMonthRef.current = true;
     }
-  }, [availableMonths, selectedMonth]);
+  }, [availableMonths]);
 
   // 2. Écouteur Firestore persistant unique (au niveau racine de l'application)
   useEffect(() => {

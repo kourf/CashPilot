@@ -1,5 +1,7 @@
 import Papa from 'papaparse';
+import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel } from './bankParser';
 
+export { formatMonthLabel, categorizeTransaction, parseCSVBankStatement };
 export type FlowType = 'INCOME' | 'FIXED_EXPENSE' | 'VARIABLE_EXPENSE' | 'SAVINGS_TRANSFER';
 
 export interface BankTransaction {
@@ -26,11 +28,16 @@ export interface BankTransaction {
 export const CATEGORIES = [
   'Salaire & Revenus',
   'Logement & Loyer',
+  'Logement & Énergie',
+  'Abonnements & Services',
   'Abonnements & Télécom',
   'Alimentation & Courses',
+  'Transports & Véhicule',
   'Transports & Carburant',
+  'Restaurants & Sorties',
   'Restaurants & Loisirs',
   'Santé',
+  'Shopping & Maison',
   'Épargne & Investissement',
   'Virement Interne',
   'Frais bancaires',
@@ -643,92 +650,37 @@ export function calculateAccountSummaries(transactions: BankTransaction[]): Acco
 /**
  * Parser de fichier CSV automatique avec assignation multi-comptes
  */
-export function parseCsvBankFile(
+export async function parseCsvBankFile(
   file: File,
   targetAccountName?: string,
   targetBankName?: string
 ): Promise<BankTransaction[]> {
-  return new Promise((resolve, reject) => {
-    const detected = detectAccountFromFilename(file.name);
-    const finalAccount = targetAccountName || detected.accountName;
-    const finalBank = targetBankName || detected.bankName;
+  const detected = detectAccountFromFilename(file.name);
+  const finalAccount = targetAccountName || detected.accountName;
+  const finalBank = targetBankName || detected.bankName;
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        try {
-          const rows = results.data as any[];
-          if (!rows || rows.length === 0) {
-            return resolve([]);
-          }
+  try {
+    const text = await file.text();
+    const parsed = parseCSVBankStatement(text, finalAccount, finalBank);
 
-          // Détection automatique des colonnes
-          const headers = Object.keys(rows[0] || {});
-          const dateCol = headers.find(h => /date|jour/i.test(h)) || headers[0];
-          const descCol = headers.find(h => /libell|description|label|motif|operation/i.test(h)) || headers[1];
-          const amountCol = headers.find(h => /montant|amount|valeur/i.test(h));
-          const debitCol = headers.find(h => /debit/i.test(h));
-          const creditCol = headers.find(h => /credit/i.test(h));
-
-          const parsed: BankTransaction[] = [];
-
-          rows.forEach((row, idx) => {
-            const rawDate = row[dateCol] || '';
-            const description = String(row[descCol] || 'Opération sans libellé').trim();
-
-            let amount: number | null = null;
-            if (amountCol && row[amountCol] !== undefined) {
-              amount = parseAmount(row[amountCol]);
-            } else if (debitCol || creditCol) {
-              const debit = debitCol ? parseAmount(row[debitCol]) : null;
-              const credit = creditCol ? parseAmount(row[creditCol]) : null;
-              if (debit !== null && debit !== 0) amount = -Math.abs(debit);
-              else if (credit !== null && credit !== 0) amount = Math.abs(credit);
-            }
-
-            if (amount === null || isNaN(amount)) return;
-
-            // Normalisation de date
-            let formattedDate = rawDate;
-            const dParts = rawDate.split(/[/-]/);
-            if (dParts.length === 3) {
-              if (dParts[2].length === 4) {
-                formattedDate = `${dParts[2]}-${dParts[1].padStart(2, '0')}-${dParts[0].padStart(2, '0')}`;
-              } else if (dParts[0].length === 4) {
-                formattedDate = `${dParts[0]}-${dParts[1].padStart(2, '0')}-${dParts[2].padStart(2, '0')}`;
-              }
-            }
-            if (!formattedDate || formattedDate.length < 10) {
-              formattedDate = new Date().toISOString().substring(0, 10);
-            }
-
-            const catResult = smartCategorizeTransaction(description, amount, formattedDate);
-
-            parsed.push({
-              id: `csv_${Date.now()}_${idx}`,
-              date: formattedDate,
-              description,
-              amount,
-              flowType: catResult.flowType,
-              category: catResult.category,
-              isSubscription: catResult.isSubscription,
-              subscriptionDay: catResult.subscriptionDay,
-              confidence: catResult.confidence,
-              account: finalAccount,
-              bankName: finalBank,
-              status: catResult.flowType === 'SAVINGS_TRANSFER' ? 'Internal Transfer' : 'Reconciled'
-            });
-          });
-
-          resolve(parsed);
-        } catch (err) {
-          reject(err);
-        }
-      },
-      error: (err) => reject(err)
-    });
-  });
+    return parsed.map((p, idx) => ({
+      id: `csv_${Date.now()}_${idx}`,
+      date: p.date,
+      description: p.description,
+      amount: p.amount,
+      flowType: p.flowType,
+      category: p.category,
+      isSubscription: p.isSubscription,
+      subscriptionDay: p.subscriptionDay,
+      confidence: 'high' as const,
+      account: p.account || finalAccount,
+      bankName: p.bankName || finalBank,
+      status: p.flowType === 'SAVINGS_TRANSFER' ? ('Internal Transfer' as const) : ('Reconciled' as const)
+    }));
+  } catch (err) {
+    console.error("Erreur lecture CSV:", err);
+    return [];
+  }
 }
 
 export interface SubscriptionSummary {

@@ -41,6 +41,7 @@ import {
   parseCsvBankFile,
   smartCategorizeTransaction,
   calculateSubscriptionSummary,
+  formatMonthLabel,
   type FlowType, 
   type BankTransaction,
   type SubscriptionSummary
@@ -234,6 +235,16 @@ export const BankStatements: React.FC = () => {
     if (!tx) return;
 
     const newFlowType = classifyFlowType(newCategory, tx.amount, tx.description);
+    const isSub = newCategory === 'Abonnements & Télécom' || (tx.isSubscription && newFlowType === 'FIXED_EXPENSE');
+
+    // Optimistic local update for 0ms latency
+    setRawTransactions(prev => prev.map(t => t.id === id ? {
+      ...t,
+      category: newCategory,
+      flowType: newFlowType,
+      isSubscription: isSub,
+      nature: newFlowType === 'FIXED_EXPENSE' ? 'fixe' : newFlowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre'
+    } : t));
 
     try {
       const accountId = getActiveAccountId();
@@ -242,6 +253,7 @@ export const BankStatements: React.FC = () => {
       await updateDoc(docRef, {
         category: newCategory,
         flowType: newFlowType,
+        isSubscription: isSub,
         nature: newFlowType === 'FIXED_EXPENSE' ? 'fixe' : newFlowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
         updatedAt: new Date().toISOString()
       });
@@ -796,7 +808,7 @@ export const BankStatements: React.FC = () => {
               >
                 <option value="all">Toutes périodes</option>
                 {availableMonths.map(m => (
-                  <option key={m} value={m} className="dark:bg-[#10141e]">{m}</option>
+                  <option key={m} value={m} className="dark:bg-[#10141e]">{formatMonthLabel(m)}</option>
                 ))}
               </select>
             </div>
@@ -1163,7 +1175,7 @@ export const BankStatements: React.FC = () => {
       <BankFlowCharts
         transactions={selectedAccount === 'ALL' ? monthScopedTransactions : monthScopedTransactions.filter(t => t.account === selectedAccount)}
         selectedAccountName={selectedAccount === 'ALL' ? 'Tous les comptes (Consolidé)' : selectedAccount}
-        selectedMonthName={selectedMonth}
+        selectedMonthName={selectedMonth === 'all' ? 'Toutes périodes' : formatMonthLabel(selectedMonth)}
       />
 
       {/* Interactive Control Bar */}
