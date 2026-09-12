@@ -15,14 +15,11 @@ import {
   FileSpreadsheet,
   Landmark,
   Wallet,
-  CreditCard,
   Check,
   Pencil,
   RotateCcw,
   ChevronDown,
-  ChevronUp,
-  Tag,
-  Settings2
+  ChevronUp
 } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -38,7 +35,6 @@ import {
   calculateAccountSummaries,
   checkDuplicateTransactions, 
   detectAccountFromFilename,
-  parseCsvBankFile,
   parseCSVBankStatement,
   smartCategorizeTransaction,
   calculateSubscriptionSummary,
@@ -56,7 +52,6 @@ export const BankStatements: React.FC = () => {
   const { 
     transactions: rawTransactions, 
     setTransactions: setRawTransactions,
-    loading: contextLoading,
     selectedMonth,
     setSelectedMonth,
     availableMonths
@@ -95,8 +90,6 @@ export const BankStatements: React.FC = () => {
   // Upload & File states
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [fileStatusMessage, setFileStatusMessage] = useState<string | null>(null);
-  const [targetUploadAccount, setTargetUploadAccount] = useState<string>('AUTO');
-  const [customUploadAccount, setCustomUploadAccount] = useState<string>('');
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -617,13 +610,6 @@ export const BankStatements: React.FC = () => {
       let detectedBankName = '';
       let detectedAccountName = '';
 
-      // Determine explicit target account if selected
-      const explicitAccount = targetUploadAccount === 'CUSTOM'
-        ? (customUploadAccount.trim() || undefined)
-        : targetUploadAccount !== 'AUTO'
-        ? targetUploadAccount
-        : undefined;
-
       if (file.name.endsWith('.csv') || file.type.includes('csv') || file.type.includes('text')) {
         // Direct Client CSV Parsing with intelligent bank signature & merchant extraction
         setFileStatusMessage("Lecture et détection intelligente du relevé...");
@@ -632,7 +618,7 @@ export const BankStatements: React.FC = () => {
         const fileDetection = detectAccountFromFilename(file.name);
 
         detectedBankName = detectedBank !== 'Compte Courant' ? detectedBank : fileDetection.bankName;
-        detectedAccountName = explicitAccount || (detectedBankName ? `${detectedBankName} - Compte Courant` : fileDetection.accountName);
+        detectedAccountName = detectedBankName ? `${detectedBankName} - Compte Courant` : fileDetection.accountName;
 
         extractedTxs = parsedTxs.map((t, idx) => ({
           ...t,
@@ -654,7 +640,7 @@ export const BankStatements: React.FC = () => {
 
         if (result.success && result.data) {
           detectedBankName = result.data.bankName || 'Banque';
-          detectedAccountName = explicitAccount || result.data.accountName || `${detectedBankName} - ${result.data.accountType || 'Compte'}`;
+          detectedAccountName = result.data.accountName || `${detectedBankName} - ${result.data.accountType || 'Compte'}`;
 
           if (result.data.transactions) {
             extractedTxs = result.data.transactions.map((t: any, i: number) => {
@@ -911,46 +897,19 @@ export const BankStatements: React.FC = () => {
         </div>
       </div>
 
-      {/* Upload Dropzone Drawer with Target Account Option */}
+      {/* Clean Minimalist Upload Dropzone */}
       {isUploading && (
-        <Card className="p-8 border-dashed border-2 border-primary/40 bg-card/60 backdrop-blur-md text-center transition-all animate-in fade-in-50 rounded-2xl relative space-y-4">
+        <Card className="p-8 border-dashed border-2 border-primary/40 hover:border-primary/60 bg-card/60 backdrop-blur-md text-center transition-all animate-in fade-in-50 rounded-2xl relative shadow-sm">
           <button 
             onClick={() => setIsUploading(false)}
             className="absolute top-4 right-4 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            title="Fermer"
           >
             <X className="w-4 h-4" />
           </button>
 
-          {/* Account Target Selector */}
-          <div className="max-w-md mx-auto flex flex-col sm:flex-row items-center justify-center gap-2 text-xs">
-            <span className="font-semibold text-muted-foreground whitespace-nowrap">Rattacher au compte :</span>
-            <select
-              value={targetUploadAccount}
-              onChange={e => setTargetUploadAccount(e.target.value)}
-              className="bg-card border border-border/80 rounded-xl px-3 py-1.5 text-foreground font-semibold outline-none cursor-pointer focus:ring-1 focus:ring-primary"
-            >
-              <option value="AUTO">🤖 Détection automatique par IA</option>
-              {availableAccounts.map(acc => (
-                <option key={acc} value={acc}>Compte : {acc}</option>
-              ))}
-              <option value="CUSTOM">+ Créer un nouveau compte...</option>
-            </select>
-          </div>
-
-          {targetUploadAccount === 'CUSTOM' && (
-            <div className="max-w-xs mx-auto">
-              <input
-                type="text"
-                placeholder="Ex: BoursoBank - Compte Pro, Revolut..."
-                value={customUploadAccount}
-                onChange={e => setCustomUploadAccount(e.target.value)}
-                className="w-full text-xs p-2 rounded-xl bg-background border border-border/80 text-foreground focus:outline-none focus:ring-1 focus:ring-primary text-center font-medium"
-              />
-            </div>
-          )}
-
           <div 
-            className="flex flex-col items-center justify-center gap-3 py-4 cursor-pointer"
+            className="flex flex-col items-center justify-center gap-3 py-4 cursor-pointer group"
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
@@ -960,7 +919,7 @@ export const BankStatements: React.FC = () => {
               }
             }}
           >
-            <div className="p-4 rounded-2xl bg-primary/10 text-primary shadow-inner">
+            <div className="p-4 rounded-2xl bg-primary/10 text-primary shadow-inner ring-1 ring-primary/20 group-hover:scale-105 group-hover:bg-primary/15 transition-all duration-300">
               {isProcessingFile ? (
                 <Loader2 className="w-8 h-8 animate-spin" />
               ) : (
@@ -969,10 +928,10 @@ export const BankStatements: React.FC = () => {
             </div>
 
             <div>
-              <p className="text-base font-semibold text-foreground">
+              <p className="text-base font-bold text-foreground">
                 {isProcessingFile ? fileStatusMessage : "Glissez-déposez votre relevé bancaire (PDF, CSV, image)"}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
                 L'IA analyse le document, identifie l'établissement bancaire et déduplique automatiquement
               </p>
             </div>

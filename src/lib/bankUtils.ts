@@ -1,4 +1,3 @@
-import Papa from 'papaparse';
 import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, classifyTransaction, detectBankName } from './bankParser';
 
 export { formatMonthLabel, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName };
