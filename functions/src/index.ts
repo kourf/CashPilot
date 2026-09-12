@@ -4,8 +4,15 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 
 admin.initializeApp();
 
-const apiKey = process.env.GEMINI_API_KEY || "MOCK_KEY";
-const ai = new GoogleGenAI({ apiKey });
+let _ai: GoogleGenAI | null = null;
+function getAI(): GoogleGenAI {
+  if (!_ai) {
+    const apiKey = process.env.GEMINI_API_KEY || "MOCK_KEY";
+    _ai = new GoogleGenAI({ apiKey });
+  }
+  return _ai;
+}
+
 
 export const analyzeDocument = functions.region('europe-west1')
   .runWith({ timeoutSeconds: 300, memory: '1GB' })
@@ -121,7 +128,7 @@ Classe chaque opération en type fixe, variable ou virement/épargne.`;
 
 
     // 3. Appeler Gemini avec Structure Outputs
-    const result = await ai.models.generateContent({
+    const result = await getAI().models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [
         {
@@ -211,7 +218,7 @@ Ne fais aucune mention de la TVA.`;
       }
     };
 
-    const result = await ai.models.generateContent({
+    const result = await getAI().models.generateContent({
       model: 'gemini-2.5-pro',
       contents: prompt,
       config: {
@@ -278,7 +285,7 @@ Transactions Ã  traiter : ${JSON.stringify(transactions)}`;
       }
     };
 
-    const result = await ai.models.generateContent({
+    const result = await getAI().models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
