@@ -19,7 +19,8 @@ import {
   Pencil,
   RotateCcw,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Key
 } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -27,6 +28,7 @@ import { Badge } from '../../components/ui/badge';
 import { BankFlowCharts } from '../../components/BankFlowCharts';
 import { useTransactions } from '../../context/TransactionsContext';
 import { getActiveAccountId } from '../../lib/userUtils';
+import { categorizeWithGemini, getGeminiApiKey } from '../../lib/geminiService';
 
 import { 
   CATEGORIES, 
@@ -123,6 +125,11 @@ export const BankStatements: React.FC = () => {
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Gemini Generative AI states
+  const [isEnhancingWithGemini, setIsEnhancingWithGemini] = useState(false);
+  const [isGeminiKeyModalOpen, setIsGeminiKeyModalOpen] = useState(false);
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState(() => getGeminiApiKey());
+
   // Form state for manual transaction
   const [manualTx, setManualTx] = useState({
     date: new Date().toISOString().substring(0, 10),
@@ -215,6 +222,14 @@ export const BankStatements: React.FC = () => {
       : monthScopedTransactions.filter(t => t.account === selectedAccount);
 
     return calculateSubscriptionSummary(scopedTxs);
+  }, [monthScopedTransactions, selectedAccount]);
+
+  // Unrecognized transactions for the current period (categorized as 'Autre')
+  const unclassifiedTransactions = useMemo(() => {
+    const scopedTxs = selectedAccount === 'ALL'
+      ? monthScopedTransactions
+      : monthScopedTransactions.filter(t => t.account === selectedAccount);
+    return scopedTxs.filter(t => t.category === 'Autre');
   }, [monthScopedTransactions, selectedAccount]);
 
   // Filtered & Searched Transaction List for the table
@@ -410,6 +425,82 @@ export const BankStatements: React.FC = () => {
         type: 'error',
         message: "Erreur lors de l'analyse automatique des transactions."
       });
+    }
+  };
+
+  // Google Gemini Generative AI Categorization Fallback
+  const handleGeminiCategorization = async () => {
+    const targets = selectedTxIds.size > 0
+      ? monthScopedTransactions.filter(t => selectedTxIds.has(t.id) && t.category === 'Autre')
+      : monthScopedTransactions.filter(t => t.category === 'Autre');
+
+    if (targets.length === 0) {
+      setNotification({
+        type: 'info',
+        message: 'Toutes les opérations visibles sont déjà catégorisées avec précision.'
+      });
+      return;
+    }
+
+    const currentKey = getGeminiApiKey();
+    if (!currentKey) {
+      setIsGeminiKeyModalOpen(true);
+      return;
+    }
+
+    setIsEnhancingWithGemini(true);
+    try {
+      const descriptions = targets.map(t => t.rawLabel || t.description);
+      const categoryMap = await categorizeWithGemini(descriptions);
+
+      const accountId = getActiveAccountId();
+      const batch = writeBatch(db);
+      let updatedCount = 0;
+
+      targets.forEach(tx => {
+        const raw = tx.rawLabel || tx.description;
+        const clean = tx.cleanLabel || tx.description;
+        const assignedCat = categoryMap[raw] || categoryMap[clean] || categoryMap[tx.description];
+
+        if (assignedCat && CATEGORIES.includes(assignedCat)) {
+          const newFlow = classifyFlowType(assignedCat, tx.amount, raw);
+          const docRef = doc(db, `users/${accountId}/transactions`, tx.id);
+          batch.update(docRef, {
+            category: assignedCat,
+            flowType: newFlow,
+            nature: newFlow === 'FIXED_EXPENSE' ? 'fixe' : newFlow === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+            confidence: 'high',
+            aiStatus: 'gemini_enhanced',
+            updatedAt: new Date().toISOString()
+          });
+          updatedCount++;
+        }
+      });
+
+      if (updatedCount > 0) {
+        await batch.commit();
+        setSelectedTxIds(new Set());
+        setNotification({
+          type: 'success',
+          message: `${updatedCount} opération${updatedCount > 1 ? 's' : ''} analysée${updatedCount > 1 ? 's' : ''} et catégorisée${updatedCount > 1 ? 's' : ''} avec succès par Google Gemini !`
+        });
+      } else {
+        setNotification({
+          type: 'info',
+          message: 'Gemini n\'a pas trouvé de correspondance catégorielle certaine pour ces libellés.'
+        });
+      }
+    } catch (err: any) {
+      console.error('Erreur catégorisation Gemini:', err);
+      if (err?.message?.includes('Clé API') || err?.message?.includes('API_KEY') || err?.message?.includes('Google AI Studio')) {
+        setIsGeminiKeyModalOpen(true);
+      }
+      setNotification({
+        type: 'error',
+        message: err?.message || "Erreur lors de l'appel à Google Gemini."
+      });
+    } finally {
+      setIsEnhancingWithGemini(false);
     }
   };
 
@@ -1216,6 +1307,61 @@ export const BankStatements: React.FC = () => {
         selectedMonthName={selectedMonth === 'all' ? 'Toutes périodes' : formatMonthLabel(selectedMonth)}
       />
 
+      {/* Google Gemini Generative AI Enhancement Banner */}
+      {unclassifiedTransactions.length > 0 && (
+        <Card className="glass-card p-5 border border-violet-500/30 bg-gradient-to-r from-violet-950/25 via-background to-indigo-950/25 rounded-2xl shadow-md transition-all hover:border-violet-500/50">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 rounded-2xl bg-violet-500/15 text-violet-400 border border-violet-500/30 flex-shrink-0 mt-0.5">
+                <Sparkles className={`w-5 h-5 ${isEnhancingWithGemini ? 'animate-spin text-violet-300' : 'animate-pulse'}`} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base font-bold text-foreground flex items-center gap-1.5">
+                    Enrichissement IA Google Gemini
+                  </h3>
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-ping" />
+                    {unclassifiedTransactions.length} opération{unclassifiedTransactions.length > 1 ? 's' : ''} non catégorisée{unclassifiedTransactions.length > 1 ? 's' : ''}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
+                  Le modèle génératif Google Gemini 1.5 Flash analyse vos libellés bancaires non reconnus pour les affecter avec précision à la bonne catégorie budgétaire.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <Button
+                onClick={handleGeminiCategorization}
+                disabled={isEnhancingWithGemini}
+                className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-xs px-4 py-2 rounded-xl shadow-md shadow-violet-500/20 hover:shadow-violet-500/30 transition-all flex items-center gap-2"
+              >
+                {isEnhancingWithGemini ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Analyse Gemini en cours...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Catégoriser avec Gemini ({unclassifiedTransactions.length})</span>
+                  </>
+                )}
+              </Button>
+
+              <button
+                onClick={() => setIsGeminiKeyModalOpen(true)}
+                className="p-2 rounded-xl border border-border/60 hover:border-violet-500/40 text-muted-foreground hover:text-foreground bg-card/40 transition-colors"
+                title="Configurer la clé API Google Gemini"
+              >
+                <Key className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Interactive Control Bar */}
       <Card className="glass-card p-4 border border-border/60">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1267,10 +1413,26 @@ export const BankStatements: React.FC = () => {
               variant="outline"
               onClick={handleAutoCategorizeSelected}
               className="flex items-center gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/10"
-              title="L'IA analyse tous les libellés sans catégorie ou les lignes sélectionnées"
+              title="L'IA heuristique analyse tous les libellés sans catégorie ou les lignes sélectionnées"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{selectedTxIds.size > 0 ? `Auto-catégoriser (${selectedTxIds.size})` : "Recatégoriser par l'IA"}</span>
+              <span>{selectedTxIds.size > 0 ? `Auto-catégoriser (${selectedTxIds.size})` : "Heuristique"}</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleGeminiCategorization}
+              disabled={isEnhancingWithGemini}
+              className="flex items-center gap-1.5 text-xs text-violet-400 border-violet-500/40 hover:bg-violet-500/10 transition-colors"
+              title="Catégorisation sémantique par IA générative Google Gemini"
+            >
+              {isEnhancingWithGemini ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              <span>Gemini IA</span>
             </Button>
 
             {selectedTxIds.size > 0 && (
@@ -1845,6 +2007,89 @@ export const BankStatements: React.FC = () => {
                 </Button>
               </div>
             </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Gemini API Key Configuration Modal */}
+      {isGeminiKeyModalOpen && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="glass-card w-full max-w-md p-6 border border-border/80 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-violet-500/15 text-violet-400 border border-violet-500/30">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Clé API Google Gemini</h3>
+                  <p className="text-xs text-muted-foreground">Catégorisation sémantique générative</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsGeminiKeyModalOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <div className="text-xs text-muted-foreground leading-relaxed">
+                Obtenez gratuitement une clé API en quelques secondes sur{' '}
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-violet-400 underline hover:text-violet-300 font-semibold inline-flex items-center gap-1"
+                >
+                  Google AI Studio ↗
+                </a>
+                . Elle sera sauvegardée localement dans votre navigateur pour vos futures analyses.
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Clé API (VITE_GEMINI_API_KEY)</label>
+                <input
+                  type="password"
+                  value={geminiApiKeyInput}
+                  onChange={e => setGeminiApiKeyInput(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-violet-500/40 text-foreground font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsGeminiKeyModalOpen(false)}
+                  className="text-xs"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const trimmed = geminiApiKeyInput.trim();
+                    if (trimmed) {
+                      localStorage.setItem('cashpilot_gemini_api_key', trimmed);
+                      setIsGeminiKeyModalOpen(false);
+                      setNotification({
+                        type: 'success',
+                        message: 'Clé API Gemini enregistrée avec succès !'
+                      });
+                      handleGeminiCategorization();
+                    } else {
+                      localStorage.removeItem('cashpilot_gemini_api_key');
+                      setIsGeminiKeyModalOpen(false);
+                    }
+                  }}
+                  className="bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold"
+                >
+                  Enregistrer & Lancer
+                </Button>
+              </div>
+            </div>
           </Card>
         </div>
       )}

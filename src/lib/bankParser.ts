@@ -24,21 +24,23 @@ export interface BankTransaction {
 export const CATEGORIES = [
   'Salaire & Revenus',
   'Aides & Allocations',
+  'Virement Reçu (Proches)',
   'Logement & Énergie',
-  'Logement & Loyer',
   'Assurances',
   'Abonnements & Télécom',
-  'Abonnements & Services',
   'Alimentation & Courses',
   'Transports & Carburant',
-  'Transports & Véhicule',
   'Restaurants & Sorties',
-  'Restaurants & Loisirs',
   'Shopping & Maison',
+  'Loisirs & Activités',
   'Santé',
-  'Épargne & Investissement',
-  'Virement Interne',
+  'Impôts & Amendes',
+  'Paiement fractionné',
   'Frais bancaires',
+  'Remboursement Carte (Amex)',
+  'Épargne & Investissement',
+  'Virements Famille & Proches',
+  'Retrait Espèces',
   'Autre'
 ];
 
@@ -57,24 +59,12 @@ export function detectBankName(csvContent: string): string {
   ) {
     return 'Société Générale';
   }
-  if (lower.includes('fortuneo') || lower.includes('ftno')) {
-    return 'Fortuneo';
-  }
-  if (lower.includes('revolut')) {
-    return 'Revolut';
-  }
-  if (lower.includes('bnp paribas') || lower.includes('hellobank')) {
-    return 'BNP Paribas';
-  }
-  if (lower.includes('credit agricole') || lower.includes('crédit agricole') || lower.includes('ca-')) {
-    return 'Crédit Agricole';
-  }
-  if (lower.includes('bourso') || lower.includes('boursorama')) {
-    return 'BoursoBank';
-  }
-  if (lower.includes('n26')) {
-    return 'N26';
-  }
+  if (lower.includes('fortuneo') || lower.includes('ftno')) return 'Fortuneo';
+  if (lower.includes('revolut')) return 'Revolut';
+  if (lower.includes('bnp paribas') || lower.includes('hellobank')) return 'BNP Paribas';
+  if (lower.includes('credit agricole') || lower.includes('crédit agricole') || lower.includes('ca-')) return 'Crédit Agricole';
+  if (lower.includes('bourso') || lower.includes('boursorama')) return 'BoursoBank';
+  if (lower.includes('n26')) return 'N26';
   return 'Compte Courant';
 }
 
@@ -91,12 +81,13 @@ export function cleanMerchantDescription(raw: string): string {
   clean = clean.replace(/^ACHAT\s+(?:PAR\s+)?CARTE\s+DU\s+\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s*/i, '');
   clean = clean.replace(/^ACHAT\s+CB\s+(?:\d{2}\/\d{2}\s+)?/i, '');
   clean = clean.replace(/^PAIEMENT\s+CB\s+(?:\d{4}|\d{2}\/\d{2})?\s*/i, '');
-  clean = clean.replace(/^CARTE\s+X\d{4}\s+\d{2}\/\d{2}\s+/i, '');
+  clean = clean.replace(/^CARTE\s+X\d{4}\s+(?:RETRAIT\s+DAB\s+)?\d{2}\/\d{2}\s*(?:\d{2}[hH:]\d{2}\s*)?/i, '');
   clean = clean.replace(/^CARTE\s+(?:DU\s+)?\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s*(?:CB)?\s*/i, '');
   clean = clean.replace(/^CB\s+/i, '');
 
   clean = clean.replace(/^\d+\s+VIR\s+(?:EUROPEEN|INSTANTANE)?\s*(?:EMIS|RECU)?\s*(?:LOGITEL)?\s*(?:POUR|DE)?\s*:\s*/i, '');
   clean = clean.replace(/^PRELEVEMENT\s+(?:EUROPEEN|SEPA)?\s*\d*\s*(?:DE|POUR)?\s*:\s*/i, '');
+  clean = clean.replace(/^PRLV\s+EUROPEEN\s+ACC\s+\d*\s*(?:DE|POUR)?\s*:\s*/i, '');
   clean = clean.replace(/^VIR\s+(?:INST\s+RE|INST\s+EMIS|INST|RECU|EMIS|SEPA)\s*\d*\s*(?:WERO)?\s*(?:DE|POUR)?\s*:\s*/i, '');
   clean = clean.replace(/^VIREMENT\s+(?:SEPA|INSTANTANE|EMIS|RECU)?\s*(?:DE|POUR|EN VOTRE FAVEUR DE)?\s*:\s*/i, '');
   clean = clean.replace(/^PRLV\s+SEPA\s*(?:DE)?\s*:?\s*/i, '');
@@ -121,6 +112,7 @@ export function cleanMerchantDescription(raw: string): string {
   clean = clean.replace(/\s+DESTINATAIRE:\s*.*$/i, '');
   clean = clean.replace(/\s+ICS:\s*.*$/i, '');
   clean = clean.replace(/\s+RUM:\s*.*$/i, '');
+  clean = clean.replace(/\s+\d{2}\s+\d{2}\s+BQ\s+\w+\s+CPT\s+\w+.*$/i, '');
   clean = clean.replace(/\s+\d{5}\s+[A-Z\s-]+$/i, '');
 
   const result = clean.replace(/\s+/g, ' ').trim();
@@ -153,8 +145,35 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     .replace(/[\u0300-\u036f]/g, '');
   const cleanDesc = cleanMerchantDescription(rawDescription);
 
+  // 0. Moteur de règles personnalisées dynamiques (Lecture depuis localStorage)
+  try {
+    if (typeof window !== 'undefined') {
+      const savedRules = localStorage.getItem('cashpilot_custom_rules');
+      if (savedRules) {
+        const rules = JSON.parse(savedRules);
+        if (Array.isArray(rules)) {
+          for (const rule of rules) {
+            if (rule && rule.keyword && norm.includes(rule.keyword.toLowerCase())) {
+              return {
+                cleanDesc,
+                flowType: rule.flowType,
+                category: rule.category,
+                isSubscription: rule.flowType === 'FIXED_EXPENSE' || Boolean(rule.isSubscription)
+              };
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error reading custom rules from localStorage:', e);
+  }
+
   // 1. Mouvements internes, virements compte à compte & épargne (Neutralisés du reste à vivre)
   if (
+    norm.includes('drame kouroufia') || 
+    norm.includes('kouroufia fortuneo') || 
+    norm.includes('virement avec fortuneo') ||
     norm.includes('fortuneo') ||
     norm.includes('boursorama') ||
     norm.includes('boursobank') ||
@@ -178,9 +197,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('compte a terme') ||
     norm.includes('assurance vie') ||
     norm.includes('assurance-vie') ||
-    norm.includes('drame kouroufia') ||
-    norm.includes('kouroufia fortuneo') ||
-    norm.includes('virement avec fortuneo') ||
+    norm.includes('livret') ||
     norm.includes('virement interne') ||
     norm.includes('virement de compte') ||
     norm.includes('compte a compte') ||
@@ -198,7 +215,67 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     };
   }
 
-  // 2. Montants positifs -> Revenus & Aides
+  // 2. Virements Famille & Proches (Règles spécifiques utilisateur)
+  const isFamily = ['naistaba', 'mahawa', 'mohame', 'karamokho', 'nayssa', 'el hani', 'beauf', 'drame'].some(k => norm.includes(k));
+  if (isFamily) {
+    if (amount > 0) {
+      return {
+        cleanDesc: cleanDesc || 'Virement Reçu (Proches)',
+        flowType: 'INCOME',
+        category: 'Virement Reçu (Proches)',
+        isSubscription: false
+      };
+    } else {
+      return {
+        cleanDesc: cleanDesc || "Envoi d'argent (Proches)",
+        flowType: 'VARIABLE_EXPENSE',
+        category: 'Virements Famille & Proches',
+        isSubscription: false
+      };
+    }
+  }
+
+  // 3. Impôts, Amendes & SATD
+  if (['amende', 'tresorerie', 'satd', 'impot', 'impôt', 'dgi', 'tresor public', 'dgfip'].some(k => norm.includes(k))) {
+    return {
+      cleanDesc: cleanDesc || 'Trésorerie / Amendes / Impôts',
+      flowType: 'VARIABLE_EXPENSE',
+      category: 'Impôts & Amendes',
+      isSubscription: false
+    };
+  }
+
+  // 4. Paiements fractionnés (Klarna, Alma, Oney) -> Traités en Charge Fixe
+  if (['klarna', 'alma', 'oney', 'clearpay', 'scalapay', 'paiement 3x', 'paiement 4x'].some(k => norm.includes(k))) {
+    return {
+      cleanDesc: cleanDesc || 'Paiement fractionné',
+      flowType: 'FIXED_EXPENSE',
+      category: 'Paiement fractionné',
+      isSubscription: true
+    };
+  }
+
+  // 5. Remboursement Carte American Express
+  if (['american express', 'amex'].some(k => norm.includes(k))) {
+    return {
+      cleanDesc: 'Remboursement American Express',
+      flowType: 'FIXED_EXPENSE',
+      category: 'Remboursement Carte (Amex)',
+      isSubscription: true
+    };
+  }
+
+  // 6. Retraits d'espèces en distributeur
+  if (['retrait dab', 'retrait distributeur', 'retrait dab sg', 'retrait especes', 'retrait gab'].some(k => norm.includes(k))) {
+    return {
+      cleanDesc: cleanDesc || 'Retrait Espèces',
+      flowType: 'VARIABLE_EXPENSE',
+      category: 'Retrait Espèces',
+      isSubscription: false
+    };
+  }
+
+  // 7. Montants positifs -> Revenus & Aides
   if (amount > 0) {
     // Aides & Prestations sociales
     if (
@@ -221,7 +298,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
       norm.includes('aah') ||
       norm.includes('allocations familiales')
     ) {
-      return { cleanDesc: 'CAF (Allocations)', flowType: 'INCOME', category: 'Aides & Allocations', isSubscription: false };
+      return { cleanDesc: 'CAF (Allocations Familiales)', flowType: 'INCOME', category: 'Aides & Allocations', isSubscription: false };
     }
     if (
       norm.includes('cnav') ||
@@ -256,7 +333,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
       return { cleanDesc: cleanDesc || 'Remboursement Santé / Mutuelle', flowType: 'INCOME', category: 'Santé', isSubscription: false };
     }
 
-    // Salaires & Virements reçus
+    // Salaires & Rémunérations
     if (
       norm.includes('salaire') ||
       norm.includes('remuneration') ||
@@ -268,10 +345,10 @@ export function classifyTransaction(rawDescription: string, amount: number): {
       return { cleanDesc: cleanDesc || 'Salaire & Revenus', flowType: 'INCOME', category: 'Salaire & Revenus', isSubscription: false };
     }
 
-    return { cleanDesc: cleanDesc || 'Virement / Revenu Reçu', flowType: 'INCOME', category: 'Salaire & Revenus', isSubscription: false };
+    return { cleanDesc: cleanDesc || 'Revenu / Encaissement', flowType: 'INCOME', category: 'Salaire & Revenus', isSubscription: false };
   }
 
-  // 3. Charges Fixes & Abonnements (Montants négatifs)
+  // 8. Charges Fixes & Abonnements (Montants négatifs)
   // Logement & Énergie
   if (
     norm.includes('totalenergies') ||
@@ -286,7 +363,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('sowee') ||
     norm.includes('gaz de france')
   ) {
-    return { cleanDesc: cleanDesc || 'Énergie (Électricité & Gaz)', flowType: 'FIXED_EXPENSE', category: 'Logement & Énergie', isSubscription: true };
+    return { cleanDesc: 'TotalEnergies', flowType: 'FIXED_EXPENSE', category: 'Logement & Énergie', isSubscription: true };
   }
   if (
     norm.includes('veolia') ||
@@ -314,12 +391,13 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('copropriete') ||
     norm.includes('charges copro')
   ) {
-    return { cleanDesc: cleanDesc || 'Loyer & Charges Immobilières', flowType: 'FIXED_EXPENSE', category: 'Logement & Énergie', isSubscription: true };
+    return { cleanDesc: cleanDesc || 'Loyer & Charges', flowType: 'FIXED_EXPENSE', category: 'Logement & Énergie', isSubscription: true };
   }
 
   // Assurances
   if (
     norm.includes('sogessur') ||
+    norm.includes('sogecap') ||
     norm.includes('groupama') ||
     norm.includes('macif') ||
     norm.includes('maif') ||
@@ -341,7 +419,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('assurance') ||
     norm.includes('prevoyance')
   ) {
-    return { cleanDesc: cleanDesc || 'Assurance & Mutuelle', flowType: 'FIXED_EXPENSE', category: 'Assurances', isSubscription: true };
+    return { cleanDesc: cleanDesc || 'Assurance', flowType: 'FIXED_EXPENSE', category: 'Assurances', isSubscription: true };
   }
 
   // Abonnements Télécom, Numérique & Loisirs
@@ -351,6 +429,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('free telecom') ||
     norm.includes('free mobile') ||
     norm.includes('freebox') ||
+    norm.includes('free ') ||
     norm.includes('sfr') ||
     norm.includes('bouygues telecom') ||
     norm.includes('bouygues') ||
@@ -362,7 +441,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('lebara') ||
     norm.includes('lycamobile')
   ) {
-    return { cleanDesc: cleanDesc || 'Télécom & Internet', flowType: 'FIXED_EXPENSE', category: 'Abonnements & Télécom', isSubscription: true };
+    return { cleanDesc: cleanDesc || 'Abonnement Télécom', flowType: 'FIXED_EXPENSE', category: 'Abonnements & Télécom', isSubscription: true };
   }
   if (
     norm.includes('netflix') ||
@@ -407,7 +486,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('on air') ||
     norm.includes('salle de sport')
   ) {
-    return { cleanDesc: cleanDesc || 'Abonnement & Service Numérique', flowType: 'FIXED_EXPENSE', category: 'Abonnements & Télécom', isSubscription: true };
+    return { cleanDesc: cleanDesc || 'Service Numérique', flowType: 'FIXED_EXPENSE', category: 'Abonnements & Télécom', isSubscription: true };
   }
 
   // Frais Bancaires
@@ -416,6 +495,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('cotisation formule') ||
     norm.includes('cotisation jazz') ||
     norm.includes('cotisation sobrio') ||
+    norm.includes('cotisation') ||
     norm.includes('tenue de compte') ||
     norm.includes('frais tenue') ||
     norm.includes('commission d intervention') ||
@@ -423,12 +503,15 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('agios') ||
     norm.includes('frais bancaires') ||
     norm.includes('frais de rejet') ||
-    norm.includes('commission change')
+    norm.includes('commission change') ||
+    norm.includes('arrete 01') ||
+    norm.includes('jours debiteurs') ||
+    norm.includes('sobrio')
   ) {
     return { cleanDesc: cleanDesc || 'Frais Bancaires', flowType: 'FIXED_EXPENSE', category: 'Frais bancaires', isSubscription: false };
   }
 
-  // 4. Dépenses Variables (Consommation courante)
+  // 9. Dépenses Variables (Consommation courante)
   // Alimentation & Courses
   if (
     norm.includes('boucherie') ||
@@ -475,7 +558,11 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('superette') ||
     norm.includes('marche') ||
     norm.includes('supermarche') ||
-    norm.includes('alimentation')
+    norm.includes('alimentation') ||
+    norm.includes('coop') ||
+    norm.includes('migros') ||
+    norm.includes('migrolino') ||
+    norm.includes('comptoir de la vian')
   ) {
     return { cleanDesc: cleanDesc || 'Alimentation & Courses', flowType: 'VARIABLE_EXPENSE', category: 'Alimentation & Courses', isSubscription: false };
   }
@@ -485,216 +572,171 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('mcdonald') ||
     norm.includes('mcdo') ||
     norm.includes('burger king') ||
+    norm.includes('burger') ||
     norm.includes('kfc') ||
     norm.includes('quick') ||
     norm.includes('subway') ||
     norm.includes('five guys') ||
     norm.includes('kebab') ||
     norm.includes('bosphore') ||
+    norm.includes('dallmayr') ||
     norm.includes('tacos') ||
-    norm.includes('o\'tacos') ||
+    norm.includes("o'tacos") ||
     norm.includes('otacos') ||
     norm.includes('chamas') ||
     norm.includes('domino') ||
     norm.includes('pizza hut') ||
     norm.includes('pizza') ||
-    norm.includes('pizzeria') ||
-    norm.includes('sushi') ||
-    norm.includes('pitaya') ||
-    norm.includes('starbucks') ||
-    norm.includes('columbus') ||
-    norm.includes('dallmayr') ||
-    norm.includes('selecta') ||
     norm.includes('uber *eats') ||
     norm.includes('uber eats') ||
-    norm.includes('ubereats') ||
     norm.includes('deliveroo') ||
     norm.includes('just eat') ||
     norm.includes('restaurant') ||
     norm.includes('resto') ||
     norm.includes('brasserie') ||
     norm.includes('bistrot') ||
-    norm.includes('creperie') ||
-    norm.includes('grill') ||
-    norm.includes('buffalo grill') ||
-    norm.includes('cafe') ||
+    norm.includes('sushi') ||
+    norm.includes('wok') ||
+    norm.includes('traiteur') ||
+    norm.includes('starbucks') ||
+    norm.includes('columbus') ||
+    norm.includes('cafe ') ||
     norm.includes('bar ') ||
     norm.includes('pub ') ||
-    norm.includes('cinema') ||
-    norm.includes('ugc') ||
-    norm.includes('pathe') ||
-    norm.includes('gaumont') ||
-    norm.includes('bowling') ||
-    norm.includes('theatre') ||
-    norm.includes('spectacle') ||
-    norm.includes('concert')
+    norm.includes('ca va smasher') ||
+    norm.includes('koyao') ||
+    norm.includes('tasty crousty') ||
+    norm.includes('nouilles')
   ) {
-    return { cleanDesc: cleanDesc || 'Restaurant & Sortie', flowType: 'VARIABLE_EXPENSE', category: 'Restaurants & Sorties', isSubscription: false };
-  }
-
-  // Transports & Carburant
-  if (
-    norm.includes('totalenergies') ||
-    norm.includes('total access') ||
-    norm.includes('relais total') ||
-    norm.includes('total') ||
-    norm.includes('station bp') ||
-    norm.includes('bp ') ||
-    norm.includes('esso') ||
-    norm.includes('shell') ||
-    norm.includes('avia') ||
-    norm.includes('station u') ||
-    norm.includes('station leclerc') ||
-    norm.includes('carburant') ||
-    norm.includes('essence') ||
-    norm.includes('gazole') ||
-    norm.includes('peage') ||
-    norm.includes('autoroute') ||
-    norm.includes('vinci') ||
-    norm.includes('sanef') ||
-    norm.includes('aprr') ||
-    norm.includes('area') ||
-    norm.includes('cofiroute') ||
-    norm.includes('sapn') ||
-    norm.includes('sodi est') ||
-    norm.includes('sncf') ||
-    norm.includes('tgv') ||
-    norm.includes('ouigo') ||
-    norm.includes('ter') ||
-    norm.includes('trainline') ||
-    norm.includes('ratp') ||
-    norm.includes('idfm') ||
-    norm.includes('navigo') ||
-    norm.includes('air france') ||
-    norm.includes('easyjet') ||
-    norm.includes('ryanair') ||
-    norm.includes('transavia') ||
-    norm.includes('uber') ||
-    norm.includes('bolt') ||
-    norm.includes('taxi') ||
-    norm.includes('parking') ||
-    norm.includes('indigo') ||
-    norm.includes('q-park') ||
-    norm.includes('effia') ||
-    norm.includes('stationnement') ||
-    norm.includes('norauto') ||
-    norm.includes('feu vert') ||
-    norm.includes('speedy') ||
-    norm.includes('midas') ||
-    norm.includes('carter-cash') ||
-    norm.includes('carglass') ||
-    norm.includes('controle technique') ||
-    norm.includes('garage') ||
-    norm.includes('lavage')
-  ) {
-    return { cleanDesc: cleanDesc || 'Transport & Carburant', flowType: 'VARIABLE_EXPENSE', category: 'Transports & Carburant', isSubscription: false };
+    return { cleanDesc: cleanDesc || 'Restaurant & Rapide', flowType: 'VARIABLE_EXPENSE', category: 'Restaurants & Sorties', isSubscription: false };
   }
 
   // Shopping & Maison
   if (
+    norm.includes('pull and bear') ||
+    norm.includes('electro depot') ||
+    norm.includes('etam') ||
+    norm.includes('bricorama') ||
+    norm.includes('leroy merlin') ||
+    norm.includes('castorama') ||
+    norm.includes('brico') ||
+    norm.includes('manomano') ||
+    norm.includes('ikea') ||
+    norm.includes('conforama') ||
+    norm.includes('but ') ||
+    norm.includes('maisons du monde') ||
+    norm.includes('maison du monde') ||
+    norm.includes('action ') ||
+    norm.includes('action.') ||
+    norm.includes('gifi') ||
+    norm.includes('centrakor') ||
+    norm.includes('la foir fouille') ||
+    norm.includes('noz') ||
     norm.includes('amazon') ||
     norm.includes('cdiscount') ||
     norm.includes('aliexpress') ||
-    norm.includes('temu') ||
+    norm.includes('ali express') ||
     norm.includes('shein') ||
-    norm.includes('vinted') ||
-    norm.includes('leboncoin') ||
-    norm.includes('rakuten') ||
-    norm.includes('ebay') ||
-    norm.includes('leroy merlin') ||
-    norm.includes('castorama') ||
-    norm.includes('brico depot') ||
-    norm.includes('bricorama') ||
-    norm.includes('mr bricolage') ||
-    norm.includes('bricomarche') ||
-    norm.includes('bricolage') ||
-    norm.includes('ikea') ||
-    norm.includes('maisons du monde') ||
-    norm.includes('but') ||
-    norm.includes('conforama') ||
-    norm.includes('alinea') ||
-    norm.includes('gifi') ||
-    norm.includes('action') ||
-    norm.includes('foir fouille') ||
-    norm.includes('centrakor') ||
-    norm.includes('b&m') ||
-    norm.includes('noz') ||
-    norm.includes('stokomani') ||
-    norm.includes('jardiland') ||
-    norm.includes('truffaut') ||
-    norm.includes('botanic') ||
+    norm.includes('temu') ||
     norm.includes('fnac') ||
     norm.includes('darty') ||
     norm.includes('boulanger') ||
     norm.includes('apple store') ||
-    norm.includes('xiaomi') ||
     norm.includes('zara') ||
     norm.includes('h&m') ||
-    norm.includes('uniqlo') ||
-    norm.includes('mango') ||
     norm.includes('primark') ||
     norm.includes('kiabi') ||
     norm.includes('celio') ||
     norm.includes('jules') ||
     norm.includes('decathlon') ||
     norm.includes('intersport') ||
-    norm.includes('courir') ||
-    norm.includes('foot locker') ||
-    norm.includes('zalando') ||
-    norm.includes('asos') ||
     norm.includes('sephora') ||
     norm.includes('nocibe') ||
     norm.includes('marionnaud') ||
-    norm.includes('yves rocher') ||
-    norm.includes('tabac') ||
-    norm.includes('presse') ||
-    norm.includes('cultura')
+    norm.includes('xiaomi')
   ) {
     return { cleanDesc: cleanDesc || 'Shopping & Maison', flowType: 'VARIABLE_EXPENSE', category: 'Shopping & Maison', isSubscription: false };
   }
 
-  // Santé
+  // Loisirs & Activités
   if (
-    norm.includes('pharmacie') ||
-    norm.includes('pharma') ||
-    norm.includes('parapharmacie') ||
-    norm.includes('doctolib') ||
-    norm.includes('laboratoire') ||
-    norm.includes('labo') ||
-    norm.includes('analyse medicale') ||
-    norm.includes('dentiste') ||
-    norm.includes('orthodontiste') ||
-    norm.includes('ophtalmo') ||
-    norm.includes('opticien') ||
-    norm.includes('optique') ||
-    norm.includes('alain afflelou') ||
-    norm.includes('krys') ||
-    norm.includes('kine') ||
-    norm.includes('osteopathe') ||
-    norm.includes('medecin') ||
-    norm.includes('generaliste') ||
-    norm.includes('hopital') ||
-    norm.includes('clinique') ||
-    norm.includes('centre medical')
+    norm.includes('ile de tortuga') ||
+    norm.includes('montagne verte') ||
+    norm.includes('cinema') ||
+    norm.includes('ugc') ||
+    norm.includes('pathe') ||
+    norm.includes('gaumont') ||
+    norm.includes('theatre') ||
+    norm.includes('musee') ||
+    norm.includes('parc') ||
+    norm.includes('bowling') ||
+    norm.includes('laser') ||
+    norm.includes('escape game') ||
+    norm.includes('zoo') ||
+    norm.includes('aquarium')
   ) {
-    return { cleanDesc: cleanDesc || 'Santé & Soins', flowType: 'VARIABLE_EXPENSE', category: 'Santé', isSubscription: false };
+    return { cleanDesc: cleanDesc || 'Loisirs & Activités', flowType: 'VARIABLE_EXPENSE', category: 'Loisirs & Activités', isSubscription: false };
   }
 
-  // Heuristiques sémantiques supplémentaires sur les racines de mots
-  if (norm.includes('food') || norm.includes('snack') || norm.includes('crepe') || norm.includes('pizza') || norm.includes('burger')) {
-    return { cleanDesc: cleanDesc || 'Restauration', flowType: 'VARIABLE_EXPENSE', category: 'Restaurants & Sorties', isSubscription: false };
+  // Transports & Véhicule
+  if (
+    norm.includes('sodi est') ||
+    norm.includes('carter-cash') ||
+    norm.includes('total') ||
+    norm.includes('essence') ||
+    norm.includes('carburant') ||
+    norm.includes('station') ||
+    norm.includes('shell') ||
+    norm.includes('esso') ||
+    norm.includes('bp ') ||
+    norm.includes('avia') ||
+    norm.includes('sapn') ||
+    norm.includes('peage') ||
+    norm.includes('aprr') ||
+    norm.includes('sanef') ||
+    norm.includes('vinci autoroutes') ||
+    norm.includes('sncf') ||
+    norm.includes('ratp') ||
+    norm.includes('train') ||
+    norm.includes('ter') ||
+    norm.includes('tgv') ||
+    norm.includes('blablacar') ||
+    norm.includes('uber') ||
+    norm.includes('bolt') ||
+    norm.includes('taxi') ||
+    norm.includes('amb horodateur') ||
+    norm.includes('relais de chamarett') ||
+    norm.includes('petro belmont') ||
+    norm.includes('horodateur') ||
+    norm.includes('stationnement') ||
+    norm.includes('parking') ||
+    norm.includes('garage') ||
+    norm.includes('norauto') ||
+    norm.includes('feu vert') ||
+    norm.includes('point s') ||
+    norm.includes('midas') ||
+    norm.includes('speedy') ||
+    norm.includes('controle technique')
+  ) {
+    return { cleanDesc: cleanDesc || 'Transport & Véhicule', flowType: 'VARIABLE_EXPENSE', category: 'Transports & Carburant', isSubscription: false };
   }
-  if (norm.includes('marche') || norm.includes('pain') || norm.includes('viande') || norm.includes('bio ') || norm.includes('super')) {
-    return { cleanDesc: cleanDesc || 'Alimentation & Courses', flowType: 'VARIABLE_EXPENSE', category: 'Alimentation & Courses', isSubscription: false };
-  }
-  if (norm.includes('station') || norm.includes('garage') || norm.includes('park')) {
-    return { cleanDesc: cleanDesc || 'Transports', flowType: 'VARIABLE_EXPENSE', category: 'Transports & Carburant', isSubscription: false };
-  }
-  if (norm.includes('mode') || norm.includes('deco') || norm.includes('meuble') || norm.includes('brico')) {
-    return { cleanDesc: cleanDesc || 'Achats & Maison', flowType: 'VARIABLE_EXPENSE', category: 'Shopping & Maison', isSubscription: false };
-  }
-  if (norm.includes('sante') || norm.includes('medical') || norm.includes('soin')) {
-    return { cleanDesc: cleanDesc || 'Santé', flowType: 'VARIABLE_EXPENSE', category: 'Santé', isSubscription: false };
+
+  // Santé & Pharmacie
+  if (
+    norm.includes('doctolib') ||
+    norm.includes('pharmacie') ||
+    norm.includes('phie du') ||
+    norm.includes('laboratoire') ||
+    norm.includes('dentiste') ||
+    norm.includes('medecin') ||
+    norm.includes('stancer*grace') ||
+    norm.includes('opticien') ||
+    norm.includes('kine') ||
+    norm.includes('osteo') ||
+    norm.includes('hopital') ||
+    norm.includes('clinique')
+  ) {
+    return { cleanDesc: cleanDesc || 'Santé & Pharmacie', flowType: 'VARIABLE_EXPENSE', category: 'Santé', isSubscription: false };
   }
 
   return { cleanDesc: cleanDesc || rawDescription, flowType: 'VARIABLE_EXPENSE', category: 'Autre', isSubscription: false };
@@ -753,7 +795,7 @@ export function sanitizeHeader(header: string): string {
   return String(header)
     .trim()
     .toLowerCase()
-    .replace(/^["']|["']$/g, '')
+    .replace(/^[\"']|[\"']$/g, '')
     // Remplacement des caractères corrompus d'encodage (ex: libell -> libelle)
     .replace(/[\uFFFD\u00EF\u00BF\u00BD]/g, 'e')
     .normalize('NFD')
@@ -769,7 +811,7 @@ export function sanitizeHeader(header: string): string {
 export function parseCSVBankStatement(csvContent: string): { bankName: string; transactions: BankTransaction[] } {
   const bankName = detectBankName(csvContent);
   
-  // 1. Parsing robuste avec PapaParse (gestion des virgules, points-virgules, guillemets et sauts de ligne)
+  // 1. Parsing robuste avec PapaParse (gestion des délimiteurs ;, virgules, tabulations, guillemets et sauts de ligne)
   const parsed = Papa.parse(csvContent.trim(), {
     skipEmptyLines: true
   });
@@ -803,7 +845,7 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
     }
   });
 
-  // Sélection de la date de l'opération (priorité à date opération / comptabilisation)
+  // Sélection de la date de l'opération (priorité à date opération / transaction / comptabilisation)
   let dateIdx = headers.findIndex(h => 
     h.includes('date operation') || 
     h.includes('date transaction') || 
@@ -814,7 +856,7 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
     dateIdx = headers.findIndex(h => h.includes('date'));
   }
   
-  // 3. RÈGLE DEMANDÉE PAR L'UTILISATEUR :
+  // 3. RÈGLE CRITIQUE UTILISATEUR :
   // Priorité absolue au « Libellé complet » pour capturer le vrai marchand
   // Et NE JAMAIS se focaliser sur « Catégorie » ou « Sous-Catégorie » de la banque
   let fullDescIdx = headers.findIndex(h => {

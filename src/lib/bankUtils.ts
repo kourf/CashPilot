@@ -1,6 +1,6 @@
-import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, classifyTransaction, detectBankName, cleanMerchantDescription } from './bankParser';
+import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, classifyTransaction, detectBankName, cleanMerchantDescription, CATEGORIES } from './bankParser';
 
-export { formatMonthLabel, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName, cleanMerchantDescription };
+export { formatMonthLabel, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName, cleanMerchantDescription, CATEGORIES };
 export type FlowType = 'INCOME' | 'FIXED_EXPENSE' | 'VARIABLE_EXPENSE' | 'SAVINGS_TRANSFER';
 
 export interface BankTransaction {
@@ -23,27 +23,6 @@ export interface BankTransaction {
   cleanLabel?: string;
   [key: string]: any;
 }
-
-export const CATEGORIES = [
-  'Salaire & Revenus',
-  'Aides & Allocations',
-  'Logement & Énergie',
-  'Logement & Loyer',
-  'Assurances',
-  'Abonnements & Télécom',
-  'Abonnements & Services',
-  'Alimentation & Courses',
-  'Transports & Carburant',
-  'Transports & Véhicule',
-  'Restaurants & Sorties',
-  'Restaurants & Loisirs',
-  'Shopping & Maison',
-  'Santé',
-  'Épargne & Investissement',
-  'Virement Interne',
-  'Frais bancaires',
-  'Autre'
-] as const;
 
 export interface CategorizationResult {
   category: string;
@@ -117,7 +96,12 @@ export function classifyFlowType(category: string, amount: number, label: string
     return 'SAVINGS_TRANSFER';
   }
 
-  // 2. Revenus & Aides
+  // 2. Virements Famille & Proches
+  if (normCat.includes('proche') || normCat.includes('famille')) {
+    return amount > 0 ? 'INCOME' : 'VARIABLE_EXPENSE';
+  }
+
+  // 3. Revenus & Aides
   if (
     amount > 0 ||
     normCat.includes('salaire') ||
@@ -135,7 +119,7 @@ export function classifyFlowType(category: string, amount: number, label: string
     return 'INCOME';
   }
 
-  // 3. Charges fixes
+  // 4. Charges fixes & Abonnements & Paiements fractionnés & AMEX
   if (
     normCat.includes('logement') ||
     normCat.includes('loyer') ||
@@ -144,8 +128,8 @@ export function classifyFlowType(category: string, amount: number, label: string
     normCat.includes('telecom') ||
     normCat.includes('assurance') ||
     normCat.includes('frais bancaires') ||
-    normCat.includes('impôt') ||
-    normCat.includes('impot') ||
+    normCat.includes('fractionn') ||
+    normCat.includes('amex') ||
     normCat.includes('energie') ||
     normCat.includes('énergie') ||
     normLabel.includes('totalenergies') ||
@@ -157,12 +141,15 @@ export function classifyFlowType(category: string, amount: number, label: string
     normLabel.includes('orange') ||
     normLabel.includes('la poste mobile') ||
     normLabel.includes('netflix') ||
-    normLabel.includes('spotify')
+    normLabel.includes('spotify') ||
+    normLabel.includes('klarna') ||
+    normLabel.includes('alma') ||
+    normLabel.includes('american express')
   ) {
     return 'FIXED_EXPENSE';
   }
 
-  // 4. Dépenses variables / courantes par défaut
+  // 5. Dépenses variables / courantes par défaut (incluant Impôts & Amendes, Retrait Espèces, Loisirs & Activités, Alimentation, Transports, Shopping, Santé, Autre)
   return 'VARIABLE_EXPENSE';
 }
 
