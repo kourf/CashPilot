@@ -18,10 +18,10 @@ export async function categorizeWithGemini(descriptions: string[]): Promise<Reco
   if (!descriptions || descriptions.length === 0) return {};
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   // Dédoublonner les libellés pour optimiser les tokens
   const uniqueDescriptions = Array.from(new Set(descriptions.map(d => d.trim()).filter(Boolean))).slice(0, 40);
+  if (uniqueDescriptions.length === 0) return {};
 
   const prompt = `
 Tu es un expert financier. Ta mission est de catégoriser des libellés bancaires isolés.
@@ -40,15 +40,25 @@ Exemple de format attendu :
 `;
 
   try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: { responseMimeType: 'application/json' }
+    });
     const result = await model.generateContent(prompt);
     const responseText = result.response.text();
     const jsonStr = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
     return JSON.parse(jsonStr);
   } catch (error: any) {
-    console.error('Erreur d\'analyse Gemini:', error);
-    if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid')) {
-      throw new Error('Clé API Gemini non valide. Vérifiez votre clé Google AI Studio.');
+    console.warn('Erreur Gemini 2.5 Flash, repli automatique...', error);
+    try {
+      const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const fallbackResult = await fallbackModel.generateContent(prompt);
+      const responseText = fallbackResult.response.text();
+      const jsonStr = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      return JSON.parse(jsonStr);
+    } catch (fallbackError) {
+      console.error('Erreur finale Gemini:', fallbackError);
+      throw new Error('Échec de la communication avec l\'API Gemini.');
     }
-    throw new Error('Échec de la communication avec l\'API Gemini. Vérifiez votre clé API ou votre connexion.');
   }
 }
