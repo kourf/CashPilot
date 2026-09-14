@@ -42,6 +42,7 @@ import {
   cleanMerchantDescription,
   calculateSubscriptionSummary,
   formatMonthLabel,
+  formatDateFR,
   type FlowType, 
   type BankTransaction,
   type SubscriptionSummary
@@ -1553,8 +1554,8 @@ export const BankStatements: React.FC = () => {
                         />
                       </td>
 
-                      <td className="py-3.5 px-4 whitespace-nowrap text-muted-foreground font-mono text-xs">
-                        {tx.date}
+                      <td className="py-3.5 px-4 whitespace-nowrap text-muted-foreground font-medium text-xs">
+                        {formatDateFR(tx.date)}
                       </td>
 
                       {/* Account Badge with Quick Filter */}

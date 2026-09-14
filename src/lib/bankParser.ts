@@ -761,6 +761,48 @@ export function formatMonthLabel(monthKey: string): string {
 }
 
 /**
+ * Formatage d'une date en format français lisible (ex: '2026-09-11' -> '11 sept. 2026')
+ */
+export function formatDateFR(dateStr?: string | null): string {
+  if (!dateStr) return '-';
+  try {
+    const trimmed = String(dateStr).trim();
+    // Format YYYY-MM-DD ou YYYY/MM/DD
+    const isoMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (isoMatch) {
+      const year = parseInt(isoMatch[1], 10);
+      const month = parseInt(isoMatch[2], 10) - 1;
+      const day = parseInt(isoMatch[3], 10);
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+    }
+
+    // Format DD/MM/YYYY ou DD-MM-YYYY
+    const frMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (frMatch) {
+      const day = parseInt(frMatch[1], 10);
+      const month = parseInt(frMatch[2], 10) - 1;
+      const year = parseInt(frMatch[3], 10);
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+    }
+
+    // Fallback standard Date parse
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+  } catch (e) {
+    // Ignorer
+  }
+  return String(dateStr);
+}
+
+/**
  * Fonction de catégorisation compatible avec les anciens appels
  */
 export function categorizeTransaction(

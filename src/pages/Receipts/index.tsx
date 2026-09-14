@@ -18,6 +18,7 @@ import { httpsCallable } from 'firebase/functions';
 import { collection, writeBatch, doc } from 'firebase/firestore';
 import { cn } from '../../lib/utils';
 import { getActiveAccountId } from '../../lib/userUtils';
+import { formatDateFR } from '../../lib/bankUtils';
 
 
 export default function Receipts() {
@@ -268,7 +269,7 @@ export default function Receipts() {
                   <Store size={14} className="text-primary" /> {extractedData.storeName || "Supermarché"}
                 </span>
                 <span>•</span>
-                <span>Date : {extractedData.date || "Date inconnue"}</span>
+                <span>Date : {formatDateFR(extractedData.date)}</span>
                 <span>•</span>
                 <span className="font-bold text-foreground">Total : {extractedData.total} €</span>
               </div>

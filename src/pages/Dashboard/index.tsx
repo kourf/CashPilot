@@ -24,6 +24,7 @@ import {
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { calculateKpis, filterByMonth, formatMonthLabel, buildSankeyData, buildCategoryBreakdown } from '../../lib/kpiUtils';
+import { formatDateFR } from '../../lib/bankUtils';
 import { useTransactions } from '../../context/TransactionsContext';
 
 export default function Dashboard() {
@@ -554,7 +555,7 @@ export default function Dashboard() {
                           <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
                             <span className="font-medium">{tx.category || 'Autres'}</span>
                             <span>•</span>
-                            <span>{tx.date}</span>
+                            <span>{formatDateFR(tx.date)}</span>
                           </p>
                         </div>
                       </div>

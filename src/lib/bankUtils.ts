@@ -1,6 +1,6 @@
-import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, classifyTransaction, detectBankName, cleanMerchantDescription, CATEGORIES } from './bankParser';
+import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, formatDateFR, classifyTransaction, detectBankName, cleanMerchantDescription, CATEGORIES } from './bankParser';
 
-export { formatMonthLabel, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName, cleanMerchantDescription, CATEGORIES };
+export { formatMonthLabel, formatDateFR, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName, cleanMerchantDescription, CATEGORIES };
 export type FlowType = 'INCOME' | 'FIXED_EXPENSE' | 'VARIABLE_EXPENSE' | 'SAVINGS_TRANSFER';
 
 export interface BankTransaction {
