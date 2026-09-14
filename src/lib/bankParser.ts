@@ -761,12 +761,22 @@ export function formatMonthLabel(monthKey: string): string {
 }
 
 /**
- * Formatage d'une date en format français lisible (ex: '2026-09-11' -> '11 sept. 2026')
+ * Formatage d'une date en format français complet avec jour de la semaine (ex: '2026-09-11' -> 'Vendredi 11 sept. 2026')
  */
 export function formatDateFR(dateStr?: string | null): string {
   if (!dateStr) return '-';
   try {
     const trimmed = String(dateStr).trim();
+    const formatFull = (d: Date) => {
+      const str = d.toLocaleDateString('fr-FR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    };
+
     // Format YYYY-MM-DD ou YYYY/MM/DD
     const isoMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (isoMatch) {
@@ -775,7 +785,7 @@ export function formatDateFR(dateStr?: string | null): string {
       const day = parseInt(isoMatch[3], 10);
       const d = new Date(year, month, day);
       if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+        return formatFull(d);
       }
     }
 
@@ -787,14 +797,14 @@ export function formatDateFR(dateStr?: string | null): string {
       const year = parseInt(frMatch[3], 10);
       const d = new Date(year, month, day);
       if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+        return formatFull(d);
       }
     }
 
     // Fallback standard Date parse
     const parsed = new Date(trimmed);
     if (!isNaN(parsed.getTime())) {
-      return parsed.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+      return formatFull(parsed);
     }
   } catch (e) {
     // Ignorer
