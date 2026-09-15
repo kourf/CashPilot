@@ -1113,7 +1113,7 @@ export const BankStatements: React.FC = () => {
                     ? 'bg-primary-foreground/20 text-primary-foreground'
                     : isPos ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
                 }`}>
-                  {isPos ? '+' : ''}{acc.netCashFlow.toFixed(0)} €
+                  {formatCurrency(acc.netCashFlow, { showSign: true, decimals: 0 })}
                 </span>
               </button>
             );
@@ -1218,8 +1218,8 @@ export const BankStatements: React.FC = () => {
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-extrabold tracking-tight text-foreground">
-              +{formatCurrency(metrics.income, { showSign: false })}
+            <div className="text-2xl font-black font-mono tracking-normal text-foreground">
+              {formatCurrency(metrics.income, { showSign: true })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {selectedAccount === 'ALL' ? 'Total des encaissements consolidés' : `Encaissements sur ${selectedAccount}`}
@@ -1246,8 +1246,8 @@ export const BankStatements: React.FC = () => {
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-extrabold tracking-tight text-rose-500">
-              -{formatCurrency(metrics.realExpenses, { showSign: false })}
+            <div className="text-2xl font-black font-mono tracking-normal text-rose-500">
+              {formatCurrency(-metrics.realExpenses, { showSign: true })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Fixes ({formatCurrency(metrics.fixed, { decimals: 0 })}) + Variables ({formatCurrency(metrics.variable, { decimals: 0 })})
@@ -1269,7 +1269,7 @@ export const BankStatements: React.FC = () => {
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-extrabold tracking-tight text-purple-500">
+            <div className="text-2xl font-black font-mono tracking-normal text-purple-500">
               {formatCurrency(metrics.savings, { showSign: false })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Virements internes neutralisés</p>
@@ -1290,11 +1290,11 @@ export const BankStatements: React.FC = () => {
             </div>
           </div>
           <div className="mt-3">
-            <div className={`text-2xl font-extrabold tracking-tight ${metrics.resteAVivre >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-              {metrics.resteAVivre >= 0 ? '+' : '-'}{formatCurrency(Math.abs(metrics.resteAVivre), { showSign: false })}
+            <div className={`text-2xl font-black font-mono tracking-normal ${metrics.resteAVivre >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {formatCurrency(metrics.resteAVivre, { showSign: true })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Solde net disponible : {metrics.netCashFlow >= 0 ? '+' : '-'}{formatCurrency(Math.abs(metrics.netCashFlow), { decimals: 0 })}
+              Solde net disponible : {formatCurrency(metrics.netCashFlow, { showSign: true, decimals: 0 })}
             </p>
           </div>
         </Card>
