@@ -24,7 +24,7 @@ import {
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { calculateKpis, filterByMonth, formatMonthLabel, buildSankeyData, buildCategoryBreakdown } from '../../lib/kpiUtils';
-import { formatDateFR } from '../../lib/bankUtils';
+import { formatDateFR, formatCurrency } from '../../lib/bankUtils';
 import { useTransactions } from '../../context/TransactionsContext';
 
 export default function Dashboard() {
@@ -213,7 +213,7 @@ export default function Dashboard() {
                 <Skeleton className="h-10 w-36 mb-1" />
               ) : (
                 <div className="text-3xl md:text-4xl font-black tracking-tight text-foreground">
-                  {displayReste.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                  {formatCurrency(displayReste, { showSign: false })}
                 </div>
               )}
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
@@ -226,7 +226,7 @@ export default function Dashboard() {
               <div>
                 <span className="text-[11px] text-muted-foreground block">Rythme quotidien</span>
                 <span className="text-sm font-bold text-foreground">
-                  {loading ? '...' : `${displayBudgetJour.toFixed(2)} € / jour`}
+                  {loading ? '...' : `${formatCurrency(displayBudgetJour, { showSign: false })} / jour`}
                 </span>
               </div>
               <span className={cn(
@@ -259,7 +259,7 @@ export default function Dashboard() {
                 <Skeleton className="h-10 w-36 mb-1" />
               ) : (
                 <div className="text-3xl font-extrabold tracking-tight text-emerald-600 dark:text-emerald-400">
-                  +{displayRevenus.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                  +{formatCurrency(displayRevenus, { showSign: false })}
                 </div>
               )}
               <p className="text-xs text-muted-foreground mt-1">
@@ -268,8 +268,8 @@ export default function Dashboard() {
             </div>
 
             <div className="pt-3 border-t border-border/60 dark:border-white/[0.06] flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Taux d'effort épargne</span>
-              <span className="font-bold text-primary">
+              <span className="text-muted-foreground">Part épargnée</span>
+              <span className="font-semibold text-emerald-500">
                 {displayRevenus > 0 ? ((kpis.epargne / displayRevenus) * 100).toFixed(1) : 0} %
               </span>
             </div>
@@ -295,7 +295,7 @@ export default function Dashboard() {
                 <Skeleton className="h-10 w-36 mb-1" />
               ) : (
                 <div className="text-3xl font-extrabold tracking-tight text-foreground">
-                  -{displayDepenses.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                  -{formatCurrency(displayDepenses, { showSign: false })}
                 </div>
               )}
               <p className="text-xs text-muted-foreground mt-1">
@@ -323,7 +323,7 @@ export default function Dashboard() {
           <div className="mt-2">
             {loading ? <Skeleton className="h-6 w-20" /> : (
               <span className="text-lg font-bold text-foreground">
-                {(isDemo ? 650 : kpis.fixe).toFixed(2)} €
+                {formatCurrency(isDemo ? 650 : kpis.fixe, { showSign: false })}
               </span>
             )}
           </div>
@@ -338,7 +338,7 @@ export default function Dashboard() {
           <div className="mt-2">
             {loading ? <Skeleton className="h-6 w-20" /> : (
               <span className="text-lg font-bold text-foreground">
-                {(isDemo ? 420 : kpis.variable).toFixed(2)} €
+                {formatCurrency(isDemo ? 420 : kpis.variable, { showSign: false })}
               </span>
             )}
           </div>
@@ -353,7 +353,7 @@ export default function Dashboard() {
           <div className="mt-2">
             {loading ? <Skeleton className="h-6 w-20" /> : (
               <span className="text-lg font-bold text-emerald-500">
-                {(isDemo ? 500 : kpis.epargne).toFixed(2)} €
+                {formatCurrency(isDemo ? 500 : kpis.epargne, { showSign: false })}
               </span>
             )}
           </div>
@@ -368,7 +368,7 @@ export default function Dashboard() {
           <div className="mt-2">
             {loading ? <Skeleton className="h-6 w-20" /> : (
               <span className="text-lg font-bold text-rose-500">
-                {(isDemo ? 12.50 : kpis.frais).toFixed(2)} €
+                {formatCurrency(isDemo ? 12.50 : kpis.frais, { showSign: false })}
               </span>
             )}
           </div>
@@ -564,7 +564,7 @@ export default function Dashboard() {
                         "font-extrabold text-xs md:text-sm shrink-0 ml-3",
                         isPositive ? "text-emerald-500" : "text-foreground"
                       )}>
-                        {isPositive ? '+' : ''}{(tx.amount || 0).toFixed(2)} €
+                        {formatCurrency(tx.amount || 0, { showSign: true })}
                       </div>
                     </div>
                   );

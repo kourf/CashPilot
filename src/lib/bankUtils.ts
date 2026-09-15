@@ -222,15 +222,42 @@ export function checkDuplicateTransactions(newTxs: BankTransaction[], existingTx
 }
 
 /**
- * Formateur monétaire élégant
+ * Formateur monétaire universel avec espace de 3 chiffres (séparateur de milliers net et lisible)
+ * Ex: 1267.9 -> "1 267,90 €" (ou "+1 267,90 €" si showSign: true)
  */
-export function formatCurrency(amount: number, currency: string = '€'): string {
-  const formatted = Math.abs(amount).toLocaleString('fr-FR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-  const sign = amount > 0 ? '+' : amount < 0 ? '-' : '';
-  return `${sign}${formatted} ${currency}`;
+export function formatCurrency(
+  amount: number | string,
+  options: {
+    showSign?: boolean;
+    currency?: string;
+    decimals?: number;
+    showCurrency?: boolean;
+  } | string = {}
+): string {
+  const opts = typeof options === 'string' ? { currency: options } : options;
+  const num = typeof amount === 'number' ? amount : parseFloat(String(amount).replace(',', '.')) || 0;
+  if (isNaN(num)) return `0,00 ${opts.currency ?? '€'}`.trim();
+
+  const isPositive = num > 0;
+  const isNegative = num < 0;
+  const abs = Math.abs(num);
+  const decimals = opts.decimals ?? 2;
+
+  const fixed = abs.toFixed(decimals);
+  const [intPart, decPart] = fixed.split('.');
+
+  // Espace régulier tous les 3 chiffres pour une séparation ultra-nette
+  const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+  const sign = opts.showSign
+    ? (isPositive ? '+' : isNegative ? '-' : '')
+    : (isNegative ? '-' : '');
+
+  const decimalStr = decimals > 0 ? `,${decPart}` : '';
+  const currencySymbol = opts.showCurrency !== false ? (opts.currency ?? '€') : '';
+  const currencyStr = currencySymbol ? ` ${currencySymbol}` : '';
+
+  return `${sign}${intFormatted}${decimalStr}${currencyStr}`;
 }
 
 /**

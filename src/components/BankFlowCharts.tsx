@@ -13,7 +13,7 @@ import {
   TrendingDown, 
   RotateCcw
 } from 'lucide-react';
-import type { BankTransaction } from '../lib/bankUtils';
+import { type BankTransaction, formatCurrency } from '../lib/bankUtils';
 
 interface BankFlowChartsProps {
   transactions: BankTransaction[];
@@ -151,15 +151,15 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
 
       // Left Node Name
       const incomeNodeLabel = totalInc > 0
-        ? `Revenus (${totalInc.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €)`
-        : `Dépenses Décaissées (${totalExp.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €)`;
+        ? `Revenus (${formatCurrency(totalInc, { decimals: 0 })})`
+        : `Dépenses Décaissées (${formatCurrency(totalExp, { decimals: 0 })})`;
 
       // Right Branch Nodes for each Expense Category
       financialData.expenseItems.forEach(item => {
         if (item.value > 0.01) {
           const pctStr = item.percentage.toFixed(1);
-          const amtStr = item.value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-          const targetLabel = `${item.name} (${amtStr} € • ${pctStr}%)`;
+          const amtStr = formatCurrency(item.value, { showSign: false });
+          const targetLabel = `${item.name} (${amtStr} • ${pctStr}%)`;
           rows.push([incomeNodeLabel, targetLabel, Number(item.value.toFixed(2))]);
         }
       });
@@ -168,7 +168,7 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
       if (totalInc > totalExp && financialData.netSavings > 0.01) {
         const savingsAmt = financialData.netSavings;
         const savingsPct = totalInc > 0 ? (savingsAmt / totalInc) * 100 : 0;
-        const savingsLabel = `Épargne & Reste à Vivre (${savingsAmt.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € • ${savingsPct.toFixed(1)}%)`;
+        const savingsLabel = `Épargne & Reste à Vivre (${formatCurrency(savingsAmt, { showSign: false })} • ${savingsPct.toFixed(1)}%)`;
         rows.push([incomeNodeLabel, savingsLabel, Number(savingsAmt.toFixed(2))]);
       }
 
@@ -296,7 +296,7 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                   </h3>
                 </div>
                 <span className="text-[11px] font-mono font-semibold text-cyan-400">
-                  {financialData.totalExpenses.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                  {formatCurrency(financialData.totalExpenses, { showSign: false })}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-2 mb-3">
@@ -331,14 +331,14 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                   <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
                   <span className="font-medium text-foreground">Revenus Détectés :</span>
                   <span className="font-mono font-bold text-emerald-400">
-                    +{financialData.totalIncome.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                    +{formatCurrency(financialData.totalIncome, { showSign: false })}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
                   <span className="font-medium text-foreground">Dépenses Réelles :</span>
                   <span className="font-mono font-bold text-rose-400">
-                    -{financialData.totalExpenses.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                    -{formatCurrency(financialData.totalExpenses, { showSign: false })}
                   </span>
                 </div>
               </div>
@@ -405,7 +405,7 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                                   <span>{data.name}</span>
                                 </div>
                                 <div className="mt-1 text-muted-foreground">
-                                  Montant : <span className="font-bold text-foreground font-mono">{data.value.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span>
+                                  Montant : <span className="font-bold text-foreground font-mono">{formatCurrency(data.value, { showSign: false })}</span>
                                 </div>
                                 <div className="text-cyan-400 font-semibold">
                                   Part : {data.percentage.toFixed(1)}% des dépenses
@@ -425,7 +425,7 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                       Total Dépenses
                     </span>
                     <span className="text-base font-extrabold text-foreground font-mono">
-                      {financialData.totalExpenses.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €
+                      {formatCurrency(financialData.totalExpenses, { decimals: 0 })}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
                       {financialData.expenseItems.length} poste{financialData.expenseItems.length > 1 ? 's' : ''}
@@ -446,7 +446,7 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="font-bold font-mono text-foreground">
-                        {item.value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        {formatCurrency(item.value, { showSign: false })}
                       </span>
                       <span className="text-[11px] font-semibold text-cyan-400 w-12 text-right">
                         {item.percentage.toFixed(1)}%

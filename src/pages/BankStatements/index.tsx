@@ -43,10 +43,12 @@ import {
   calculateSubscriptionSummary,
   formatMonthLabel,
   formatDateFR,
+  formatCurrency,
   type FlowType, 
   type BankTransaction,
   type SubscriptionSummary
 } from '../../lib/bankUtils';
+import { KpiInfoTooltip } from '../../components/KpiInfoTooltip';
 import { db, storage, functions } from '../../lib/firebase';
 import { doc, deleteDoc, writeBatch, collection, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -1205,16 +1207,19 @@ export const BankStatements: React.FC = () => {
         {/* Total Inflows */}
         <Card className="glass-card p-5 border border-border/60 hover:border-emerald-500/40 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Revenus {selectedAccount !== 'ALL' ? `(${selectedAccount})` : 'Réels'}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Revenus {selectedAccount !== 'ALL' ? `(${selectedAccount})` : 'Réels'}
+              </span>
+              <KpiInfoTooltip type="income" amount={metrics.income} accountName={selectedAccount} />
+            </div>
             <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500">
               <ArrowDownLeft className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
             <div className="text-2xl font-extrabold tracking-tight text-foreground">
-              +{metrics.income.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+              +{formatCurrency(metrics.income, { showSign: false })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {selectedAccount === 'ALL' ? 'Total des encaissements consolidés' : `Encaissements sur ${selectedAccount}`}
@@ -1225,19 +1230,27 @@ export const BankStatements: React.FC = () => {
         {/* Real Outflows */}
         <Card className="glass-card p-5 border border-border/60 hover:border-rose-500/40 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Dépenses Réelles
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Dépenses Réelles
+              </span>
+              <KpiInfoTooltip
+                type="expenses"
+                amount={metrics.realExpenses}
+                fixedAmount={metrics.fixed}
+                variableAmount={metrics.variable}
+              />
+            </div>
             <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-500">
               <ArrowUpRight className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
             <div className="text-2xl font-extrabold tracking-tight text-rose-500">
-              -{metrics.realExpenses.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+              -{formatCurrency(metrics.realExpenses, { showSign: false })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Fixes ({metrics.fixed.toFixed(0)}€) + Variables ({metrics.variable.toFixed(0)}€)
+              Fixes ({formatCurrency(metrics.fixed, { decimals: 0 })}) + Variables ({formatCurrency(metrics.variable, { decimals: 0 })})
             </p>
           </div>
         </Card>
@@ -1245,16 +1258,19 @@ export const BankStatements: React.FC = () => {
         {/* Savings & Transfers (Neutralised) */}
         <Card className="glass-card p-5 border border-border/60 hover:border-purple-500/40 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Épargne & Trésorerie
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Épargne & Trésorerie
+              </span>
+              <KpiInfoTooltip type="savings" amount={metrics.savings} />
+            </div>
             <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500">
               <ArrowLeftRight className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
             <div className="text-2xl font-extrabold tracking-tight text-purple-500">
-              {metrics.savings.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+              {formatCurrency(metrics.savings, { showSign: false })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Virements internes neutralisés</p>
           </div>
@@ -1263,20 +1279,22 @@ export const BankStatements: React.FC = () => {
         {/* Net Cash Flow / Reste à Vivre Réel */}
         <Card className="glass-card p-5 border border-border/60 hover:border-primary/40 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Reste à Vivre {selectedAccount !== 'ALL' ? 'Compte' : 'Global'}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Reste à Vivre {selectedAccount !== 'ALL' ? 'Compte' : 'Global'}
+              </span>
+              <KpiInfoTooltip type="resteAVivre" amount={metrics.resteAVivre} />
+            </div>
             <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
               <Sparkles className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
             <div className={`text-2xl font-extrabold tracking-tight ${metrics.resteAVivre >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-              {metrics.resteAVivre >= 0 ? '+' : ''}
-              {metrics.resteAVivre.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+              {metrics.resteAVivre >= 0 ? '+' : '-'}{formatCurrency(Math.abs(metrics.resteAVivre), { showSign: false })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Solde net disponible : {metrics.netCashFlow >= 0 ? '+' : ''}{metrics.netCashFlow.toFixed(0)} €
+              Solde net disponible : {metrics.netCashFlow >= 0 ? '+' : '-'}{formatCurrency(Math.abs(metrics.netCashFlow), { decimals: 0 })}
             </p>
           </div>
         </Card>
@@ -1308,7 +1326,7 @@ export const BankStatements: React.FC = () => {
             <div className="text-right">
               <div className="text-xs text-muted-foreground font-medium">Coût Mensuel</div>
               <div className="text-lg font-extrabold text-cyan-400 font-mono">
-                {subscriptionSummary.totalMonthly.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                {formatCurrency(subscriptionSummary.totalMonthly, { showSign: false })}
               </div>
             </div>
 
@@ -1317,7 +1335,7 @@ export const BankStatements: React.FC = () => {
             <div className="text-right">
               <div className="text-xs text-muted-foreground font-medium">Projection Annuelle</div>
               <div className="text-lg font-extrabold text-foreground font-mono">
-                {subscriptionSummary.totalAnnual.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                {formatCurrency(subscriptionSummary.totalAnnual, { showSign: false })}
               </div>
             </div>
 
@@ -1371,7 +1389,7 @@ export const BankStatements: React.FC = () => {
                 </div>
                 <div className="text-right flex-shrink-0">
                   <span className="text-xs font-bold font-mono text-cyan-400">
-                    {Math.abs(sub.amount).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                    {formatCurrency(Math.abs(sub.amount), { showSign: false })}
                   </span>
                 </div>
               </div>
@@ -1606,7 +1624,7 @@ export const BankStatements: React.FC = () => {
                           isPositive ? 'text-emerald-500' :
                           'text-foreground'
                         }>
-                          {isPositive ? '+' : ''}{tx.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                          {formatCurrency(tx.amount, { showSign: true })}
                         </span>
                       </td>
 
