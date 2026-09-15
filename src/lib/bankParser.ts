@@ -169,54 +169,45 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     console.error('Error reading custom rules from localStorage:', e);
   }
 
-  // 1. Mouvements internes, virements compte à compte & épargne (Neutralisés du reste à vivre)
-  if (
-    norm.includes('drame kouroufia') || 
-    norm.includes('kouroufia fortuneo') || 
-    norm.includes('virement avec fortuneo') ||
-    norm.includes('fortuneo') ||
-    norm.includes('boursorama') ||
-    norm.includes('boursobank') ||
-    norm.includes('bourso') ||
-    norm.includes('revolut') ||
-    norm.includes('n26') ||
-    norm.includes('trade republic') ||
-    norm.includes('degiro') ||
-    norm.includes('binance') ||
-    norm.includes('coinbase') ||
-    norm.includes('livret a') ||
-    norm.includes('livret de developpement') ||
-    norm.includes('ldds') ||
-    norm.includes('ldd') ||
-    norm.includes('lep') ||
-    norm.includes('livret jeune') ||
-    norm.includes('pel') ||
-    norm.includes('cel') ||
-    norm.includes('pea') ||
-    norm.includes('compte sur livret') ||
-    norm.includes('compte a terme') ||
-    norm.includes('assurance vie') ||
-    norm.includes('assurance-vie') ||
-    norm.includes('livret') ||
-    norm.includes('virement interne') ||
-    norm.includes('virement de compte') ||
-    norm.includes('compte a compte') ||
-    norm.includes('vers livret') ||
-    norm.includes('de livret') ||
-    norm.includes('depuis livret') ||
-    norm.includes('vers mon compte') ||
-    norm.includes('epargne')
-  ) {
-    return {
-      cleanDesc: cleanDesc || 'Virement Interne / Épargne',
-      flowType: 'SAVINGS_TRANSFER',
-      category: 'Épargne & Investissement',
-      isSubscription: false,
-    };
+  // 1. Aides sociales, allocations & remboursements santé prioritaires (Montants positifs)
+  if (amount > 0) {
+    if (
+      norm.includes('france travail') ||
+      norm.includes('pole emploi') ||
+      norm.includes('assedic') ||
+      norm.includes('alloc chomage') ||
+      norm.includes('are ')
+    ) {
+      return { cleanDesc: 'France Travail (Allocation)', flowType: 'INCOME', category: 'Aides & Allocations', isSubscription: false };
+    }
+    if (
+      norm.includes('caf ') ||
+      norm.includes('caf de') ||
+      norm.includes('caisse d allocations') ||
+      norm.includes('apl') ||
+      norm.includes('rsa') ||
+      norm.includes('prime d activite') ||
+      norm.includes('prime activite') ||
+      norm.includes('aah') ||
+      norm.includes('allocations familiales')
+    ) {
+      return { cleanDesc: 'CAF (Allocations Familiales)', flowType: 'INCOME', category: 'Aides & Allocations', isSubscription: false };
+    }
+    if (
+      norm.includes('generation') ||
+      norm.includes('cpam') ||
+      norm.includes('ameli') ||
+      norm.includes('securite sociale') ||
+      norm.includes('mutuelle') ||
+      (norm.includes('groupama') && norm.includes('soin'))
+    ) {
+      return { cleanDesc: cleanDesc || 'Remboursement Santé / Mutuelle', flowType: 'INCOME', category: 'Santé', isSubscription: false };
+    }
   }
 
   // 2. Virements Famille & Proches (Règles spécifiques utilisateur)
-  const isFamily = ['naistaba', 'mahawa', 'mohame', 'karamokho', 'nayssa', 'el hani', 'beauf', 'drame'].some(k => norm.includes(k));
+  const isFamily = ['naistaba', 'mahawa', 'mohame', 'karamokho', 'nayssa', 'el hani', 'beauf'].some(k => norm.includes(k)) ||
+    (norm.includes('drame') && !norm.includes('kouroufia') && !norm.includes('assurance vie'));
   if (isFamily) {
     if (amount > 0) {
       return {
@@ -231,6 +222,61 @@ export function classifyTransaction(rawDescription: string, amount: number): {
         flowType: 'VARIABLE_EXPENSE',
         category: 'Virements Famille & Proches',
         isSubscription: false
+      };
+    }
+  }
+
+  // 3. Mouvements internes, virements compte à compte & épargne (Neutralisés du reste à vivre)
+  // Attention : Ne neutraliser QUE les vrais mouvements d'épargne personnels et comptes propres de l'utilisateur
+  const isInternalAccount = (norm.includes('drame kouroufia') || norm.includes('kouroufia fortuneo') || norm.includes('virement avec fortuneo')) &&
+    !norm.includes('de: generation') && !norm.includes('cpam');
+  const isSavingsAccount = norm.includes('livret a') ||
+    norm.includes('livret de developpement') ||
+    norm.includes('ldds') ||
+    norm.includes('ldd') ||
+    norm.includes('lep') ||
+    norm.includes('livret jeune') ||
+    norm.includes('pel') ||
+    norm.includes('cel') ||
+    norm.includes('pea') ||
+    norm.includes('compte sur livret') ||
+    norm.includes('compte a terme') ||
+    norm.includes('assurance vie') ||
+    norm.includes('assurance-vie') ||
+    norm.includes('compte a compte livret') ||
+    norm.includes('vers livret') ||
+    norm.includes('de livret') ||
+    norm.includes('depuis livret') ||
+    norm.includes('rachat assurance');
+
+  if (amount > 0) {
+    // Rentrées d'argent : UNIQUEMENT transfert depuis ses propres livrets ou compte propre
+    if (isSavingsAccount || (isInternalAccount && (norm.includes('de: drame kouroufia') || norm.includes('fortuneo')))) {
+      return {
+        cleanDesc: cleanDesc || 'Virement Interne / Épargne',
+        flowType: 'SAVINGS_TRANSFER',
+        category: 'Épargne & Investissement',
+        isSubscription: false,
+      };
+    }
+  } else {
+    // Sorties d'argent vers l'épargne ou investissements
+    if (
+      isSavingsAccount ||
+      isInternalAccount ||
+      norm.includes('trade republic') ||
+      norm.includes('degiro') ||
+      norm.includes('binance') ||
+      norm.includes('coinbase') ||
+      norm.includes('vers livret') ||
+      norm.includes('virement interne') ||
+      norm.includes('compte a compte')
+    ) {
+      return {
+        cleanDesc: cleanDesc || 'Virement Interne / Épargne',
+        flowType: 'SAVINGS_TRANSFER',
+        category: 'Épargne & Investissement',
+        isSubscription: false,
       };
     }
   }

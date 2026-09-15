@@ -74,8 +74,27 @@ export function classifyFlowType(category: string, amount: number, label: string
   const normCat = (category || '').toLowerCase();
   const normLabel = (label || '').toLowerCase();
 
-  // 1. Épargne & Virements internes (neutralisés du reste à vivre)
-  if (
+  // 1. Virements Famille & Proches
+  if (normCat.includes('proche') || normCat.includes('famille')) {
+    return amount > 0 ? 'INCOME' : 'VARIABLE_EXPENSE';
+  }
+
+  // 2. Remboursements Santé & Aides (Montants positifs)
+  if (amount > 0 && (normCat.includes('santé') || normCat.includes('sante') || normCat.includes('aide') || normCat.includes('allocation'))) {
+    return 'INCOME';
+  }
+
+  // 3. Épargne & Virements internes (neutralisés du reste à vivre)
+  const isThirdPartyInflow = amount > 0 && (
+    normLabel.includes('nayssa') ||
+    normLabel.includes('el hani') ||
+    normLabel.includes('naistaba') ||
+    normLabel.includes('generation') ||
+    normLabel.includes('cpam') ||
+    normLabel.includes('mutuelle')
+  );
+
+  if (!isThirdPartyInflow && (
     normCat.includes('épargne') ||
     normCat.includes('epargne') ||
     normCat.includes('investissement') ||
@@ -85,20 +104,10 @@ export function classifyFlowType(category: string, amount: number, label: string
     normLabel.includes('ldds') ||
     normLabel.includes('livret') ||
     normLabel.includes('assurance vie') ||
-    normLabel.includes('fortuneo') ||
-    normLabel.includes('drame kouroufia') ||
-    normLabel.includes('kouroufia fortuneo') ||
-    normLabel.includes('virement avec fortuneo') ||
-    normLabel.includes('virement de compte') ||
-    normLabel.includes('compte a compte') ||
-    normLabel.includes('compte à compte')
-  ) {
+    normLabel.includes('compte a compte livret') ||
+    ((normLabel.includes('fortuneo') || normLabel.includes('drame kouroufia')) && !normLabel.includes('generation') && !normLabel.includes('cpam'))
+  )) {
     return 'SAVINGS_TRANSFER';
-  }
-
-  // 2. Virements Famille & Proches
-  if (normCat.includes('proche') || normCat.includes('famille')) {
-    return amount > 0 ? 'INCOME' : 'VARIABLE_EXPENSE';
   }
 
   // 3. Revenus & Aides

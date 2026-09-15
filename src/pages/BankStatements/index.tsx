@@ -28,7 +28,7 @@ import { Badge } from '../../components/ui/badge';
 import { BankFlowCharts } from '../../components/BankFlowCharts';
 import { useTransactions } from '../../context/TransactionsContext';
 import { getActiveAccountId } from '../../lib/userUtils';
-import { categorizeWithGemini, getGeminiApiKey } from '../../lib/geminiService';
+import { categorizeWithGemini, auditAndEnrichTransactionsWithGemini, getGeminiApiKey } from '../../lib/geminiService';
 
 import { 
   CATEGORIES, 
@@ -157,8 +157,14 @@ export const BankStatements: React.FC = () => {
       
       // Auto-analyse intelligente du libellé complet si catégorie manquante ou 'Autre'
       const smart = smartCategorizeTransaction(rawDesc, amount, t.date);
-      const category = (t.category && t.category !== 'Autre') ? t.category : smart.category;
-      const flowType: FlowType = t.flowType || (category === smart.category ? smart.flowType : classifyFlowType(category, amount, rawDesc));
+      // Correction proactive : si un montant positif a été indûment étiqueté en SAVINGS_TRANSFER alors qu'il s'agit d'un revenu réel (tiers, proche, alloc)
+      const isSuspectSavings = amount > 0 && (t.flowType === 'SAVINGS_TRANSFER' || t.category === 'Épargne & Investissement') && smart.flowType === 'INCOME';
+      const category = isSuspectSavings
+        ? smart.category
+        : ((t.category && t.category !== 'Autre') ? t.category : smart.category);
+      const flowType: FlowType = isSuspectSavings
+        ? 'INCOME'
+        : (t.flowType || (category === smart.category ? smart.flowType : classifyFlowType(category, amount, rawDesc)));
       const account = t.accountName || t.account || 'Compte Principal';
       const bankName = t.bankName || (account.includes(' - ') ? account.split(' - ')[0] : account);
       const isSubscription = t.isSubscription !== undefined 
@@ -274,38 +280,55 @@ export const BankStatements: React.FC = () => {
     }
   }, [notification]);
 
-  // Synchronisation automatique en arrière-plan avec Gemini pour les opérations existantes encore en 'Autre'
+  // Synchronisation automatique en arrière-plan avec Gemini pour les opérations 'Autre' et les flux d'encaissement suspects
   const autoGeminiRunRef = useRef(false);
   useEffect(() => {
     if (autoGeminiRunRef.current || !rawTransactions || rawTransactions.length === 0) return;
 
-    // Repérer les opérations en base ayant 'Autre'
-    const unclassifiedInDb = rawTransactions.filter(t => t.category === 'Autre');
+    // Repérer les opérations en base ayant 'Autre' ou les rentrées d'argent indûment classées en épargne
+    const unclassifiedInDb = rawTransactions.filter(t => {
+      if (t.category === 'Autre') return true;
+      const amt = Number(t.amount) || 0;
+      if (amt > 0 && (t.flowType === 'SAVINGS_TRANSFER' || t.category === 'Épargne & Investissement')) {
+        const raw = (t.rawLabel || t.description || '').toLowerCase();
+        return raw.includes('nayssa') || raw.includes('el hani') || raw.includes('naistaba') || raw.includes('generation') || raw.includes('cpam') || raw.includes('wero');
+      }
+      return false;
+    });
     if (unclassifiedInDb.length === 0) return;
 
     autoGeminiRunRef.current = true;
     (async () => {
       try {
         const accountId = getActiveAccountId();
-        const descriptions = unclassifiedInDb.map(t => t.rawLabel || t.description || 'Opération');
-        const geminiMap = await categorizeWithGemini(descriptions);
-        
+        const geminiResults = await auditAndEnrichTransactionsWithGemini(
+          unclassifiedInDb.map(t => ({
+            id: t.id,
+            date: t.date,
+            amount: Number(t.amount) || 0,
+            rawLabel: t.rawLabel,
+            description: t.description,
+            category: t.category,
+            flowType: t.flowType
+          }))
+        );
+
+        const geminiMap = new Map(geminiResults.map(r => [r.id, r]));
         const batch = writeBatch(db);
         let count = 0;
 
         unclassifiedInDb.forEach(t => {
-          const raw = t.rawLabel || t.description || '';
-          const clean = t.cleanLabel || t.description || '';
-          const matched = geminiMap[raw] || geminiMap[clean] || geminiMap[t.description];
-          if (matched && CATEGORIES.includes(matched)) {
-            const flow = classifyFlowType(matched, Number(t.amount) || 0, raw);
+          const res = geminiMap.get(t.id);
+          if (res && CATEGORIES.includes(res.category)) {
             const docRef = doc(db, `users/${accountId}/transactions`, t.id);
             batch.update(docRef, {
-              category: matched,
-              flowType: flow,
-              nature: flow === 'FIXED_EXPENSE' ? 'fixe' : flow === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+              category: res.category,
+              flowType: res.flowType,
+              description: res.cleanDesc || t.description,
+              nature: res.flowType === 'FIXED_EXPENSE' ? 'fixe' : res.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
               confidence: 'high',
               aiStatus: 'gemini_enhanced',
+              aiExplanation: res.explanation,
               updatedAt: new Date().toISOString()
             });
             count++;
@@ -314,7 +337,7 @@ export const BankStatements: React.FC = () => {
 
         if (count > 0) {
           await batch.commit();
-          console.log(`Auto-Gemini background: ${count} transactions sorties de 'Autre' avec succès.`);
+          console.log(`Auto-Gemini background: ${count} transactions auditées et synchronisées avec succès.`);
         }
       } catch (err) {
         console.warn('Auto-Gemini background sync skipped:', err);
@@ -479,11 +502,11 @@ export const BankStatements: React.FC = () => {
     }
   };
 
-  // Google Gemini Generative AI Categorization Fallback
+  // Google Gemini Generative AI Categorization Fallback & Flow Audit
   const handleGeminiCategorization = async () => {
     const targets = selectedTxIds.size > 0
-      ? monthScopedTransactions.filter(t => selectedTxIds.has(t.id) && t.category === 'Autre')
-      : monthScopedTransactions.filter(t => t.category === 'Autre');
+      ? monthScopedTransactions.filter(t => selectedTxIds.has(t.id))
+      : monthScopedTransactions.filter(t => t.category === 'Autre' || (t.amount > 0 && t.flowType === 'SAVINGS_TRANSFER'));
 
     if (targets.length === 0) {
       setNotification({
@@ -501,27 +524,35 @@ export const BankStatements: React.FC = () => {
 
     setIsEnhancingWithGemini(true);
     try {
-      const descriptions = targets.map(t => t.rawLabel || t.description);
-      const categoryMap = await categorizeWithGemini(descriptions);
+      const results = await auditAndEnrichTransactionsWithGemini(
+        targets.map(t => ({
+          id: t.id,
+          date: t.date,
+          amount: Number(t.amount) || 0,
+          rawLabel: t.rawLabel,
+          description: t.description,
+          category: t.category,
+          flowType: t.flowType
+        }))
+      );
+      const resultMap = new Map(results.map(r => [r.id, r]));
 
       const accountId = getActiveAccountId();
       const batch = writeBatch(db);
       let updatedCount = 0;
 
       targets.forEach(tx => {
-        const raw = tx.rawLabel || tx.description;
-        const clean = tx.cleanLabel || tx.description;
-        const assignedCat = categoryMap[raw] || categoryMap[clean] || categoryMap[tx.description];
-
-        if (assignedCat && CATEGORIES.includes(assignedCat)) {
-          const newFlow = classifyFlowType(assignedCat, tx.amount, raw);
+        const res = resultMap.get(tx.id);
+        if (res && CATEGORIES.includes(res.category)) {
           const docRef = doc(db, `users/${accountId}/transactions`, tx.id);
           batch.update(docRef, {
-            category: assignedCat,
-            flowType: newFlow,
-            nature: newFlow === 'FIXED_EXPENSE' ? 'fixe' : newFlow === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+            category: res.category,
+            flowType: res.flowType,
+            description: res.cleanDesc || tx.description,
+            nature: res.flowType === 'FIXED_EXPENSE' ? 'fixe' : res.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
             confidence: 'high',
             aiStatus: 'gemini_enhanced',
+            aiExplanation: res.explanation,
             updatedAt: new Date().toISOString()
           });
           updatedCount++;
@@ -873,31 +904,28 @@ export const BankStatements: React.FC = () => {
         return;
       }
 
-      // 8b. Catégorisation automatique par IA Générative Google Gemini pour les libellés non reconnus ('Autre')
-      const unclassifiedTxs = uniqueTxs.filter(t => t.category === 'Autre');
-      if (unclassifiedTxs.length > 0) {
-        setFileStatusMessage(`Catégorisation IA automatique par Google Gemini (${unclassifiedTxs.length} opérations)...`);
+      // 8b. Catégorisation et audit automatique par IA Générative Google Gemini
+      const txsNeedingAi = uniqueTxs.filter(t => t.category === 'Autre' || (t.amount > 0 && t.flowType === 'SAVINGS_TRANSFER'));
+      if (txsNeedingAi.length > 0) {
+        setFileStatusMessage(`Analyse & Catégorisation IA par Google Gemini (${txsNeedingAi.length} opérations)...`);
         try {
-          const descriptionsToAnalyze = unclassifiedTxs.map(t => t.rawLabel || t.description);
-          const geminiMap = await categorizeWithGemini(descriptionsToAnalyze);
+          const aiResults = await auditAndEnrichTransactionsWithGemini(txsNeedingAi);
+          const aiResultMap = new Map(aiResults.map(r => [r.id, r]));
           
           let aiCount = 0;
           uniqueTxs.forEach(tx => {
-            if (tx.category === 'Autre') {
-              const raw = tx.rawLabel || tx.description;
-              const clean = tx.cleanLabel || tx.description;
-              const matchedCat = geminiMap[raw] || geminiMap[clean] || geminiMap[tx.description];
-              if (matchedCat && CATEGORIES.includes(matchedCat)) {
-                tx.category = matchedCat;
-                tx.flowType = classifyFlowType(matchedCat, tx.amount, raw);
-                tx.confidence = 'high';
-                tx.aiStatus = 'gemini_enhanced';
-                aiCount++;
-              }
+            const ai = aiResultMap.get(tx.id);
+            if (ai && CATEGORIES.includes(ai.category)) {
+              tx.category = ai.category;
+              tx.flowType = ai.flowType;
+              if (ai.cleanDesc) tx.description = ai.cleanDesc;
+              tx.confidence = 'high';
+              tx.aiStatus = 'gemini_enhanced';
+              aiCount++;
             }
           });
           if (aiCount > 0) {
-            console.log(`Gemini a automatiquement catégorisé ${aiCount} opérations lors de l'import.`);
+            console.log(`Gemini a automatiquement audité et catégorisé ${aiCount} opérations lors de l'import.`);
           }
         } catch (geminiErr) {
           console.warn("Analyse Gemini automatique ignorée ou indisponible lors de l'import:", geminiErr);
