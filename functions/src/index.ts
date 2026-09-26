@@ -499,3 +499,79 @@ export const validateBankStatementImport = functions.region('europe-west1')
       };
     }
   });
+
+export const optimizeSubscription = functions.region('europe-west1')
+  .runWith({ timeoutSeconds: 300, memory: '1GB' })
+  .https.onCall(async (data) => {
+
+  const { transactionText, amount, userContext } = data;
+
+  if (!transactionText) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing transactionText');
+  }
+
+  try {
+    const prompt = `Tu es un expert en optimisation de budget et d'abonnements.
+Ta mission est d'analyser un abonnement récurrent et de proposer une optimisation STRICTE selon une logique en entonnoir.
+Le texte de la transaction est : "${transactionText}".
+Le montant mensuel actuel est de : ${amount}.
+Contexte utilisateur (clarification) si fourni : "${userContext || ''}".
+
+Règles Strictes de l'Entonnoir (Funnel Logic) :
+1. Détection du marché : Détecte s'il s'agit du marché France (EUR) ou Suisse (CHF) basé sur le texte et la devise.
+2. Priorité 1 : Vérifie s'il existe une offre inférieure ("lower-tier") officielle chez le MÊME fournisseur.
+3. Priorité 2 : S'il n'y a pas d'offre chez le même fournisseur, propose un concurrent réputé de premier plan (top-tier) uniquement. Interdit de proposer des marques obscures.
+4. Seuil de rentabilité : L'optimisation DOIT générer une économie minimale de 2.00 € ou 2.00 CHF par mois. Si l'économie est inférieure, ne propose pas d'optimisation.
+5. Repli (Fallback) : Si tu n'arrives pas à identifier formellement le service (ex: Cloud, Telecom, Fitness) et que tu as un doute, NE HALLUCINE PAS. Retourne un statut "unidentified", ne propose pas d'optimisation, mais génère 2 ou 3 choix (chips) contextuels pour demander à l'utilisateur de clarifier (ex: "Est-ce un forfait mobile ?", "Est-ce une box internet ?").
+
+Format de réponse JSON attendu :
+- status: "success" (optimisation trouvée), "no_optimization" (pas d'économie >= 2), ou "unidentified" (besoin de clarification).
+- market: "FR" ou "CH"
+- optimizationType: "same_provider" (Même fournisseur) ou "competitor" (Alternative réputée) ou null
+- suggestedProvider: Le nom du fournisseur suggéré (ou null)
+- suggestedPlan: Le nom de l'offre suggérée (ou null)
+- estimatedMonthlySavings: Le montant de l'économie mensuelle estimée (nombre, ou null)
+- contextualChips: Tableau de 2 ou 3 chaînes de caractères si status="unidentified" (ou tableau vide)
+- explanation: Une phrase très courte expliquant le choix.`;
+
+    const schema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        status: { type: Type.STRING, description: "success, no_optimization, ou unidentified" },
+        market: { type: Type.STRING, description: "FR ou CH" },
+        optimizationType: { type: Type.STRING, description: "same_provider, competitor, ou null" },
+        suggestedProvider: { type: Type.STRING, description: "Nom du fournisseur suggéré" },
+        suggestedPlan: { type: Type.STRING, description: "Nom du plan suggéré" },
+        estimatedMonthlySavings: { type: Type.NUMBER, description: "Economie mensuelle" },
+        contextualChips: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Options si unidentified"
+        },
+        explanation: { type: Type.STRING, description: "Explication courte" }
+      },
+      required: ["status", "market"]
+    };
+
+    const result = await getAI().models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: schema,
+        temperature: 0.1
+      }
+    });
+
+    const parsedData = JSON.parse(result.text || "{}");
+
+    return {
+      success: true,
+      data: parsedData
+    };
+
+  } catch (error) {
+    console.error("Erreur Gemini optimizeSubscription:", error);
+    throw new functions.https.HttpsError('internal', error instanceof Error ? error.message : 'Erreur inconnue');
+  }
+});
