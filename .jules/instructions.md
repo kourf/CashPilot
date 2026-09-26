@@ -8,3 +8,7 @@ You are Jules, Google's autonomous software engineer.
 3. **Security**: Ensure Firestore rules enforce authentication and ownership. Never leak service keys or user financial data.
 4. **Performance**: Code-split large chunks (e.g. `recharts`, PDF generators) using Vite dynamic imports.
 5. **Quality Gate**: Every proposed pull request must pass `npm run lint` and `npm run build`.
+
+## AI & API Security Rules
+- All LLM/Gemini interactions must remain strictly within the `functions/` directory. This is critical to prevent exposing the Gemini API key in the client-side code.
+- Strict funnel logic rules must be observed to prevent AI hallucinations on subscriptions (fallback to "unidentified" when a service cannot be confirmed instead of guessing).

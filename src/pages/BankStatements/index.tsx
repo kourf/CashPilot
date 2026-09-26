@@ -53,6 +53,8 @@ import { db, storage, functions } from '../../lib/firebase';
 import { doc, deleteDoc, writeBatch, collection, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
+import { optimizeSubscription } from '../../lib/subscriptionOptimizer';
+import type { SubscriptionOptimizationResponse } from '../../types/index';
 
 /**
  * Lecture robuste du contenu d'un fichier avec détection d'encodage (UTF-8, Windows-1252, ISO-8859-1)
@@ -132,6 +134,11 @@ export const BankStatements: React.FC = () => {
   const [isEnhancingWithGemini, setIsEnhancingWithGemini] = useState(false);
   const [isGeminiKeyModalOpen, setIsGeminiKeyModalOpen] = useState(false);
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState(() => getGeminiApiKey());
+
+  // Subscription AI Optimizer states
+  const [optimizingSubId, setOptimizingSubId] = useState<string | null>(null);
+  const [subOptimizations, setSubOptimizations] = useState<Record<string, SubscriptionOptimizationResponse>>({});
+  const [subContextInputs, setSubContextInputs] = useState<Record<string, string>>({});
 
   // Form state for manual transaction
   const [manualTx, setManualTx] = useState({
@@ -583,6 +590,25 @@ export const BankStatements: React.FC = () => {
       });
     } finally {
       setIsEnhancingWithGemini(false);
+    }
+  };
+
+  const handleOptimizeSubscription = async (tx: BankTransaction, context?: string) => {
+    setOptimizingSubId(tx.id);
+    try {
+      const response = await optimizeSubscription({
+        transactionText: tx.description,
+        amount: Math.abs(tx.amount),
+        userContext: context
+      });
+      setSubOptimizations(prev => ({ ...prev, [tx.id]: response }));
+    } catch (error) {
+      setNotification({
+        type: 'error',
+        message: 'Erreur lors de l\'optimisation de l\'abonnement.'
+      });
+    } finally {
+      setOptimizingSubId(null);
     }
   };
 
@@ -1395,33 +1421,120 @@ export const BankStatements: React.FC = () => {
         {/* Subscription Chips Row when expanded */}
         {showSubscriptionDetails && subscriptionSummary.count > 0 && (
           <div className="mt-4 pt-4 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 animate-in fade-in">
-            {subscriptionSummary.items.map(sub => (
-              <div
-                key={sub.id}
-                onClick={() => handleOpenEditModal(sub)}
-                className="p-3 rounded-xl bg-card/60 dark:bg-white/[0.03] border border-border/60 hover:border-cyan-500/40 cursor-pointer transition-all flex items-center justify-between group"
-                title="Cliquer pour modifier l'affectation"
-              >
-                <div className="min-w-0 pr-2">
-                  <div className="text-xs font-bold text-foreground truncate group-hover:text-cyan-400 transition-colors">
-                    {sub.description}
+            {subscriptionSummary.items.map(sub => {
+              const opt = subOptimizations[sub.id];
+              const isOptimizing = optimizingSubId === sub.id;
+
+              return (
+                <div key={sub.id} className="flex flex-col gap-2 p-3 rounded-xl bg-card/60 dark:bg-white/[0.03] border border-border/60">
+                  <div
+                    onClick={() => handleOpenEditModal(sub)}
+                    className="hover:border-cyan-500/40 cursor-pointer transition-all flex items-center justify-between group"
+                    title="Cliquer pour modifier l'affectation"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <div className="text-xs font-bold text-foreground truncate group-hover:text-cyan-400 transition-colors flex items-center gap-2">
+                        {sub.description}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5 font-medium">
+                        <Calendar className="w-3 h-3 text-cyan-400" />
+                        <span>
+                          {sub.subscriptionDay ? `Prélevé le ${sub.subscriptionDay}` : 'Date variable'}
+                        </span>
+                        <span className="opacity-40">•</span>
+                        <span className="truncate">{sub.account || 'Compte Principal'}</span>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-xs font-bold font-mono text-cyan-400 block">
+                        {formatCurrency(Math.abs(sub.amount), { showSign: false })}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5 font-medium">
-                    <Calendar className="w-3 h-3 text-cyan-400" />
-                    <span>
-                      {sub.subscriptionDay ? `Prélevé le ${sub.subscriptionDay}` : 'Date variable'}
-                    </span>
-                    <span className="opacity-40">•</span>
-                    <span className="truncate">{sub.account || 'Compte Principal'}</span>
-                  </div>
+
+                  {/* AI Optimization UI */}
+                  {!opt && !isOptimizing && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => { e.stopPropagation(); handleOptimizeSubscription(sub); }}
+                      className="mt-1 text-[10px] h-6 flex items-center gap-1 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-500/10 dark:text-emerald-400"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Optimiser avec l'IA
+                    </Button>
+                  )}
+                  {isOptimizing && (
+                    <div className="flex items-center gap-2 text-[10px] text-emerald-600 dark:text-emerald-400 mt-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Analyse en cours...
+                    </div>
+                  )}
+                  {opt && opt.status === 'success' && (
+                    <div className="mt-2 p-2 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg border border-emerald-200 dark:border-emerald-500/30 animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                         <Badge variant="outline" className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/40">
+                           {opt.optimizationType === 'same_provider' ? 'Même fournisseur' : 'Alternative réputée'}
+                         </Badge>
+                         <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                           -{formatCurrency(opt.estimatedMonthlySavings || 0, { showSign: false })}/mois
+                         </span>
+                      </div>
+                      <div className="mt-1.5 text-[10px] text-emerald-800 dark:text-emerald-200 leading-tight">
+                        <span className="font-semibold">{opt.suggestedProvider} ({opt.suggestedPlan})</span> : {opt.explanation}
+                      </div>
+                      <div className="mt-1 text-[9px] text-emerald-600 dark:text-emerald-400/80 font-bold">
+                        Économie annuelle : -{formatCurrency((opt.estimatedMonthlySavings || 0) * 12, { showSign: false })}/an
+                      </div>
+                    </div>
+                  )}
+                  {opt && opt.status === 'no_optimization' && (
+                    <div className="mt-1 text-[10px] text-muted-foreground flex items-center gap-1">
+                      <Check className="w-3 h-3 text-emerald-500" />
+                      Déjà optimisé (Pas d'alternative à &gt;=2€)
+                    </div>
+                  )}
+                  {opt && opt.status === 'unidentified' && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-[10px] text-muted-foreground">Je ne suis pas sûr. De quoi s'agit-il ?</p>
+                      <div className="flex flex-wrap gap-1">
+                        {opt.contextualChips.map((chip, idx) => (
+                           <button
+                             key={idx}
+                             onClick={(e) => { e.stopPropagation(); handleOptimizeSubscription(sub, chip); }}
+                             className="text-[9px] px-2 py-1 rounded-full bg-secondary/80 hover:bg-secondary text-foreground border border-border transition-colors"
+                           >
+                             {chip}
+                           </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <input
+                           type="text"
+                           placeholder="Autre..."
+                           value={subContextInputs[sub.id] || ''}
+                           onChange={e => setSubContextInputs(prev => ({ ...prev, [sub.id]: e.target.value }))}
+                           className="flex-1 text-[10px] p-1 rounded bg-background border border-border"
+                           onClick={e => e.stopPropagation()}
+                           onKeyDown={(e) => {
+                             if (e.key === 'Enter') {
+                               e.stopPropagation();
+                               handleOptimizeSubscription(sub, subContextInputs[sub.id]);
+                             }
+                           }}
+                        />
+                        <button
+                           onClick={(e) => { e.stopPropagation(); handleOptimizeSubscription(sub, subContextInputs[sub.id]); }}
+                           className="p-1 rounded bg-primary text-primary-foreground text-[10px]"
+                        >
+                           Go
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <span className="text-xs font-bold font-mono text-cyan-400">
-                    {formatCurrency(Math.abs(sub.amount), { showSign: false })}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
