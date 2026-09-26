@@ -47,7 +47,10 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // Initialisation unique au premier chargement sur le mois le plus récent (sans écraser le choix 'all' de l'utilisateur)
   useEffect(() => {
-    if (!hasInitializedMonthRef.current && availableMonths.length > 0) {
+    if (availableMonths.length === 0) {
+      setSelectedMonth('all');
+      hasInitializedMonthRef.current = false;
+    } else if (!hasInitializedMonthRef.current) {
       setSelectedMonth(availableMonths[0]);
       hasInitializedMonthRef.current = true;
     }

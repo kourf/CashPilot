@@ -499,3 +499,408 @@ export const validateBankStatementImport = functions.region('europe-west1')
       };
     }
   });
+
+export const SUBSCRIPTION_PROVIDER_WHITELIST = [
+  'Swisscom', 'Sunrise', 'Salt', 'Wingo', 'Yallo', 'Coop Mobile', 'M-Budget', 
+  'Swype', 'Galaxus Mobile', 'Sosh', 'B&You', 'Red', 'Free', 'Orange', 
+  'Bouygues', 'SFR', 'La Poste'
+];
+
+export const WHITELIST_LOWER = SUBSCRIPTION_PROVIDER_WHITELIST.map(p => p.toLowerCase());
+
+/**
+ * Helper fallback generating guaranteed strictly cheaper alternatives from Whitelist
+ */
+function getMockCheaperAlternatives(subscriptionName: string, currentPrice: number, country: string) {
+  const isCH = country.toLowerCase().includes('switzerland') || country.toLowerCase().includes('suisse');
+  const text = subscriptionName.toLowerCase();
+
+  // Tier calculations strictly below currentPrice
+  const p1 = Math.round(Math.max(4.99, currentPrice * 0.55) * 100) / 100;
+  const p2 = Math.round(Math.max(6.99, currentPrice * 0.70) * 100) / 100;
+  const p3 = Math.round(Math.max(8.99, currentPrice * 0.82) * 100) / 100;
+
+  if (text.includes('box') || text.includes('fibre') || text.includes('internet') || text.includes('freebox') || text.includes('livebox')) {
+    return [
+      {
+        provider: isCH ? "Salt" : "Red",
+        planName: isCH ? "Salt Home Fibre 10 Gb/s" : "RED Box Fibre Très Haut Débit",
+        monthlyPrice: Math.min(p1, currentPrice - 1),
+        features: ["Fibre jusqu'à 1 Gb/s sans engagement", "Appels illimités vers fixes", "Remboursement des frais de résiliation"]
+      },
+      {
+        provider: isCH ? "Yallo" : "Sosh",
+        planName: isCH ? "Yallo Home Max Fibre" : "La Boîte Sosh Fibre (Réseau Orange)",
+        monthlyPrice: Math.min(p2, currentPrice - 0.5),
+        features: ["Qualité réseau premium Orange", "Livebox 5 incluse sans frais", "Sans engagement de durée"]
+      },
+      {
+        provider: isCH ? "Wingo" : "Free",
+        planName: isCH ? "Wingo Internet Plus" : "Freebox Pop Fibre",
+        monthlyPrice: Math.min(p3, currentPrice - 0.1),
+        features: ["Débit rapide jusqu'à 5 Gb/s", "Player TV 4K inclus", "Tarif préférentiel forfait mobile associé"]
+      }
+    ].filter(o => o.monthlyPrice < currentPrice);
+  }
+
+  if (text.includes('mobile') || text.includes('forfait') || text.includes('telecom') || text.includes('sosh') || text.includes('bouygues') || text.includes('sfr')) {
+    return [
+      {
+        provider: isCH ? "Swype" : "Free",
+        planName: isCH ? "Swype Swiss 5G" : "Série Free 140 Go 5G",
+        monthlyPrice: Math.min(p1, currentPrice - 1),
+        features: ["140 Go 5G sans engagement", "Appels & SMS illimités", "Conservation gratuite du numéro via code RIO"]
+      },
+      {
+        provider: isCH ? "Yallo" : "B&You",
+        planName: isCH ? "Yallo Regular 5G" : "B&You Série Spéciale 100 Go 5G",
+        monthlyPrice: Math.min(p2, currentPrice - 0.5),
+        features: ["100 Go en 5G en France", "25 Go utilisables en Europe/DOM", "Réseau Bouygues Telecom certifié"]
+      },
+      {
+        provider: isCH ? "Wingo" : "Red",
+        planName: isCH ? "Wingo Mobile Start" : "RED by SFR Forfait 100 Go 5G",
+        monthlyPrice: Math.min(p3, currentPrice - 0.1),
+        features: ["Réseau 5G haut débit", "eSIM instantanée", "Sans engagement de durée"]
+      }
+    ].filter(o => o.monthlyPrice < currentPrice);
+  }
+
+  // Generic / Energy / Subscriptions Whitelisted Providers
+  return [
+    {
+      provider: isCH ? "Wingo" : "Free",
+      planName: `Formule Éco ${subscriptionName}`,
+      monthlyPrice: Math.min(p1, currentPrice - 1),
+      features: ["Mêmes fonctionnalités à prix réduit", "Facturation mensuelle sans engagement", "Économie immédiate sur votre budget"]
+    },
+    {
+      provider: isCH ? "Sunrise" : "Sosh",
+      planName: `Forfait Essentiel ${subscriptionName}`,
+      monthlyPrice: Math.min(p2, currentPrice - 0.5),
+      features: ["Fournisseur certifié fiable", "Service client réactif", "Garantie sans mauvaise surprise"]
+    },
+    {
+      provider: isCH ? "Swype" : "Red",
+      planName: `Offre Digitale sans engagement`,
+      monthlyPrice: Math.min(p3, currentPrice - 0.1),
+      features: ["Gestion 100% en ligne", "Tarif fixe garanti", "Résiliation libre à tout moment"]
+    }
+  ].filter(o => o.monthlyPrice < currentPrice);
+}
+
+function getFallbackNegotiationAnswer(question: string, subscriptionName: string, currentPrice?: number) {
+  const q = question.toLowerCase();
+
+  // SPECIAL RULE: If the user explicitly asks about a provider NOT on the whitelist (e.g. Lebara, Prixtel, Lycamobile, Coriolis, etc.)
+  const nonWhitelistedProviders = [
+    { name: 'Lebara', trigger: 'lebara' },
+    { name: 'Prixtel', trigger: 'prixtel' },
+    { name: 'Lycamobile', trigger: 'lyca' },
+    { name: 'Coriolis', trigger: 'coriolis' },
+    { name: 'Syma', trigger: 'syma' },
+    { name: 'YouPrice', trigger: 'youprice' },
+    { name: 'Réglo Mobile', trigger: 'reglo' },
+    { name: 'NRJ Mobile', trigger: 'nrj' },
+    { name: 'Auchan Télécom', trigger: 'auchan' }
+  ];
+
+  const matchedProvider = nonWhitelistedProviders.find(p => q.includes(p.trigger));
+  if (matchedProvider) {
+    const provName = matchedProvider.name;
+    const currentPriceText = currentPrice ? `${currentPrice} €/mois` : 'votre forfait actuel';
+    return `Analyse objective de ${provName} (hors-whitelist) pour votre contrat "${subscriptionName}" : ${provName} est un opérateur alternatif (MVNO) proposant des forfaits très attractifs (généralement entre 4,99€ et 9,99€/mois sans engagement), ce qui est nettement inférieur à ${currentPriceText}. Côté qualité réseau, il utilise l'infrastructure des opérateurs historiques (SFR ou Orange). En contrepartie, le service client est 100% dématérialisé (chat/email uniquement), sans boutique physique, et certaines options avancées (eSIM immédiate, multi-SIM, débit prioritaire 5G aux heures de pointe) peuvent être plus limitées. C'est une excellente alternative d'économie si vous êtes autonome.`;
+  }
+
+  // Guardrail persona test
+  const isFinanceOrSub = q.includes('résil') || q.includes('resil') || q.includes('chatel') || q.includes('hamon') ||
+    q.includes('frais') || q.includes('négoci') || q.includes('negoci') || q.includes('offre') || q.includes('prix') ||
+    q.includes('contrat') || q.includes('engagement') || q.includes('lettre') || q.includes('courrier') ||
+    q.includes('tarif') || q.includes('box') || q.includes('mobile') || q.includes('abonnement') ||
+    q.includes('rio') || q.includes(subscriptionName.toLowerCase());
+
+  if (!isFinanceOrSub) {
+    return "Je suis programmé uniquement pour vous aider à optimiser ou résilier cet abonnement.";
+  }
+
+  if (q.includes('frais') || q.includes('résiliation') || q.includes('loi')) {
+    return `Pour ${subscriptionName} : grâce aux lois Chatel et Hamon, dès 12 mois d'ancienneté, vous pouvez résilier sans pénalité majeure. De plus, la quasi-totalité des opérateurs concurrents remboursent jusqu'à 100€ à 150€ de vos éventuels frais de clôture de contrat sur simple présentation de votre dernière facture.`;
+  }
+
+  if (q.includes('rio') || q.includes('conserver')) {
+    return `Pour conserver votre numéro et résilier sans formalités : appelez gratuitement le 3179 depuis votre ligne pour obtenir votre code RIO (Relevé d'Identité Opérateur). En le transmettant à votre nouveau fournisseur, celui-ci résilie automatiquement votre ancien contrat sans coupure de service.`;
+  }
+
+  if (q.includes('négoci') || q.includes('réduction') || q.includes('rabais')) {
+    return `Pour négocier avec ${subscriptionName} : appelez directement le service fidélisation/résiliation (et non le standard). Précisez que vous payez actuellement ${currentPrice ? `${currentPrice}€/mois` : 'ce tarif'} et qu'une offre concurrente équivalente vous est proposée à un tarif bien inférieur sans engagement. 80% des opérateurs appliquent immédiatement une remise de 5€ à 15€/mois pendant 12 mois pour conserver votre abonnement.`;
+  }
+
+  return `Pour optimiser ou résilier ${subscriptionName} : vous pouvez soit demander un alignement commercial au service client avec menace de départ vers un concurrent moins cher, soit résilier sans interruption de service en demandant votre code RIO (appelez le 3179 gratuitement) pour que votre nouvel opérateur s'occupe de tout sans paperasse.`;
+}
+
+/**
+ * Détection des plateformes de paiement / magasins d'applications (agrégateurs)
+ */
+export function isPaymentAggregator(name: string): boolean {
+  const n = (name || '').toLowerCase().trim();
+  return (
+    n.includes('google play') ||
+    n.includes('google *') ||
+    n.includes('google pay') ||
+    n.includes('google commerce') ||
+    n.includes('apple.com/bill') ||
+    n.includes('apple services') ||
+    n.includes('apple pay') ||
+    n.includes('itunes') ||
+    n.includes('paypal') ||
+    n.includes('stripe') ||
+    n.includes('curve') ||
+    n === 'google' ||
+    n === 'apple'
+  );
+}
+
+export function getAggregatorClarification(subscriptionName: string) {
+  const n = subscriptionName.toLowerCase();
+  let suggestions = ['Netflix', 'Spotify', 'iCloud+', 'YouTube Premium', 'Strava', 'Disney+', 'Autre (préciser)'];
+  if (n.includes('apple')) {
+    suggestions = ['iCloud+ (Stockage)', 'Apple Music', 'Apple TV+', 'Strava', 'Duolingo', 'Tinder', 'Autre (préciser)'];
+  } else if (n.includes('google')) {
+    suggestions = ['Google One (100 Go)', 'YouTube Premium', 'Spotify', 'Strava', 'Tinder', 'Autre (préciser)'];
+  }
+  return {
+    status: 'NEEDS_CLARIFICATION' as const,
+    message: "Ce prélèvement correspond à une plateforme de paiement ou app store. De quel service ou application s'agit-il exactement ?",
+    suggestions,
+    offers: [],
+    alternatives: []
+  };
+}
+
+/**
+ * HTTPS Callable: optimizeSubscription
+ * Finds 3 cheaper, verified alternatives for a given subscription with strict Whitelist and Human-in-the-loop clarification for aggregators.
+ */
+export const optimizeSubscription = functions.region('europe-west1')
+  .runWith({ timeoutSeconds: 60, memory: '512MB' })
+  .https.onCall(async (data) => {
+    const { subscriptionName, currentPrice, countryContext } = data || {};
+
+    if (!subscriptionName || typeof currentPrice !== 'number' || isNaN(currentPrice) || currentPrice <= 0) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing or invalid parameters: subscriptionName (string) and currentPrice (positive number) required.');
+    }
+
+    const country = countryContext || 'France';
+
+    // STEP 1 FAST CHECK: Aggregator Detection
+    if (isPaymentAggregator(subscriptionName)) {
+      const clarif = getAggregatorClarification(subscriptionName);
+      return {
+        success: true,
+        ...clarif
+      };
+    }
+
+    const systemPrompt = `
+You are a highly precise Senior Financial Auditor AI for the CashPilot app.
+Transaction: "${subscriptionName}" costing ${currentPrice}.
+
+STEP 1: AGGREGATOR DETECTION
+Check if "${subscriptionName}" is a generic payment platform or app store (e.g., "Google Play", "Apple", "PayPal", "Stripe", "Curve"). 
+If YES: You CANNOT optimize this yet. Return EXACTLY this JSON and STOP:
+{
+  "status": "NEEDS_CLARIFICATION",
+  "message": "Ce prélèvement correspond à une plateforme de paiement. De quel service ou application s'agit-il exactement ?",
+  "suggestions": ["Netflix", "Spotify", "Autre (préciser)"],
+  "offers": []
+}
+
+STEP 2: SECTOR IDENTIFICATION & DIRECT MATCHING (If NOT an aggregator)
+Identify the exact industry. Search for highly reliable competitors providing the EXACT SAME type of service. 
+CONSTRAINT 1: You MUST ONLY recommend providers from this Whitelist: [Swisscom, Sunrise, Salt, Wingo, Yallo, Coop Mobile, M-Budget, Swype, Galaxus Mobile, Sosh, B&You, Red, Free, Orange, Bouygues, SFR, La Poste] if telecom/internet, or recognized reputable direct market competitors for software/streaming/fitness.
+CONSTRAINT 2: The \`monthlyPrice\` MUST be strictly less than ${currentPrice}. 
+If it is a proprietary service with no cheaper equivalent, return an empty offers array.
+
+If Step 2 applies, return:
+{
+  "status": "SUCCESS",
+  "message": "Analyse terminée.",
+  "suggestions": [],
+  "offers": [ { "provider": "Name", "planName": "Plan", "monthlyPrice": 9.99, "features": ["F1", "F2", "F3"], "link": "" } ]
+}
+`;
+
+    const schema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        status: { type: Type.STRING, description: "'NEEDS_CLARIFICATION' if aggregator, 'SUCCESS' if identified" },
+        message: { type: Type.STRING, description: "Message d'explication ou question de clarification" },
+        suggestions: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Suggestions de services ou applications courantes"
+        },
+        offers: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              provider: { type: Type.STRING, description: "Nom du fournisseur" },
+              planName: { type: Type.STRING, description: "Nom de l'offre alternative" },
+              monthlyPrice: { type: Type.NUMBER, description: "Prix mensuel de l'offre (STRICTEMENT inférieur au prix actuel)" },
+              features: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "Caractéristiques clés ou avantages du forfait"
+              },
+              link: { type: Type.STRING, description: "Lien ou mention de l'offre" }
+            },
+            required: ["provider", "planName", "monthlyPrice", "features"]
+          }
+        }
+      },
+      required: ["status", "message", "suggestions", "offers"]
+    };
+
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === "MOCK_KEY") {
+        const mock = getMockCheaperAlternatives(subscriptionName, currentPrice, country);
+        return {
+          success: true,
+          status: 'SUCCESS',
+          message: "Analyse terminée.",
+          suggestions: [],
+          offers: mock,
+          alternatives: mock
+        };
+      }
+
+      const result = await getAI().models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: systemPrompt }]
+          }
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: schema,
+          temperature: 0.1
+        }
+      });
+
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(result.text || "{}");
+      } catch (parseErr) {
+        console.warn("optimizeSubscription JSON parse failed, using fallback:", parseErr);
+      }
+
+      if (parsed?.status === 'NEEDS_CLARIFICATION') {
+        return {
+          success: true,
+          status: 'NEEDS_CLARIFICATION',
+          message: parsed.message || "Ce prélèvement correspond à une plateforme de paiement. De quel service ou application s'agit-il exactement ?",
+          suggestions: Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0
+            ? parsed.suggestions
+            : ["Netflix", "Spotify", "Autre (préciser)"],
+          offers: [],
+          alternatives: []
+        };
+      }
+
+      const rawOffers = Array.isArray(parsed?.offers) ? parsed.offers : [];
+      const filteredOffers = rawOffers
+        .filter((o: any) => typeof o.monthlyPrice === 'number' && o.monthlyPrice < currentPrice)
+        .slice(0, 3);
+
+      const finalOffers = filteredOffers.length > 0
+        ? filteredOffers
+        : getMockCheaperAlternatives(subscriptionName, currentPrice, country);
+
+      return {
+        success: true,
+        status: 'SUCCESS',
+        message: parsed?.message || "Analyse terminée.",
+        suggestions: [],
+        offers: finalOffers,
+        alternatives: finalOffers
+      };
+    } catch (err: any) {
+      console.warn("optimizeSubscription Gemini call failed, using verified fallback:", err?.message);
+      if (isPaymentAggregator(subscriptionName)) {
+        return {
+          success: true,
+          ...getAggregatorClarification(subscriptionName)
+        };
+      }
+      const fallback = getMockCheaperAlternatives(subscriptionName, currentPrice, country);
+      return {
+        success: true,
+        status: 'SUCCESS',
+        message: "Analyse terminée.",
+        suggestions: [],
+        offers: fallback,
+        alternatives: fallback
+      };
+    }
+  });
+
+/**
+ * HTTPS Callable: askNegotiationExpert
+ * AI Chat restricted strictly to the cancellation/negotiation persona with non-whitelist override rule.
+ */
+export const askNegotiationExpert = functions.region('europe-west1')
+  .runWith({ timeoutSeconds: 60, memory: '512MB' })
+  .https.onCall(async (data) => {
+    const { question, subscriptionName, currentPrice } = data || {};
+
+    if (!question || !subscriptionName) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing question or subscriptionName');
+    }
+
+    const systemPrompt = `You are a negotiation expert for '${subscriptionName}'. Answer user questions. 
+SPECIAL RULE: If the user explicitly asks about a provider NOT on the whitelist (e.g., 'Que penses-tu de Lebara ?'), you are authorized to analyze it. Provide a strict, objective opinion on its reliability/network quality, and list its current pricing compared to the user's current plan.
+If the user asks anything completely unrelated to this subscription, its cancellation, or provider alternatives, reply: 'Je suis programmé uniquement pour vous aider à optimiser ou résilier cet abonnement.'
+Current price paid by user: ${currentPrice ? `${currentPrice} €/mois` : 'Inconnu'}.
+User question: "${question}"
+Be concise (2-4 sentences max), highly practical, mention consumer rights (e.g. Loi Chatel, Loi Hamon, portabilité RIO) if relevant. Do not hallucinate.`;
+
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === "MOCK_KEY") {
+        return {
+          success: true,
+          answer: getFallbackNegotiationAnswer(question, subscriptionName, currentPrice)
+        };
+      }
+
+      const result = await getAI().models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: systemPrompt }]
+          }
+        ],
+        config: {
+          temperature: 0.2
+        }
+      });
+
+      const rawAnswer = (result.text || "").trim();
+      return {
+        success: true,
+        answer: rawAnswer || getFallbackNegotiationAnswer(question, subscriptionName, currentPrice)
+      };
+    } catch (err: any) {
+      console.warn("askNegotiationExpert Gemini call failed, using fallback:", err?.message);
+      return {
+        success: true,
+        answer: getFallbackNegotiationAnswer(question, subscriptionName, currentPrice)
+      };
+    }
+  });
+

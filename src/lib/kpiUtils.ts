@@ -54,7 +54,7 @@ export const enrichTransactionFallback = (tx: Transaction): Transaction => {
   }
 
   // Use the legacy `type` field if `nature` isn't provided but `type` is.
-  if (!nature || nature === 'Inconnu' || nature === 'Standard' as any) {
+  if (!nature || (nature as any) === 'Inconnu' || (nature as any) === 'Standard') {
     if (tx.type === 'fixe' || tx.type === 'variable' || tx.type === 'exceptionnelle') {
       nature = tx.type as any;
     } else {
@@ -250,3 +250,116 @@ export const buildCategoryBreakdown = (transactions: Transaction[]) => {
     }))
     .sort((a, b) => b.value - a.value);
 };
+
+export interface BankReconciliationResult {
+  initialBalance: number;
+  totalDebits: number;
+  totalCredits: number;
+  calculatedBalance: number;
+  closingBalance: number;
+  discrepancy: number;
+  isReconciled: boolean;
+}
+
+export const calculateReconciliation = (
+  initialBalance: number,
+  closingBalance: number,
+  transactions: { type: 'debit' | 'credit'; amount: number }[]
+): BankReconciliationResult => {
+  let totalDebits = 0;
+  let totalCredits = 0;
+
+  transactions.forEach(t => {
+    const absAmt = Math.abs(t.amount || 0);
+    if (t.type === 'credit') {
+      totalCredits += absAmt;
+    } else {
+      totalDebits += absAmt;
+    }
+  });
+
+  const calculatedBalance = Math.round((initialBalance + totalCredits - totalDebits) * 100) / 100;
+  const discrepancy = Math.round((calculatedBalance - closingBalance) * 100) / 100;
+  const isReconciled = Math.abs(discrepancy) < 0.01;
+
+  return {
+    initialBalance,
+    totalDebits: Math.round(totalDebits * 100) / 100,
+    totalCredits: Math.round(totalCredits * 100) / 100,
+    calculatedBalance,
+    closingBalance,
+    discrepancy,
+    isReconciled
+  };
+};
+
+export const calculateRunningBalances = (
+  initialBalance: number,
+  transactions: { id: string; date: string; type: 'debit' | 'credit'; amount: number }[]
+): Map<string, number> => {
+  // Sort transactions in ascending chronological order
+  const sorted = [...transactions].sort((a, b) => {
+    const diff = new Date(a.date).getTime() - new Date(b.date).getTime();
+    if (diff !== 0) return diff;
+    return a.id.localeCompare(b.id);
+  });
+
+  const balanceMap = new Map<string, number>();
+  let currentBalance = initialBalance;
+
+  sorted.forEach(tx => {
+    const absAmt = Math.abs(tx.amount || 0);
+    if (tx.type === 'credit') {
+      currentBalance += absAmt;
+    } else {
+      currentBalance -= absAmt;
+    }
+    balanceMap.set(tx.id, Math.round(currentBalance * 100) / 100);
+  });
+
+  return balanceMap;
+};
+
+export const formatBankAmount = (
+  amount: number,
+  currency: 'CHF' | 'EUR' = 'EUR',
+  options?: { showSign?: boolean }
+): string => {
+  const abs = Math.abs(amount);
+  const isNeg = amount < 0;
+  const isPos = amount > 0;
+  const sign = options?.showSign ? (isPos ? '+' : isNeg ? '-' : '') : (isNeg ? '-' : '');
+  const fixed = abs.toFixed(2);
+  const [intPart, decPart] = fixed.split('.');
+
+  if (currency === 'CHF') {
+    const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    return `${sign}${formattedInt}.${decPart} CHF`;
+  } else {
+    const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return `${sign}${formattedInt},${decPart} €`;
+  }
+};
+
+/**
+ * Détection robuste de la devise d'un relevé bancaire (CHF vs EUR).
+ * Si CHF n'est pas détecté avec certitude, le fallback par défaut est STRICTEMENT 'EUR'.
+ */
+export const detectStatementCurrency = (contentOrHeader?: string): 'CHF' | 'EUR' => {
+  if (!contentOrHeader) return 'EUR';
+  const upper = contentOrHeader.toUpperCase();
+  const isChf = 
+    /\bCHF\b/.test(upper) ||
+    upper.includes('FRANC SUISSE') ||
+    upper.includes('SWISS FRANC') ||
+    upper.includes('VALUTA: CHF') ||
+    upper.includes('DEVISE: CHF') ||
+    upper.includes('MONNAIE: CHF') ||
+    upper.includes('UBS SWITZERLAND') ||
+    upper.includes('POSTFINANCE') ||
+    upper.includes('BANQUE CANTONALE');
+
+  const currency = isChf ? 'CHF' : 'EUR';
+  return currency || 'EUR';
+};
+

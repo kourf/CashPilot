@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Trash2, 
   Download, 
@@ -15,7 +15,7 @@ import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { useTransactions } from '../../context/TransactionsContext';
 import { db } from '../../lib/firebase';
-import { doc, writeBatch } from 'firebase/firestore';
+import { doc, writeBatch, collection, getDocs } from 'firebase/firestore';
 import { getActiveAccountId } from '../../lib/userUtils';
 
 interface Transaction {
@@ -173,28 +173,55 @@ export const Settings: React.FC = () => {
     if (selectedPeriodToDelete === 'ALL') {
       toDeleteIds = transactions.map(t => t.id);
       updated = [];
+      localStorage.removeItem('cashpilot_monthly_balances');
     } else {
       toDeleteIds = transactions
         .filter(t => t.date && t.date.startsWith(selectedPeriodToDelete))
         .map(t => t.id);
       updated = transactions.filter(t => !t.date || !t.date.startsWith(selectedPeriodToDelete));
+
+      try {
+        const savedBalances = localStorage.getItem('cashpilot_monthly_balances');
+        if (savedBalances) {
+          const balances = JSON.parse(savedBalances);
+          delete balances[selectedPeriodToDelete];
+          localStorage.setItem('cashpilot_monthly_balances', JSON.stringify(balances));
+        }
+      } catch (e) {
+        console.warn("Erreur suppression monthly_balances:", e);
+      }
     }
 
     // 1. Synchronisation locale immédiate (0 ms)
     syncTransactions(updated);
+    window.dispatchEvent(new CustomEvent('cashpilot_balances_updated'));
     setShowConfirmModal(false);
 
-    // 2. Synchronisation distante Firestore
+    // 2. Synchronisation distante Firestore approfondie
     try {
       const accountId = getActiveAccountId();
-      if (toDeleteIds.length > 0) {
-        for (let i = 0; i < toDeleteIds.length; i += 400) {
-          const chunk = toDeleteIds.slice(i, i + 400);
+      const colRef = collection(db, `users/${accountId}/transactions`);
+
+      if (selectedPeriodToDelete === 'ALL') {
+        const snap = await getDocs(colRef);
+        const docsToDelete = snap.docs;
+        for (let i = 0; i < docsToDelete.length; i += 400) {
+          const chunk = docsToDelete.slice(i, i + 400);
           const batch = writeBatch(db);
-          chunk.forEach(id => {
-            const docRef = doc(db, `users/${accountId}/transactions`, id);
-            batch.delete(docRef);
-          });
+          chunk.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      } else {
+        const snap = await getDocs(colRef);
+        const periodDocs = snap.docs.filter(d => {
+          const data = d.data();
+          return (data.date && data.date.startsWith(selectedPeriodToDelete)) || 
+                 (data.monthKey === selectedPeriodToDelete);
+        });
+        for (let i = 0; i < periodDocs.length; i += 400) {
+          const chunk = periodDocs.slice(i, i + 400);
+          const batch = writeBatch(db);
+          chunk.forEach(d => batch.delete(d.ref));
           await batch.commit();
         }
       }
@@ -212,27 +239,27 @@ export const Settings: React.FC = () => {
 
   const handleResetEntireApp = async () => {
     if (window.confirm('Attention : Cette action réinitialise complètement le stockage local et cloud (relevés, reçus, réglages). Continuer ?')) {
-      const toDeleteIds = transactions.map(t => t.id);
-
       localStorage.removeItem('cashpilot_transactions');
       localStorage.removeItem('cashpilot_tx_cache');
       localStorage.removeItem('cashpilot_receipts');
+      localStorage.removeItem('cashpilot_monthly_balances');
+      localStorage.removeItem('cashpilot_statement_currency');
       setTransactions([]);
       if (setContextTransactions) {
         setContextTransactions([]);
       }
       window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('cashpilot_balances_updated'));
 
       // Supprimer de Firestore
       try {
         const accountId = getActiveAccountId();
-        for (let i = 0; i < toDeleteIds.length; i += 400) {
-          const chunk = toDeleteIds.slice(i, i + 400);
+        const snap = await getDocs(collection(db, `users/${accountId}/transactions`));
+        const allDocs = snap.docs;
+        for (let i = 0; i < allDocs.length; i += 400) {
+          const chunk = allDocs.slice(i, i + 400);
           const batch = writeBatch(db);
-          chunk.forEach(id => {
-            const docRef = doc(db, `users/${accountId}/transactions`, id);
-            batch.delete(docRef);
-          });
+          chunk.forEach(d => batch.delete(d.ref));
           await batch.commit();
         }
       } catch (e) {

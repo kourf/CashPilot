@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
-import { calculateKpis, filterByMonth, formatMonthLabel, buildSankeyData, buildCategoryBreakdown } from '../../lib/kpiUtils';
+import { calculateKpis, filterByMonth, formatMonthLabel, buildCategoryBreakdown } from '../../lib/kpiUtils';
 import { formatDateFR, formatCurrency } from '../../lib/bankUtils';
 import { useTransactions } from '../../context/TransactionsContext';
 
@@ -50,7 +50,6 @@ export default function Dashboard() {
 
   const kpis = useMemo(() => calculateKpis(filteredTransactions), [filteredTransactions]);
   const pieData = useMemo(() => buildCategoryBreakdown(filteredTransactions).slice(0, 5), [filteredTransactions]);
-  const sankeyData = useMemo(() => buildSankeyData(kpis, pieData), [kpis, pieData]);
 
   // Luxury high-tech color accents (Cyan, Emerald, Amber, Violet, Rose)
   const COLORS = ['#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6', '#F43F5E'];

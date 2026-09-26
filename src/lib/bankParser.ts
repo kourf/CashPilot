@@ -38,7 +38,11 @@ export const CATEGORIES = [
   'Paiement fractionné',
   'Frais bancaires',
   'Remboursement Carte (Amex)',
+  'Virement vers Fortuneo',
+  'Virement reçu de Fortuneo',
+  'Virement vers Revolut',
   'Épargne & Investissement',
+  'Virements Internes',
   'Virements Famille & Proches',
   'Retrait Espèces',
   'Autre'
@@ -250,32 +254,68 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('rachat assurance');
 
   if (amount > 0) {
-    // Rentrées d'argent : UNIQUEMENT transfert depuis ses propres livrets ou compte propre
-    if (isSavingsAccount || (isInternalAccount && (norm.includes('de: drame kouroufia') || norm.includes('fortuneo')))) {
+    // Rentrées d'argent : Vraie Épargne (rachat de livret)
+    if (isSavingsAccount) {
       return {
-        cleanDesc: cleanDesc || 'Virement Interne / Épargne',
+        cleanDesc: cleanDesc || "Rachat d'Épargne / Livret",
         flowType: 'SAVINGS_TRANSFER',
         category: 'Épargne & Investissement',
         isSubscription: false,
       };
     }
+    // Rentrées d'argent depuis Fortuneo sur SG : Considéré comme une entrée d'argent sur SG
+    if (isInternalAccount && (norm.includes('de: drame kouroufia') || norm.includes('fortuneo'))) {
+      return {
+        cleanDesc: 'Virement reçu de Fortuneo',
+        flowType: 'INCOME',
+        category: 'Virement reçu de Fortuneo',
+        isSubscription: false,
+      };
+    }
   } else {
-    // Sorties d'argent vers l'épargne ou investissements
+    // Sorties d'argent vers l'épargne ou investissements dédiés (Livrets, Bourse, Crypto)
     if (
       isSavingsAccount ||
-      isInternalAccount ||
       norm.includes('trade republic') ||
       norm.includes('degiro') ||
       norm.includes('binance') ||
       norm.includes('coinbase') ||
-      norm.includes('vers livret') ||
+      norm.includes('vers livret')
+    ) {
+      return {
+        cleanDesc: cleanDesc || 'Versement Épargne / Livret',
+        flowType: 'SAVINGS_TRANSFER',
+        category: 'Épargne & Investissement',
+        isSubscription: false,
+      };
+    }
+    // Sorties d'argent vers Fortuneo : Considéré comme une sortie d'argent du compte SG
+    if (isInternalAccount || norm.includes('pour: kouroufia fortuneo') || norm.includes('fortuneo')) {
+      return {
+        cleanDesc: 'Virement vers Fortuneo',
+        flowType: 'VARIABLE_EXPENSE',
+        category: 'Virement vers Fortuneo',
+        isSubscription: false,
+      };
+    }
+    // Sorties vers Revolut
+    if (norm.includes('revolut**0060*') || (norm.includes('revolut') && norm.includes('transf'))) {
+      return {
+        cleanDesc: 'Virement vers Revolut',
+        flowType: 'VARIABLE_EXPENSE',
+        category: 'Virement vers Revolut',
+        isSubscription: false,
+      };
+    }
+    // Sorties d'argent vers un autre compte courant propre (virement interne)
+    if (
       norm.includes('virement interne') ||
       norm.includes('compte a compte')
     ) {
       return {
-        cleanDesc: cleanDesc || 'Virement Interne / Épargne',
-        flowType: 'SAVINGS_TRANSFER',
-        category: 'Épargne & Investissement',
+        cleanDesc: cleanDesc || 'Virement Interne',
+        flowType: 'VARIABLE_EXPENSE',
+        category: 'Virements Internes',
         isSubscription: false,
       };
     }

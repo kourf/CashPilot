@@ -4,21 +4,29 @@ import {
   PieChart, 
   Pie, 
   Cell, 
-  Tooltip as RechartsTooltip 
+  Tooltip as RechartsTooltip,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid
 } from 'recharts';
 import { Card } from './ui/card';
 import { 
   GitFork, 
   PieChart as PieIcon, 
   TrendingDown, 
-  RotateCcw
+  BarChart3,
+  Calendar
 } from 'lucide-react';
 import { type BankTransaction, formatCurrency } from '../lib/bankUtils';
+import { formatBankAmount } from '../lib/kpiUtils';
 
 interface BankFlowChartsProps {
   transactions: BankTransaction[];
   selectedAccountName?: string;
   selectedMonthName?: string;
+  currency?: 'EUR' | 'CHF';
 }
 
 // Sophisticated color palette conforming to UI/UX Pro Max & luxury financial dashboards
@@ -37,10 +45,13 @@ const EXPENSE_PALETTE = [
   '#64748b'  // Slate
 ];
 
+const DAY_LABELS_FR = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+
 export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
   transactions,
   selectedAccountName = 'Tous les comptes',
-  selectedMonthName
+  selectedMonthName,
+  currency = 'EUR'
 }) => {
   const sankeyContainerRef = useRef<HTMLDivElement>(null);
   const [googleLoaded, setGoogleLoaded] = useState(false);
@@ -95,6 +106,55 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
       hasExpenses: totalExpenses > 0,
       hasIncome: totalIncome > 0
     };
+  }, [transactions]);
+
+  // Recharts BarChart data (Expenses aggregated by Category, strictly sorted descending)
+  const categoryBarData = useMemo(() => {
+    return financialData.expenseItems
+      .map(item => ({
+        category: item.name,
+        amount: Math.round(item.value * 100) / 100,
+        percentage: item.percentage,
+        color: item.color
+      }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [financialData.expenseItems]);
+
+  // Spending Habits (Total amount spent per Day of the Week, strictly sorted descending)
+  const spendingByDay = useMemo(() => {
+    const daySums: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    let totalSpent = 0;
+
+    transactions.forEach(tx => {
+      const isExpense = tx.flowType === 'FIXED_EXPENSE' || tx.flowType === 'VARIABLE_EXPENSE' || (tx.type === 'debit' && !tx.isInternalTransfer);
+      if (!isExpense) return;
+
+      const amt = Math.abs(Number(tx.amount) || 0);
+      if (amt <= 0) return;
+
+      totalSpent += amt;
+      if (tx.date) {
+        try {
+          const d = new Date(tx.date.includes('T') ? tx.date : `${tx.date}T12:00:00Z`);
+          const dayIdx = d.getDay();
+          if (!isNaN(dayIdx)) {
+            daySums[dayIdx] = (daySums[dayIdx] || 0) + amt;
+          }
+        } catch {
+          // ignore invalid dates
+        }
+      }
+    });
+
+    const days = [1, 2, 3, 4, 5, 6, 0].map(idx => ({
+      dayIndex: idx,
+      name: DAY_LABELS_FR[idx],
+      amount: Math.round((daySums[idx] || 0) * 100) / 100,
+      percentage: totalSpent > 0 ? ((daySums[idx] || 0) / totalSpent) * 100 : 0
+    }));
+
+    // Strictly descending order by total spent
+    return days.sort((a, b) => b.amount - a.amount);
   }, [transactions]);
 
   // Load Google Charts script for Sankey
@@ -459,6 +519,162 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
           </Card>
         )}
 
+      </div>
+
+      {/* 3 & 4. BAR CHART (Top Categories) & HABITUDES DE DÉPENSES (Day-of-Week textual list) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
+        {/* Recharts BarChart (Sorted strictly descending by amount) */}
+        <Card className="glass-card p-5 border border-border/60 rounded-2xl lg:col-span-7 flex flex-col justify-between shadow-sm">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-border/40">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-sm font-bold text-foreground">
+                  Dépenses par Catégorie
+                </h3>
+              </div>
+              <span className="text-[11px] font-mono font-semibold text-cyan-400">
+                {categoryBarData.length} catégorie{categoryBarData.length > 1 ? 's' : ''}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2 mb-3">
+              Classement strictement décroissant de l'ensemble de vos sorties d'argent par poste.
+            </p>
+          </div>
+
+          <div className="min-h-[280px] w-full flex items-center justify-center my-2">
+            {categoryBarData.length === 0 ? (
+              <div className="text-center p-8 text-muted-foreground">
+                <BarChart3 className="w-8 h-8 mx-auto opacity-40 mb-2" />
+                <p className="text-xs font-medium">Aucune dépense catégorisée sur cette période.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart
+                  data={categoryBarData}
+                  margin={{ top: 10, right: 10, left: 10, bottom: 45 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} opacity={0.3} />
+                  <XAxis 
+                    dataKey="category" 
+                    tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }}
+                    interval={0}
+                    angle={-30}
+                    textAnchor="end"
+                    height={55}
+                  />
+                  <YAxis 
+                    tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }}
+                    tickFormatter={(v) => formatBankAmount(v, currency, { showSign: false })}
+                    width={75}
+                  />
+                  <RechartsTooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-card/95 backdrop-blur-md p-2.5 rounded-xl border border-border/80 shadow-xl text-xs">
+                            <div className="font-bold text-foreground flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: data.color }} />
+                              <span>{data.category}</span>
+                            </div>
+                            <div className="mt-1 text-muted-foreground">
+                              Montant : <span className="font-bold text-foreground font-mono">{formatBankAmount(data.amount, currency)}</span>
+                            </div>
+                            <div className="text-cyan-400 font-semibold">
+                              Part : {data.percentage ? data.percentage.toFixed(1) : 0}% des dépenses
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="amount" radius={[6, 6, 0, 0]}>
+                    {categoryBarData.map((entry, index) => (
+                      <Cell key={`cat-bar-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          <div className="pt-3 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
+            <span>Plus gros poste : <strong className="text-foreground">{categoryBarData[0]?.category || '—'}</strong></span>
+            <span className="font-mono font-bold text-foreground">
+              {categoryBarData[0] ? formatBankAmount(categoryBarData[0].amount, currency) : '—'}
+            </span>
+          </div>
+        </Card>
+
+        {/* Habitudes de Dépenses (Day-of-Week Textual Ordered List 1 to 7) */}
+        <Card className="glass-card p-5 border border-border/60 rounded-2xl lg:col-span-5 flex flex-col justify-between shadow-sm">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-border/40">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-bold text-foreground">
+                  Habitudes de Dépenses
+                </h3>
+              </div>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                Par Jour
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2 mb-3">
+              Total décaissé par jour de la semaine, classé par ordre strictement décroissant.
+            </p>
+          </div>
+
+          {/* Clean, minimalist textual ordered list (1 to 7) */}
+          <div className="space-y-2 my-2">
+            {spendingByDay.map((item, index) => {
+              const rank = index + 1;
+              const isTop = rank === 1 && item.amount > 0;
+              return (
+                <div 
+                  key={item.name}
+                  className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                    isTop 
+                      ? 'bg-primary/10 border-primary/30 text-foreground' 
+                      : 'bg-secondary/20 dark:bg-white/[0.02] border-border/40 hover:bg-secondary/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0 pr-2">
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold font-mono ${
+                      isTop ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                    }`}>
+                      {rank}
+                    </span>
+                    <span className="text-xs md:text-sm font-semibold tracking-tight text-foreground truncate">
+                      {rank}. {item.name} — <span className="font-mono font-bold">{formatBankAmount(item.amount, currency)}</span>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <div className="w-14 h-1.5 rounded-full bg-secondary/80 overflow-hidden hidden sm:block">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${isTop ? 'bg-primary' : 'bg-muted-foreground/50'}`}
+                        style={{ width: `${Math.min(100, Math.max(0, item.percentage))}%` }}
+                      />
+                    </div>
+                    <span className="text-[11px] font-mono font-medium text-muted-foreground w-9 text-right">
+                      {item.percentage.toFixed(0)}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pt-3 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
+            <span>Jour de dépense max : <strong className="text-foreground">{spendingByDay[0]?.name || '—'}</strong></span>
+            <span className="font-mono font-bold text-rose-400">
+              {spendingByDay[0] ? formatBankAmount(spendingByDay[0].amount, currency) : '—'}
+            </span>
+          </div>
+        </Card>
       </div>
     </div>
   );

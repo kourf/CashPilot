@@ -118,40 +118,44 @@ export const KpiInfoTooltip: React.FC<KpiInfoTooltipProps> = ({
 
       case 'savings':
         return {
-          title: 'Épargne & Trésorerie',
-          subtitle: "L'argent mis de côté",
+          title: 'Épargne & Placements',
+          subtitle: "L'argent placé sur livrets dédiés",
           icon: ArrowLeftRight,
           colorClass: 'text-purple-500 border-purple-500/30 bg-purple-500/10',
-          badgeText: 'Économies',
+          badgeText: 'Placements',
           badgeClass: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
-          whatIsIt: "C'est l'argent que vous avez déplacé de votre compte courant vers vos livrets d'épargne ou comptes de réserve.",
+          whatIsIt: "C'est l'argent que vous avez réellement déposé sur vos livrets d'épargne ou comptes de placement dédiés (Livret A, LDDS, LEP, Assurance-Vie, PEA...).",
           howToRead: amount > 0
-            ? 'Bravo ! Vous avez mis ' + formatCurrency(amount) + " de côté ce mois-ci. Cet argent est sécurisé pour vos projets ou imprévus."
-            : "Vous n'avez pas encore mis d'argent de côté sur cette période.",
-          tip: "Mettre de côté même une petite somme chaque mois permet de vous constituer un solide matelas de sécurité."
+            ? 'Vous avez placé ' + formatCurrency(amount) + " sur vos livrets d'épargne sur cette période."
+            : "Vous n'avez pas encore placé d'argent sur un livret d'épargne dédié sur cette période (0,00 €). L'argent restant après vos dépenses constitue votre trésorerie disponible sur vos comptes courants.",
+          tip: "Règle Option 1 : Les virements internes de gestion entre vos comptes courants propres (ex: Société Générale vers Fortuneo) ne sont pas de l'épargne, ce sont de simples transferts de trésorerie neutralisés."
         };
 
       case 'resteAVivre':
       default: {
         const isPositive = amount >= 0;
         return {
-          title: 'Reste à Vivre Global',
-          subtitle: 'Le vrai résultat du mois',
+          title: 'Solde & Reste à Vivre',
+          subtitle: 'Trésorerie réelle disponible',
           icon: Sparkles,
           colorClass: isPositive
             ? 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10'
             : 'text-rose-500 border-rose-500/30 bg-rose-500/10',
-          badgeText: isPositive ? 'Excédent' : 'Déficit',
+          badgeText: isPositive ? 'Solde Positif' : 'Déficit',
           badgeClass: isPositive
             ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
             : 'bg-rose-500/15 text-rose-400 border-rose-500/30',
-          whatIsIt: "C'est le calcul le plus important : Revenus reçus MOINS vos Dépenses réelles. C'est ce qu'il reste vraiment dans votre poche.",
-          howToRead: isPositive
-            ? 'Bravo (+ ' + formatCurrency(amount, { showSign: false }) + ") ! Vous avez gagné plus que ce que vous avez dépensé. Vous êtes dans le vert !"
-            : 'Attention (- ' + formatCurrency(Math.abs(amount), { showSign: false }) + ") ! Vos dépenses ont dépassé vos rentrées d'argent. Vous piochez dans vos réserves ou risquez le découvert.",
-          tip: isPositive
-            ? 'Votre budget est sain : vous pouvez placer ce surplus ou vous faire plaisir en toute sérénité.'
-            : 'Action recommandée : Ralentissez les achats non indispensables pour repasser rapidement dans le vert.'
+          whatIsIt: "Il y a deux indicateurs essentiels sur votre compte :",
+          details: [
+            "Solde Réel Bancaire : L'argent physique disponible sur votre compte après toutes vos opérations (Solde initial + flux net de la période).",
+            "Flux net de la période : Revenus perçus MOINS Dépenses réelles de la période."
+          ],
+          howToRead: amount === 0
+            ? "Aucune opération n'est enregistrée pour cette période."
+            : isPositive
+              ? 'Votre compte bancaire est créditeur de ' + formatCurrency(amount, { showSign: false }) + '. Vous disposez de cet argent en trésorerie réelle.'
+              : 'Vos dépenses du mois ont excédé vos rentrées de ' + formatCurrency(Math.abs(amount), { showSign: false }) + '.',
+          tip: "Explication de gestion : Le reste à vivre ou solde disponible correspond aux rentrées moins les sorties réelles, cumulé au solde de départ lorsque celui-ci est renseigné."
         };
       }
     }

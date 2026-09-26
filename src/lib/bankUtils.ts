@@ -62,7 +62,7 @@ export function smartCategorizeTransaction(
     category: parsed.category,
     flowType: parsed.flowType,
     isSubscription: parsed.isSubscription,
-    subscriptionDay: parsed.isSubscription ? (parsed.subscriptionDay || subscriptionDay) : undefined,
+    subscriptionDay: parsed.isSubscription ? ((parsed as any).subscriptionDay || subscriptionDay) : undefined,
     confidence: parsed.category !== 'Autre' ? 'high' : 'low'
   };
 }
@@ -84,7 +84,15 @@ export function classifyFlowType(category: string, amount: number, label: string
     return 'INCOME';
   }
 
-  // 3. Épargne & Virements internes (neutralisés du reste à vivre)
+  // 3. Virements Fortuneo & Revolut (Considérés comme entrées/sorties réelles sur le relevé)
+  if (normCat.includes('fortuneo') || normLabel.includes('fortuneo') || normLabel.includes('drame kouroufia')) {
+    return amount > 0 ? 'INCOME' : 'VARIABLE_EXPENSE';
+  }
+  if (normCat.includes('revolut') || normLabel.includes('revolut**0060*')) {
+    return amount > 0 ? 'INCOME' : 'VARIABLE_EXPENSE';
+  }
+
+  // 4. Vraie Épargne & Placements (Livrets A, LDDS, PEA, Assurance-Vie)
   const isThirdPartyInflow = amount > 0 && (
     normLabel.includes('nayssa') ||
     normLabel.includes('el hani') ||
@@ -98,14 +106,11 @@ export function classifyFlowType(category: string, amount: number, label: string
     normCat.includes('épargne') ||
     normCat.includes('epargne') ||
     normCat.includes('investissement') ||
-    normCat.includes('virement interne') ||
-    normCat.includes('virements internes') ||
     normLabel.includes('livret a') ||
     normLabel.includes('ldds') ||
     normLabel.includes('livret') ||
     normLabel.includes('assurance vie') ||
-    normLabel.includes('compte a compte livret') ||
-    ((normLabel.includes('fortuneo') || normLabel.includes('drame kouroufia')) && !normLabel.includes('generation') && !normLabel.includes('cpam'))
+    normLabel.includes('compte a compte livret')
   )) {
     return 'SAVINGS_TRANSFER';
   }
@@ -170,9 +175,23 @@ export function calculateBankMetrics(transactions: BankTransaction[]) {
   let fixed = 0;
   let variable = 0;
   let savings = 0;
+  let internalTransfers = 0;
+
+  let fortuneoSent = 0;
+  let fortuneoReceived = 0;
 
   transactions.forEach(t => {
     const amt = Math.abs(Number(t.amount) || 0);
+    const signedAmt = Number(t.amount) || 0;
+    const cat = (t.category || '').toLowerCase();
+    const raw = (t.rawLabel || t.description || '').toLowerCase();
+    const isFortuneo = cat.includes('fortuneo') || raw.includes('fortuneo');
+
+    if (isFortuneo) {
+      if (signedAmt < 0) fortuneoSent += amt;
+      else fortuneoReceived += amt;
+    }
+
     if (t.flowType === 'INCOME') {
       income += amt;
     } else if (t.flowType === 'FIXED_EXPENSE') {
@@ -180,7 +199,20 @@ export function calculateBankMetrics(transactions: BankTransaction[]) {
     } else if (t.flowType === 'VARIABLE_EXPENSE') {
       variable += amt;
     } else if (t.flowType === 'SAVINGS_TRANSFER') {
-      savings += amt;
+      // Option 1 : Rigueur absolue
+      // Ne comptabiliser dans "savings" QUE la vraie épargne placée sur livrets ou investissements
+      if (
+        cat.includes('épargne') ||
+        cat.includes('epargne') ||
+        cat.includes('investissement') ||
+        cat.includes('livret') ||
+        cat.includes('placement')
+      ) {
+        savings += amt;
+      } else {
+        // Mouvements de trésorerie internes entre comptes courants propres
+        internalTransfers += amt;
+      }
     }
   });
 
@@ -194,6 +226,9 @@ export function calculateBankMetrics(transactions: BankTransaction[]) {
     variable,
     realExpenses,
     savings,
+    internalTransfers,
+    fortuneoSent,
+    fortuneoReceived,
     netCashFlow,
     resteAVivre
   };
@@ -206,23 +241,72 @@ export function checkDuplicateTransactions(newTxs: BankTransaction[], existingTx
   let duplicatesCount = 0;
   const uniqueTxs: BankTransaction[] = [];
 
-  const existingSignatures = new Set(
-    existingTxs.map(t => {
-      const amt = Number(t.amount).toFixed(2);
-      const desc = (t.description || t.rawLabel || t.cleanLabel || '').trim().toLowerCase().slice(0, 30);
-      return `${t.date}_${amt}_${desc}`;
-    })
-  );
+  const normalizeDesc = (str: string) => {
+    return (str || '')
+      .toLowerCase()
+      .replace(/carte\s+x\d+/gi, '')
+      .replace(/\d{2}\/\d{2}/gi, '')
+      .replace(/prelevement\s+europeen/gi, '')
+      .replace(/vir(ement)?\s+(recu|emis|instantane)?/gi, '')
+      .replace(/commerce\s+electronique/gi, '')
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 20);
+  };
+
+  const getDayTimestamp = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return isNaN(d.getTime()) ? 0 : Math.floor(d.getTime() / (1000 * 60 * 60 * 24));
+    } catch {
+      return 0;
+    }
+  };
+
+  const existingPool = existingTxs.map(t => ({
+    id: t.id,
+    amt: Number(t.amount).toFixed(2),
+    norm: normalizeDesc(t.description || t.rawLabel || t.cleanLabel || ''),
+    raw: (t.rawLabel || t.description || '').toLowerCase(),
+    day: getDayTimestamp(t.date),
+    date: t.date
+  }));
 
   for (const tx of newTxs) {
     const amt = Number(tx.amount).toFixed(2);
-    const desc = (tx.description || tx.rawLabel || tx.cleanLabel || '').trim().toLowerCase().slice(0, 30);
-    const signature = `${tx.date}_${amt}_${desc}`;
+    const norm = normalizeDesc(tx.description || tx.rawLabel || tx.cleanLabel || '');
+    const raw = (tx.rawLabel || tx.description || '').toLowerCase();
+    const day = getDayTimestamp(tx.date);
 
-    if (existingSignatures.has(signature)) {
+    // Vérifie correspondance exacte ou avec tolérance de date (+/- 3 jours) pour les décalages de comptabilisation carte
+    const isDup = existingPool.some(e => {
+      if (e.amt !== amt) return false;
+
+      // 1. Même date et même description
+      if (e.date === tx.date && (e.norm === norm || (norm.length > 3 && e.norm.includes(norm)))) return true;
+
+      // 2. Tolérance de +/- 3 jours si même marchand/motif
+      const dayDiff = Math.abs(e.day - day);
+      if (dayDiff <= 3 && norm.length >= 4 && (e.norm === norm || e.norm.includes(norm) || norm.includes(e.norm))) {
+        return true;
+      }
+
+      // 3. Référence bancaire identique
+      if (raw.includes('6594345599s') && e.raw.includes('6594345599s')) return true;
+
+      return false;
+    });
+
+    if (isDup) {
       duplicatesCount++;
     } else {
-      existingSignatures.add(signature);
+      existingPool.push({
+        id: tx.id,
+        amt,
+        norm,
+        raw,
+        day,
+        date: tx.date
+      });
       uniqueTxs.push(tx);
     }
   }
