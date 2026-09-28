@@ -170,10 +170,15 @@ export function calculateBankMetrics(transactions: BankTransaction[]) {
   let fixed = 0;
   let variable = 0;
   let savings = 0;
+  let startingBalance = 0;
 
   transactions.forEach(t => {
     const amt = Math.abs(Number(t.amount) || 0);
-    if (t.flowType === 'INCOME') {
+    const isStartingBalance = t.isStartingBalance || t.category === "Solde de départ" || t.rawLabel === "Solde de départ";
+
+    if (isStartingBalance) {
+      startingBalance += Number(t.amount) || 0;
+    } else if (t.flowType === 'INCOME') {
       income += amt;
     } else if (t.flowType === 'FIXED_EXPENSE') {
       fixed += amt;
@@ -186,7 +191,7 @@ export function calculateBankMetrics(transactions: BankTransaction[]) {
 
   const realExpenses = fixed + variable;
   const netCashFlow = income - realExpenses - savings;
-  const resteAVivre = income - realExpenses;
+  const resteAVivre = income - realExpenses; // Strictement sans transfers internes ou epargne, conformément à la règle mémoire
 
   return {
     income,
@@ -195,7 +200,8 @@ export function calculateBankMetrics(transactions: BankTransaction[]) {
     realExpenses,
     savings,
     netCashFlow,
-    resteAVivre
+    resteAVivre,
+    startingBalance
   };
 }
 

@@ -84,7 +84,11 @@ IMPORTANT: Identifie avec rigueur :
 1. Le nom de la banque (ex: BoursoBank, BNP Paribas, Revolut, Crédit Agricole, N26, CIC, Société Générale, etc.).
 2. Le type de compte (Courant, Épargne, Pro, Joint, etc.).
 3. Le numéro masqué ou identifiant s'il apparaît (ex: ...4819).
-4. Le nom synthétique du compte bancaire (ex: "BoursoBank - Compte Courant ...4819" ou "Revolut EUR").
+4. Le nom synthétique du compte bancaire en utilisant des heuristiques génériques pour déduire le titulaire principal (ex: récurrence sur fiches de paie ou virements, "BoursoBank - Compte Courant ...4819" ou "Revolut EUR"). Ne hardcode pas de nom spécifique. Si le titulaire n'est pas certain, utilise un nom générique.
+5. IGNORE totalement toute catégorie native fournie par la banque (souvent erronée) et base-toi UNIQUEMENT sur l'analyse sémantique du libellé brut.
+6. DOUBLE COMPTAGE : Identifie les prélèvements de cartes à débit différé (ex: "Remboursement American Express") et les paiements fractionnés (ex: "3x 4x Oney", "Alma", "Klarna"). Marque-les OBLIGATOIREMENT comme "isInternalTransfer: true" (flux neutre) pour qu'ils ne soient pas déduits du Reste à vivre.
+7. VIREMENTS INTERNES : Détecte les virements vers les autres comptes de l'utilisateur (ex: "Fortuneo", "Revolut", ou même nom que le titulaire). Classe-les en "Épargne" ou "Virement interne" (flux neutre). En cas de doute absolu sur un bénéficiaire (ex: "Virement émis vers [Nom]"), classe l'opération dans "À vérifier" ou "Autre" pour exiger une validation manuelle.
+8. FLUX FAMILIAUX : Isole les échanges d'argent entre proches (prénoms/noms de famille sans enseigne commerciale) dans une catégorie neutre "Remboursements/Avances" ou "Solidarité".
 CashPilot n’est pas une application comptable : n'inclus AUCUNE information de TVA.
 Détecte les revenus, dépenses, remboursements, virements internes, épargne, abonnements, frais bancaires, crédits, paiements en plusieurs fois.
 Classe chaque opération en type fixe, variable ou virement/épargne.`;
@@ -252,7 +256,7 @@ export const categorizeTransactions = functions.region('europe-west1')
   try {
     const prompt = `Tu es un expert en analyse de finances personnelles.
 Analyse rigoureusement ces opérations bancaires en te basant EXCLUSIVEMENT sur leur libellé complet ("fullLabel" ou "description").
-RÈGLE CRITIQUE ET OBLIGATOIRE : IGNORE totalement toute éventuelle ancienne colonne "Catégorie" ou "Sous-Catégorie" d'origine de la banque.
+RÈGLE CRITIQUE ET OBLIGATOIRE : IGNORE totalement toute éventuelle ancienne colonne "Catégorie" ou "Sous-Catégorie" d'origine de la banque, base-toi UNIQUEMENT sur l'analyse sémantique du libellé brut.
 
 Pour chaque opération :
 1. Extrais le nom propre nettoyé du commerçant ou tiers (cleanDescription), sans préfixes techniques (CARTE X..., VIR EUROPEEN, COMMERCE ELECTRONIQUE, etc.).
@@ -268,15 +272,18 @@ Pour chaque opération :
    - "Transports & Carburant" (Total, Shell, carburant, autoroutes, péages, SNCF, RATP, Uber, transports)
    - "Santé" (pharmacie, médecin, dentiste, optique, remboursements CPAM/mutuelle)
    - "Épargne & Investissement" (virements vers livrets A/LDDS, PEL, PEA, assurance vie, investissements)
-   - "Virement Interne" (virements entre propres comptes, Fortuneo, virements compte à compte)
+   - "Virement Interne" (virements entre propres comptes, Fortuneo, virements compte à compte, et TOUS les paiements différés/fractionnés comme Amex, Oney, Alma, Klarna)
+   - "Remboursements/Avances" (échanges d'argent entre proches, flux familiaux sans enseigne commerciale, ou "Solidarité")
    - "Frais bancaires" (cotisation carte, frais tenue de compte, agios)
+   - "À vérifier" (si bénéficiaire d'un virement ambigu nécessitant confirmation humaine)
    - "Autre"
 3. Détermine flowType :
-   - "SAVINGS_TRANSFER" pour virements internes, épargne, virements compte à compte, Fortuneo (neutralisés du reste à vivre).
+   - "SAVINGS_TRANSFER" OBLIGATOIRE pour virements internes, épargne, virements compte à compte, Fortuneo, MAIS AUSSI paiements différés/fractionnés (Amex, Oney, Alma, Klarna) et échanges d'argent avec des proches (neutralisés du reste à vivre pour éviter le double comptage).
    - "INCOME" pour salaires, aides, remboursements et entrées positives.
    - "FIXED_EXPENSE" pour charges fixes, loyer, énergie, assurances et abonnements.
    - "VARIABLE_EXPENSE" pour toutes les dépenses courantes de consommation.
 4. isSubscription : true si abonnement récurrent ou prélèvement périodique.
+5. Déduis le titulaire de manière générique, sans coder de noms en dur.
 
 Transactions à traiter : ${JSON.stringify(transactions)}`;
 

@@ -101,6 +101,11 @@ export const calculateKpis = (transactions: Transaction[]): KPIResult => {
 
     if (t.category === 'Virements internes') return;
 
+    // Ignorer le solde de départ pour le reste à vivre, il est ajouté à un solde de départ global si besoin.
+    // Mais on peut le compter dans les revenus globaux si on veut,
+    // ou plutôt l'exclure du calcul des revenus normaux pour ne pas fausser le budget du mois.
+    if (t.isStartingBalance || t.category === "Solde de départ") return;
+
     if (isIncome) {
       if (t.category === 'Remboursements') {
         remboursements += amt;
@@ -126,7 +131,7 @@ export const calculateKpis = (transactions: Transaction[]): KPIResult => {
     }
   });
 
-  const resteAVivre = revenus - depenses;
+  const resteAVivre = revenus - depenses; // "Discretionary income (resteAVivre) is calculated as Income minus Operational Expenses, strictly excluding internal transfers and savings."
   const budgetJournalier = resteAVivre > 0 ? (resteAVivre / 30) : 0;
 
   let topCategory = 'Aucune';
