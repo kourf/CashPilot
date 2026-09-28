@@ -127,6 +127,7 @@ export const BankStatements: React.FC = () => {
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [fileStatusMessage, setFileStatusMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [currentBankBalance, setCurrentBankBalance] = useState<string>('');
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -837,6 +838,15 @@ export const BankStatements: React.FC = () => {
   // 8. File Upload & Extraction with Multi-Account AI Detection
   const handleFileUpload = async (file: File) => {
     setIsProcessingFile(true);
+      if (!currentBankBalance || isNaN(parseFloat(currentBankBalance))) {
+        setNotification({
+          type: 'error',
+          message: "Veuillez saisir un solde bancaire valide avant d'importer."
+        });
+        setIsProcessingFile(false);
+        return;
+      }
+
     setFileStatusMessage(`Analyse de ${file.name}...`);
 
     try {
@@ -958,10 +968,40 @@ export const BankStatements: React.FC = () => {
         }
       }
 
+      // Calculate Starting Balance (Solde de départ)
+      const importedTotal = uniqueTxs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+      const balanceValue = parseFloat(currentBankBalance.replace(',', '.'));
+      const startingBalance = balanceValue - importedTotal;
+
       // Save Unique Transactions in Firestore batch
       setFileStatusMessage(`Sauvegarde de ${uniqueTxs.length} opérations pour "${detectedAccountName}"...`);
       const batch = writeBatch(db);
       const txRef = collection(db, `users/${accountId}/transactions`);
+
+      // Enregistrer le Solde de départ comme une transaction spéciale pour le point zéro
+      const startBalanceDoc = doc(txRef);
+      const monthKey = uniqueTxs[0]?.date ? uniqueTxs[0].date.substring(0, 7) : new Date().toISOString().substring(0, 7);
+      batch.set(startBalanceDoc, {
+        id: startBalanceDoc.id,
+        date: uniqueTxs[0]?.date || new Date().toISOString().substring(0, 10),
+        monthKey,
+        rawLabel: "Solde de départ",
+        cleanLabel: "Solde de départ",
+        description: "Solde de départ",
+        amount: startingBalance,
+        direction: startingBalance >= 0 ? 'credit' : 'debit',
+        category: "Solde de départ",
+        flowType: "SAVINGS_TRANSFER",
+        nature: "autre",
+        isSubscription: false,
+        subscriptionDay: null,
+        accountName: detectedAccountName,
+        bankName: detectedBankName,
+        aiStatus: 'completed',
+        isStartingBalance: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
 
       // Nettoyage automatique des anciennes opérations corrompues (où la date avait été prise pour libellé)
       const corruptedOldDocs = bankTransactions.filter(t => 
@@ -1007,6 +1047,7 @@ export const BankStatements: React.FC = () => {
         message: `Import réussi : ${uniqueTxs.length} opérations rattachées à "${detectedAccountName}" (${duplicatesCount} doublons ignorés).`
       });
       setIsUploading(false);
+      setCurrentBankBalance('');
     } catch (err: any) {
       console.error("Erreur import relevé:", err);
       setNotification({
@@ -1223,6 +1264,21 @@ export const BankStatements: React.FC = () => {
               )}
             </div>
 
+            <div className="w-full max-w-xs mx-auto mb-4" onClick={(e) => e.stopPropagation()}>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1 text-left">
+                Quel est le solde affiché sur votre application bancaire aujourd'hui ? *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                placeholder="Ex: 1540.50"
+                value={currentBankBalance}
+                onChange={e => setCurrentBankBalance(e.target.value)}
+                className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground text-center"
+              />
+            </div>
+
             <div>
               <p className="text-base font-bold text-foreground">
                 {isProcessingFile ? fileStatusMessage : "Glissez-déposez votre relevé bancaire (PDF, CSV, image)"}
@@ -1347,8 +1403,13 @@ export const BankStatements: React.FC = () => {
             <div className={`text-2xl font-black font-mono tracking-normal ${metrics.resteAVivre >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
               {formatCurrency(metrics.resteAVivre, { showSign: true })}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Solde net disponible : {formatCurrency(metrics.netCashFlow, { showSign: true, decimals: 0 })}
+            <p className="text-xs text-muted-foreground mt-1 flex flex-col gap-1">
+              <span>Flux net : {formatCurrency(metrics.netCashFlow, { showSign: true, decimals: 0 })}</span>
+              {metrics.startingBalance !== undefined && metrics.startingBalance !== 0 && (
+                 <span className="text-emerald-600 dark:text-emerald-400 font-semibold border-t border-border/40 pt-1">
+                    Solde final estimé : {formatCurrency(metrics.startingBalance + metrics.netCashFlow, { showSign: true, decimals: 2 })}
+                 </span>
+              )}
             </p>
           </div>
         </Card>
