@@ -157,64 +157,66 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
 
               {/* DÉTAIL DES ARTICLES DÉROULÉ */}
               {isExpanded && (
-                <div className="p-4 border-t border-border/70 bg-muted/20 space-y-3 animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold px-1">
+                <div className="p-3 sm:p-4 border-t border-border/70 bg-muted/20 space-y-3 animate-in fade-in duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-muted-foreground font-semibold px-1 gap-1">
                     <span>Détail des {receipt.items.length} articles réels</span>
                     <span>Total calculé : {formatCurrency(receipt.items.reduce((acc, it) => acc + (it.price * it.quantity), 0), { showSign: false })}</span>
                   </div>
 
                   <div className="border border-border/80 rounded-xl overflow-hidden bg-card">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="border-b border-border/80 bg-secondary/40 text-[10px] font-bold text-muted-foreground uppercase">
-                          <th className="py-2 px-3">Produit Normalisé</th>
-                          <th className="py-2 px-3">Marque</th>
-                          <th className="py-2 px-3">Contenance</th>
-                          <th className="py-2 px-3">Rayon</th>
-                          <th className="py-2 px-3 text-right">Prix Payé</th>
-                          <th className="py-2 px-3 text-right">Prix Réf.</th>
-                          <th className="py-2 px-3 text-center">Qté</th>
-                          <th className="py-2 px-3 text-right">Total Ligne</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/60">
-                        {receipt.items.map((it) => (
-                          <tr key={it.id} className="hover:bg-muted/20">
-                            <td className="py-2 px-3 font-semibold text-foreground">
-                              <div>{it.normalizedName}</div>
-                              {it.rawName && it.rawName !== it.normalizedName && (
-                                <span className="text-[10px] text-muted-foreground font-mono block">
-                                  {it.rawName}
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2 px-3 text-[11px] text-muted-foreground font-medium">
-                              {it.brand || 'Générique'}
-                            </td>
-                            <td className="py-2 px-3 text-[11px] text-muted-foreground font-mono">
-                              {it.weightOrVolume || '—'}
-                            </td>
-                            <td className="py-2 px-3">
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-secondary text-muted-foreground">
-                                {AISLE_CONFIGS[it.category]?.label || it.category}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono font-bold text-foreground">
-                              {formatCurrency(it.pricePaid ?? it.price, { showSign: false })}
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono text-[11px] text-muted-foreground">
-                              {it.unitPrice > 0 ? `${formatCurrency(it.unitPrice, { showSign: false })}/${it.unit || 'u'}` : '—'}
-                            </td>
-                            <td className="py-2 px-3 text-center font-mono text-muted-foreground">
-                              {it.quantity}
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono font-bold text-foreground">
-                              {formatCurrency((it.pricePaid ?? it.price) * it.quantity, { showSign: false })}
-                            </td>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs min-w-[600px]">
+                        <thead>
+                          <tr className="border-b border-border/80 bg-secondary/40 text-[10px] font-bold text-muted-foreground uppercase">
+                            <th className="py-2 px-3">Produit Normalisé</th>
+                            <th className="py-2 px-3">Marque</th>
+                            <th className="py-2 px-3">Contenance</th>
+                            <th className="py-2 px-3">Rayon</th>
+                            <th className="py-2 px-3 text-right">Prix Payé</th>
+                            <th className="py-2 px-3 text-right">Prix Réf.</th>
+                            <th className="py-2 px-3 text-center">Qté</th>
+                            <th className="py-2 px-3 text-right">Total Ligne</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-border/60">
+                          {receipt.items.map((it) => (
+                            <tr key={it.id} className="hover:bg-muted/20">
+                              <td className="py-2 px-3 font-semibold text-foreground">
+                                <div>{it.normalizedName}</div>
+                                {it.rawName && it.rawName !== it.normalizedName && (
+                                  <span className="text-[10px] text-muted-foreground font-mono block">
+                                    {it.rawName}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-[11px] text-muted-foreground font-medium">
+                                {it.brand || 'Générique'}
+                              </td>
+                              <td className="py-2 px-3 text-[11px] text-muted-foreground font-mono">
+                                {it.weightOrVolume || '—'}
+                              </td>
+                              <td className="py-2 px-3">
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-secondary text-muted-foreground">
+                                  {AISLE_CONFIGS[it.category]?.label || it.category}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-foreground">
+                                {formatCurrency(it.pricePaid ?? it.price, { showSign: false })}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono text-[11px] text-muted-foreground">
+                                {it.unitPrice > 0 ? `${formatCurrency(it.unitPrice, { showSign: false })}/${it.unit || 'u'}` : '—'}
+                              </td>
+                              <td className="py-2 px-3 text-center font-mono text-muted-foreground">
+                                {it.quantity}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-foreground">
+                                {formatCurrency((it.pricePaid ?? it.price) * it.quantity, { showSign: false })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}

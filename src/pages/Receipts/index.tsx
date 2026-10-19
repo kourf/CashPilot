@@ -199,19 +199,19 @@ export default function Receipts() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6 animate-in fade-in duration-500 pb-28 md:pb-12">
+    <div className="p-3 sm:p-5 md:p-8 max-w-6xl mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-500 pb-28 md:pb-12">
       
       {/* HEADER SECTION AVEC DESIGN DNA GOOGLE STITCH */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/70 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-border/70 pb-3.5 sm:pb-5">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
               Audit Alimentaire & Grande Distribution
             </span>
 
             {/* BADGE SYNCHRONISATION EN DIRECT PC & MOBILE */}
-            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <div className="flex items-center gap-1">
                 <Laptop size={11} />
@@ -223,10 +223,10 @@ export default function Receipts() {
             </div>
           </div>
 
-          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight mt-1 text-foreground">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight mt-1 text-foreground">
             Matrice Comparative Multi-Enseignes
           </h1>
-          <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
             Comparez vos prix réels au kilo/litre par rayon d'hypermarché en respectant strictement vos tickets de caisse.
           </p>
         </div>
@@ -237,7 +237,7 @@ export default function Receipts() {
             size="sm"
             variant="outline"
             onClick={() => setIsManualModalOpen(true)}
-            className="text-xs gap-1.5 h-9 bg-card hover:bg-secondary border-border/80"
+            className="text-xs gap-1.5 h-8 sm:h-9 bg-card hover:bg-secondary border-border/80"
           >
             <FileSpreadsheet size={14} className="text-primary" />
             <span>Saisie manuelle</span>
@@ -246,7 +246,7 @@ export default function Receipts() {
           <Button
             size="sm"
             onClick={() => setActiveTab('upload')}
-            className="text-xs font-bold gap-1.5 h-9 shadow-md"
+            className="text-xs font-bold gap-1.5 h-8 sm:h-9 shadow-md"
           >
             <Plus size={14} />
             <span>Scanner un ticket</span>
@@ -338,11 +338,11 @@ export default function Receipts() {
       )}
 
       {/* NAVIGATION PAR ONGLETS (STYLE APPLE GLASS & HARMONYOS) */}
-      <div className="flex items-center gap-2 p-1 rounded-2xl bg-secondary/50 border border-border/70 w-full sm:w-fit overflow-x-auto">
+      <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-secondary/50 border border-border/70 w-full sm:w-fit overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('matrix')}
           className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
+            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
             activeTab === 'matrix'
               ? "bg-card text-foreground shadow-sm border border-border/70"
               : "text-muted-foreground hover:text-foreground hover:bg-card/40"
@@ -355,7 +355,7 @@ export default function Receipts() {
         <button
           onClick={() => setActiveTab('history')}
           className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
+            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
             activeTab === 'history'
               ? "bg-card text-foreground shadow-sm border border-border/70"
               : "text-muted-foreground hover:text-foreground hover:bg-card/40"
@@ -368,7 +368,7 @@ export default function Receipts() {
         <button
           onClick={() => setActiveTab('upload')}
           className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
+            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
             activeTab === 'upload'
               ? "bg-card text-foreground shadow-sm border border-border/70"
               : "text-muted-foreground hover:text-foreground hover:bg-card/40"
@@ -410,9 +410,9 @@ export default function Receipts() {
       {activeTab === 'upload' && (
         <div className="space-y-6 animate-in fade-in duration-300">
           <Card className="glass-card overflow-hidden border-border/80 dark:border-white/[0.08] shadow-sm">
-            <CardHeader className="pb-3">
+            <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-bold flex items-center gap-2">
+                <CardTitle className="text-sm sm:text-base font-bold flex items-center gap-2">
                   <Camera className="text-primary" size={18} />
                   Téléversement du ticket de caisse (Photo ou PDF)
                 </CardTitle>
@@ -426,10 +426,10 @@ export default function Receipts() {
               </CardDescription>
             </CardHeader>
 
-            <CardContent className="space-y-4">
+            <CardContent className="p-4 sm:p-6 pt-0 space-y-4">
               <div 
                 className={cn(
-                  "flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-300 relative group text-center",
+                  "flex flex-col items-center justify-center p-5 sm:p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-300 relative group text-center",
                   isDragging 
                     ? "border-primary bg-primary/10 scale-[0.99]" 
                     : "border-border/80 dark:border-white/[0.1] hover:border-primary/50 hover:bg-secondary/40 dark:hover:bg-white/[0.02]"
