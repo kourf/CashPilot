@@ -166,6 +166,9 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             userId: accountId,
             storeName: String(data.storeName || 'Supermarché').trim(),
             date: String(data.date || new Date().toISOString().slice(0, 10)),
+            time: data.time ? String(data.time).trim() : undefined,
+            subtotal: typeof data.subtotal === 'number' ? Number(data.subtotal.toFixed(2)) : undefined,
+            totalDiscounts: typeof data.totalDiscounts === 'number' ? Number(data.totalDiscounts.toFixed(2)) : undefined,
             totalAmount: Number(totalAmount.toFixed(2)),
             items,
             createdAt: String(data.createdAt || new Date().toISOString()),
@@ -255,9 +258,22 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       updatedAt: nowIso
     };
 
-    // Sauvegarde Firestore
+    // Sauvegarde Firestore sans valeurs 'undefined'
+    const sanitizeForFirestore = (obj: any): any => {
+      if (obj === undefined) return null;
+      if (obj === null || typeof obj !== 'object') return obj;
+      if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
+      const res: Record<string, any> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (v !== undefined) {
+          res[k] = sanitizeForFirestore(v);
+        }
+      }
+      return res;
+    };
+
     const docRef = doc(db, `users/${accountId}/receipts/${docId}`);
-    await setDoc(docRef, fullReceipt);
+    await setDoc(docRef, sanitizeForFirestore(fullReceipt));
 
     // Effacer le ticket en attente puisqu'il est validé et enregistré
     setPendingValidationReceipt(null);

@@ -19,7 +19,8 @@ import {
   Eye,
   RefreshCw,
   ShoppingBag,
-  TrendingDown,
+  TrendingDown, 
+  TrendingUp,
   Receipt as ReceiptIcon,
   Calendar,
   Tag,
@@ -32,12 +33,14 @@ import {
   type ComparativeMatrix, 
   type SupermarketAisle, 
   type Receipt,
+  type ProductComparisonRow,
   SUPERMARKET_AISLES 
 } from '../../../types/receipts';
 import { AISLE_CONFIGS } from '../../../lib/receiptClassifier';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
 import { cn } from '../../../lib/utils';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
+import { PriceEvolutionModal } from './PriceEvolutionModal';
 
 interface ComparisonMatrixViewProps {
   matrix: ComparativeMatrix;
@@ -86,6 +89,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showHiddenModal, setShowHiddenModal] = useState(false);
+  const [selectedProductForEvolution, setSelectedProductForEvolution] = useState<ProductComparisonRow | null>(null);
 
   // RÈGLE STRICTE D'AUDIT : Moins de 2 tickets ou moins de 2 enseignes -> Comparaison strictement désactivée
   const isSingleReceipt = matrix.isSingleReceipt || matrix.receiptsCount < 2 || matrix.stores.length < 2;
@@ -686,6 +690,29 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                           Ticket : {product.sampleRawNames[0]}
                                         </span>
                                       )}
+                                      {/* BADGE ÉVOLUTION PRIX AUDITÉ (RÈGLE 5) */}
+                                      {product.priceEvolution && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedProductForEvolution(product);
+                                          }}
+                                          className={cn(
+                                            "text-left inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-md mt-1.5 border transition-all hover:scale-[1.02]",
+                                            product.priceEvolution.status === 'UP' && "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/20",
+                                            product.priceEvolution.status === 'DOWN' && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20",
+                                            product.priceEvolution.status === 'STABLE' && "bg-secondary text-muted-foreground border-border/80 hover:bg-secondary/80"
+                                          )}
+                                          title="Cliquer pour afficher la courbe d'évolution et l'historique"
+                                        >
+                                          <TrendingUp size={10} className={cn(
+                                            product.priceEvolution.status === 'DOWN' && "rotate-180 text-emerald-500",
+                                            product.priceEvolution.status === 'UP' && "text-red-500"
+                                          )} />
+                                          <span className="line-clamp-1">{product.priceEvolution.message}</span>
+                                        </button>
+                                      )}
                                     </div>
                                   </td>
 
@@ -806,14 +833,24 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
 
                                   {/* 4. ACTION SUPPRESSION PRODUIT MATRICE */}
                                   <td className="py-3 px-3 text-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => setProductToDelete(product.normalizedName)}
-                                      className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                                      title="Supprimer ce produit de la matrice comparative"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedProductForEvolution(product)}
+                                        className="p-1.5 rounded-lg text-muted-foreground hover:text-cyan-500 hover:bg-cyan-500/10 transition-colors"
+                                        title="Voir la courbe d'évolution et l'historique du prix"
+                                      >
+                                        <TrendingUp size={13} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setProductToDelete(product.normalizedName)}
+                                        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                        title="Supprimer ce produit de la matrice comparative"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -874,6 +911,15 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODALE D'ÉVOLUTION DU PRIX AVEC COURBE RECHARTS (RÈGLE 5) */}
+      {selectedProductForEvolution && (
+        <PriceEvolutionModal
+          product={selectedProductForEvolution}
+          isOpen={Boolean(selectedProductForEvolution)}
+          onClose={() => setSelectedProductForEvolution(null)}
+        />
       )}
 
     </div>

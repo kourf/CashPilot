@@ -1523,18 +1523,24 @@ export interface RawExtractedItem {
 }
 
 export interface ExtractedReceiptResult {
-  storeName: string;
+  storeName: string; // Enseigne ET Ville (ex: "E.Leclerc Ville-la-Grand")
   date: string;
-  totalAmount: number;
+  time?: string; // Heure au format HH:mm (ex: "14:32")
+  subtotal?: number; // Somme brute des articles
+  totalDiscounts?: number; // Montant total des remises / bons immédiats
+  totalAmount: number; // Total net payé en caisse
   items: RawExtractedItem[];
   rawFileCount: number;
 }
 
 /**
  * Extraction automatisée haute fidélité via Google Gemini Flash (Palier 100% gratuit).
- * Reconstitue les tickets fragmentés et classe rigoureusement les articles dans la nomenclature
- * officielle des 8 rayons de grande surface avec calcul systématique du prix unitaire standardisé.
- * Cascade automatique transparente : gemini-3.8-flash -> gemini-2.5-flash -> gemini-2.0-flash -> gemini-1.5-flash.
+ * Respecte scrupuleusement les 7 règles d'audit financier de CashPilot :
+ * 1. Prix finaux TTC uniquement, interdiction des codes TVA ("6", "8", etc.) et omission totale des récapitulatifs TVA.
+ * 2. Enseigne ET localisation/ville précise (ex: "E.Leclerc Ville-la-Grand").
+ * 3. Extraction séparée : Sous-total brut, Remises totales, Total final payé.
+ * 4. Extraction de l'heure précise (HH:mm) pour l'anti-doublon.
+ * 5. Classification dans la nomenclature officielle des 8 rayons.
  */
 export async function extractReceiptItemsFromFiles(
   files: File[]
@@ -1560,10 +1566,29 @@ export async function extractReceiptItemsFromFiles(
   );
 
   const systemPrompt = `
-Tu es un auditeur financier et expert OCR de CashPilot spécialisé dans la numérisation de tickets de caisse de grande distribution (Lidl, Carrefour, Leclerc, Intermarché, Auchan, Migros, Coop, etc.).
+Tu es un auditeur financier et expert OCR de CashPilot spécialisé dans la numérisation de tickets de caisse de grande distribution (Lidl, Carrefour, E.Leclerc, Intermarché, Auchan, Aldi, Migros, Coop, etc.).
 
 OBJECTIF :
-Extrais avec une rigueur comptable absolue les données réelles du ticket photographié (ou pages PDF). Si plusieurs photos sont fournies, assemble les fragments sans doublonner les coupures.
+Extrais avec une rigueur comptable et mathématique absolue les données réelles du ticket photographié (ou pages PDF). Si plusieurs photos sont fournies, assemble les fragments sans doublonner les coupures.
+
+RÈGLE D'AUDIT 1 : TVA ET PRIX TTC STRICTS
+- Tous les prix des articles ('pricePaid') doivent obligatoirement être les PRIX FINAUX TTC (Toutes Taxes Comprises) payés pour la ligne.
+- INTERDICTION ABSOLUE de capturer les codes de TVA (souvent "6" pour 5,5%, "8" ou "4" pour 20%, "1", "2", "3", "A", "B" figurant en fin de ligne) comme des prix ou des montants.
+- TU DOIS TOTALEMENT IGNORER les tableaux et encarts récapitulatifs de TVA situés en bas de ticket (taux de TVA, base HT, montant TVA, etc.). Ne les inclus JAMAIS comme articles ni comme lignes d'achats !
+
+RÈGLE D'AUDIT 2 : ENSEIGNE ET VILLE / LOCALISATION PRÉCISE
+- 'storeName' : Tu dois extraire le nom de l'enseigne ET la ville/localisation exacte (ex: "E.Leclerc Ville-la-Grand", "Lidl Annemasse", "Carrefour Market Antibes", "Intermarché Gaillard").
+- Le comparateur doit différencier deux magasins de la même enseigne situés dans des villes différentes. Si l'adresse ou la ville figure sur le ticket, associe-la impérativement à l'enseigne dans 'storeName'.
+
+RÈGLE D'AUDIT 3 : CONTRÔLE MATHÉMATIQUE (SOUS-TOTAL, REMISES, TOTAL)
+N'essaie pas de calculer les écarts, extrais uniquement ces 3 valeurs globales du ticket :
+- 'subtotal' : Sous-total brut des articles (somme des articles avant remises éventuelles).
+- 'totalDiscounts' : Montant total cumulé des remises immédiates, bons de réduction ou rabais déduits (nombre décimal positif, ex: 2.50, mettre 0 si aucune remise).
+- 'totalAmount' : Montant total final net TTC payé en caisse par le client.
+
+RÈGLE D'AUDIT 4 : DATE ET HEURE (ANTI-DOUBLON)
+- 'date' : Date de l'achat au format YYYY-MM-DD.
+- 'time' : Heure exacte du passage en caisse au format HH:mm (ex: "14:32", "09:15"). Si non visible sur le ticket, indique "12:00".
 
 NOMENCLATURE STRICTE DES 8 RAYONS (+ 1 FILET DE SÉCURITÉ) :
 Pour chaque article, affecte obligatoirement 'categoryKey' à l'une des 9 clés slug suivantes :
@@ -1577,27 +1602,26 @@ Pour chaque article, affecte obligatoirement 'categoryKey' à l'une des 9 clés 
 8. "boissons" : Boissons (eaux minérales, jus de fruits, sodas, sirops)
 9. "autres_divers" : Autres / Divers (tout article inclassable dans les 8 rayons ci-dessus)
 
-DONNÉES À EXTRAIRE OBLIGATOIREMENT :
-- 'storeName' : Nom exact de l'enseigne (ex: "Lidl", "Carrefour", "E.Leclerc", "Intermarché", "Aldi", "Monoprix", "Migros", "Coop").
-- 'date' : Date de l'achat au format YYYY-MM-DD (si non visible, utilise la date du jour).
-- 'totalAmount' : Montant total payé sur le ticket en euros (nombre décimal).
-- 'items' : Liste de tous les articles achetés :
-  * 'rawName' : Nom brut exact imprimé sur le ticket de caisse (ex: "COLA ZERO FREW 1.5L").
-  * 'normalizedName' : Nom générique du produit nettoyé de sa marque commerciale (ex: "Cola sans sucres", "Lait demi-écrémé", "Pâtes spaghetti", "Liquide vaisselle").
-  * 'brand' : Marque constatée sur le ticket ou déduite du libellé (ex: "Freeway", "Coca-Cola", "Marque Repère", "Président", "Barilla", "Générique").
-  * 'categoryKey' : L'une des 9 clés slug obligatoires ci-dessus.
-  * 'pricePaid' : Prix net total payé en caisse pour cette ligne (en euros, nombre décimal).
-  * 'quantity' : Quantité ou nombre d'unités achetées (défaut: 1).
-  * 'weightOrVolume' : Contenance formatée (ex: "1.5 L", "500 g", "1 kg", "6x33 cL").
-  * 'weightOrVolumeValue' : Valeur numérique de la contenance (ex: 1.5, 500, 1, 33).
-  * 'weightOrVolumeUnit' : Unité ('kg', 'g', 'l', 'cl', 'ml', 'piece').
-  * 'referenceUnitPrice' : Calcul du prix de référence standardisé (€/kg, €/L ou €/pièce) pour comparaison équitable (ex: 0.90 pour 1.5L à 1.35€).
-  * 'unit' : "L", "kg", ou "pièce".
+DONNÉES À EXTRAIRE POUR CHAQUE ARTICLE :
+- 'rawName' : Nom brut exact imprimé sur le ticket de caisse (ex: "COLA ZERO FREW 1.5L").
+- 'normalizedName' : Nom générique du produit nettoyé de sa marque commerciale (ex: "Cola sans sucres", "Lait demi-écrémé", "Pâtes spaghetti", "Liquide vaisselle").
+- 'brand' : Marque constatée sur le ticket ou déduite du libellé (ex: "Freeway", "Coca-Cola", "Marque Repère", "Président", "Barilla", "Générique").
+- 'categoryKey' : L'une des 9 clés slug obligatoires ci-dessus.
+- 'pricePaid' : Prix net total TTC payé en caisse pour cette ligne (en euros, nombre décimal).
+- 'quantity' : Quantité ou nombre d'unités achetées (défaut: 1).
+- 'weightOrVolume' : Contenance formatée (ex: "1.5 L", "500 g", "1 kg", "6x33 cL").
+- 'weightOrVolumeValue' : Valeur numérique de la contenance (ex: 1.5, 500, 1, 33).
+- 'weightOrVolumeUnit' : Unité ('kg', 'g', 'l', 'cl', 'ml', 'piece').
+- 'referenceUnitPrice' : Calcul du prix de référence standardisé (€/kg, €/L ou €/pièce) pour comparaison équitable (ex: 0.90 pour 1.5L à 1.35€).
+- 'unit' : "L", "kg", ou "pièce".
 
 RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
 {
-  "storeName": "Lidl",
+  "storeName": "E.Leclerc Ville-la-Grand",
   "date": "2026-10-18",
+  "time": "14:32",
+  "subtotal": 31.25,
+  "totalDiscounts": 2.80,
   "totalAmount": 28.45,
   "items": [
     {
@@ -1622,9 +1646,10 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
   if (apiKey) {
     const preferredModel = getGeminiModelName();
     const candidateModels = [
+      'gemini-2.5-flash',
       preferredModel,
       'gemini-3.8-flash',
-      'gemini-2.5-flash',
+      'gemini-flash-latest',
       'gemini-2.0-flash',
       'gemini-1.5-flash'
     ];
@@ -1652,7 +1677,6 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
           break;
         }
       } catch (err: any) {
-        // En cas d'erreur de quota (HTTP 429) ou modèle temporairement indisponible, on passe de façon transparente au modèle suivant
         console.warn(`Tentative extraction modèle ${modelName} échouée (repli cascade transparent):`, err?.message || err);
       }
     }
@@ -1664,6 +1688,9 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
     return {
       storeName: 'Supermarché',
       date: new Date().toISOString().slice(0, 10),
+      time: '12:00',
+      subtotal: 0,
+      totalDiscounts: 0,
       totalAmount: 0,
       items: [],
       rawFileCount: files.length
@@ -1722,13 +1749,26 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
       };
     });
 
-    const totalCalculated = items.reduce((acc, it) => acc + (it.pricePaid * it.quantity), 0);
-    const totalAmount = Number(parsed.totalAmount || parsed.total) || Number(totalCalculated.toFixed(2));
+    const sumItems = items.reduce((acc, it) => acc + (it.pricePaid * it.quantity), 0);
+    const subtotal = Number(parsed.subtotal) > 0 ? Number(Number(parsed.subtotal).toFixed(2)) : Number(sumItems.toFixed(2));
+    const totalDiscounts = Number(parsed.totalDiscounts) > 0 ? Number(Number(parsed.totalDiscounts).toFixed(2)) : 0;
+    
+    let totalAmount = Number(parsed.totalAmount || parsed.total);
+    if (!totalAmount || isNaN(totalAmount)) {
+      totalAmount = Number((subtotal - totalDiscounts).toFixed(2));
+    } else {
+      totalAmount = Number(totalAmount.toFixed(2));
+    }
+
+    const time = String(parsed.time || '12:00').slice(0, 5);
 
     return {
       storeName: parsed.storeName || 'Supermarché',
       date: parsed.date || new Date().toISOString().slice(0, 10),
-      totalAmount: Number(totalAmount.toFixed(2)),
+      time,
+      subtotal,
+      totalDiscounts,
+      totalAmount,
       items,
       rawFileCount: files.length
     };

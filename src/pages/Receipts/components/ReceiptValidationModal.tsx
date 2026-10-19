@@ -3,16 +3,26 @@ import {
   X, 
   Store, 
   Calendar, 
+  Clock,
   Plus, 
   Trash2, 
   Check, 
   AlertCircle, 
   Loader2,
-  Tag
+  Tag,
+  ShieldAlert,
+  Percent
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
-import { type ReceiptItem, type SupermarketAisle, type SupermarketAisleKey, SUPERMARKET_AISLES } from '../../../types/receipts';
-import { formatCurrency } from '../../../lib/bankUtils';
+import { 
+  type Receipt,
+  type ReceiptItem, 
+  type SupermarketAisle, 
+  type SupermarketAisleKey, 
+  SUPERMARKET_AISLES,
+  getReceiptUniqueKey
+} from '../../../types/receipts';
+import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
 import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle } from '../../../lib/receiptClassifier';
 
 interface ReceiptValidationModalProps {
@@ -20,6 +30,9 @@ interface ReceiptValidationModalProps {
   initialData: {
     storeName: string;
     date: string;
+    time?: string;
+    subtotal?: number;
+    totalDiscounts?: number;
     totalAmount: number;
     items: Array<{
       rawName: string;
@@ -39,10 +52,14 @@ interface ReceiptValidationModalProps {
     }>;
     rawFileCount?: number;
   };
+  existingReceipts?: Receipt[];
   onCancel: () => void;
   onSave: (validatedData: {
     storeName: string;
     date: string;
+    time?: string;
+    subtotal?: number;
+    totalDiscounts?: number;
     totalAmount: number;
     items: ReceiptItem[];
     rawFileCount?: number;
@@ -52,11 +69,14 @@ interface ReceiptValidationModalProps {
 export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
   isOpen,
   initialData,
+  existingReceipts = [],
   onCancel,
   onSave
 }) => {
   const [storeName, setStoreName] = useState(initialData.storeName || 'Supermarché');
   const [date, setDate] = useState(initialData.date || new Date().toISOString().slice(0, 10));
+  const [time, setTime] = useState(initialData.time || '');
+  const [totalDiscounts, setTotalDiscounts] = useState(initialData.totalDiscounts || 0);
   const [totalAmount, setTotalAmount] = useState(initialData.totalAmount || 0);
 
   const [items, setItems] = useState<ReceiptItem[]>(() => {
@@ -102,10 +122,19 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Calcul du total des lignes pour vérification d'audit
+  // Calcul du total des lignes pour vérification d'audit (Règle 3)
   const sumItems = items.reduce((acc, it) => acc + (it.pricePaid * it.quantity), 0);
-  const diffTotal = Math.abs(totalAmount - sumItems);
-  const isTotalAligned = diffTotal < 0.05;
+  const subtotal = initialData.subtotal !== undefined ? initialData.subtotal : Number(sumItems.toFixed(2));
+  const expectedTotal = Number(Math.max(0, sumItems - totalDiscounts).toFixed(2));
+  const diffEquation = Math.abs(expectedTotal - totalAmount);
+  const isEquationBalanced = diffEquation <= 0.05;
+
+  // Règle 4 : Contrôle strict anti-doublon (magasin + date + heure + total)
+  const currentKey = getReceiptUniqueKey(storeName, date, time, totalAmount);
+  const duplicateReceipt = existingReceipts.find(r => 
+    getReceiptUniqueKey(r.storeName, r.date, r.time, r.totalAmount) === currentKey
+  );
+  const isDuplicate = Boolean(duplicateReceipt);
 
   const handleItemChange = (index: number, field: keyof ReceiptItem, value: any) => {
     setItems(prev => {
@@ -149,7 +178,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
   };
 
   const handleAutoAlignTotal = () => {
-    setTotalAmount(Number(sumItems.toFixed(2)));
+    setTotalAmount(expectedTotal);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -164,6 +193,11 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
 
     if (!date) {
       setErrorMsg("Veuillez sélectionner la date d'achat.");
+      return;
+    }
+
+    if (isDuplicate) {
+      setErrorMsg(`🚨 Ticket déjà importé : Ce ticket de caisse (${cleanStore} le ${formatDateFR(date)} à ${time || '--:--'} pour ${formatCurrency(totalAmount)}) existe déjà dans votre historique. Importation bloquée pour éviter les doublons.`);
       return;
     }
 
@@ -205,6 +239,9 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
       await onSave({
         storeName: cleanStore,
         date,
+        time: time.trim() || undefined,
+        subtotal: Number(subtotal.toFixed(2)),
+        totalDiscounts: Number(totalDiscounts.toFixed(2)),
         totalAmount: Number(totalAmount.toFixed(2)),
         items: validItems,
         rawFileCount: initialData.rawFileCount || 1
@@ -262,20 +299,35 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
               </div>
             )}
 
-            {/* SECTION 1 : MÉTADONNÉES DU TICKET */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-secondary/30 border border-border/60">
-              {/* ENSEIGNE */}
-              <div>
+            {/* ALERTE STRICTE ANTI-DOUBLON (RÈGLE 4) */}
+            {isDuplicate && (
+              <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-300 text-xs flex items-start gap-3 animate-in shake duration-200">
+                <ShieldAlert size={20} className="text-red-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-extrabold text-sm">
+                    🚨 Ticket déjà importé
+                  </p>
+                  <p className="leading-relaxed">
+                    Ce ticket de caisse (<strong>{storeName}</strong> du <strong>{formatDateFR(date)}</strong> à <strong>{time || '--:--'}</strong> pour un total de <strong>{formatCurrency(totalAmount)}</strong>) existe déjà dans votre historique. L'importation est bloquée pour préserver l'intégrité de vos statistiques.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 1 : MÉTADONNÉES DU TICKET (RÈGLES 1, 2, 3, 4) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-secondary/30 border border-border/60">
+              {/* ENSEIGNE AVEC LOCALISATION */}
+              <div className="md:col-span-2">
                 <label className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1.5">
                   <Store size={14} className="text-primary" />
-                  Enseigne / Magasin *
+                  Enseigne & Ville / Localisation *
                 </label>
                 <input
                   type="text"
                   required
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
-                  placeholder="ex: Lidl, Carrefour, E.Leclerc..."
+                  placeholder="ex: E.Leclerc Ville-la-Grand, Lidl Annemasse..."
                   className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
                 />
               </div>
@@ -295,22 +347,27 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                 />
               </div>
 
+              {/* HEURE (POUR DISCRIMINATION DES DOUBLONS) */}
+              <div>
+                <label className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1.5">
+                  <Clock size={14} className="text-primary" />
+                  Heure de caisse
+                </label>
+                <input
+                  type="text"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  placeholder="ex: 14:35"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
+                />
+              </div>
+
               {/* TOTAL PAYÉ */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    Montant total du ticket (€) *
+                  <label className="text-xs font-bold text-foreground flex items-center gap-1">
+                    Total payé (€) *
                   </label>
-                  {!isTotalAligned && (
-                    <button
-                      type="button"
-                      onClick={handleAutoAlignTotal}
-                      className="text-[10px] text-cyan-600 dark:text-cyan-400 hover:underline font-medium"
-                      title="Ajuster sur la somme des articles"
-                    >
-                      Ajuster ({formatCurrency(sumItems, { showSign: false })})
-                    </button>
-                  )}
                 </div>
                 <input
                   type="number"
@@ -324,27 +381,62 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
               </div>
             </div>
 
-            {/* ALERTE AUDIT SOMME VS TOTAL */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs px-1 gap-1 sm:gap-2">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-muted-foreground">
-                  Somme des {items.length} article(s) :
-                </span>
-                <span className="font-mono font-bold text-foreground">
-                  {formatCurrency(sumItems, { showSign: false })}
-                </span>
+            {/* REMISES & CONTRÔLE COMPTABLE D'AUDIT (RÈGLE 3) */}
+            <div className="p-3.5 rounded-xl bg-secondary/20 border border-border/70 space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">Sous-total articles :</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {formatCurrency(sumItems, { showSign: false })}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <Percent size={13} className="text-emerald-500" />
+                    <span className="text-muted-foreground">Remises :</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={totalDiscounts}
+                      onChange={(e) => setTotalDiscounts(Math.max(0, parseFloat(e.target.value) || 0))}
+                      placeholder="0,00"
+                      className="w-20 px-2 py-1 text-xs rounded-lg border border-border bg-card text-foreground font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Net attendu :</span>
+                  <span className="font-mono font-bold text-foreground">
+                    {formatCurrency(expectedTotal, { showSign: false })}
+                  </span>
+                </div>
               </div>
 
-              {isTotalAligned ? (
-                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                  <Check size={13} />
-                  Total ticket conforme à la somme des lignes
-                </span>
+              {/* BANDEAU CONFORMITÉ ÉQUATION MATHÉMATIQUE */}
+              {isEquationBalanced ? (
+                <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-bold">
+                    <Check size={14} />
+                    Audit Mathématique Conforme : (Articles {formatCurrency(sumItems, { showSign: false })} {totalDiscounts > 0 ? `- Remises ${formatCurrency(totalDiscounts, { showSign: false })}` : ''} = Net {formatCurrency(totalAmount, { showSign: false })})
+                  </span>
+                </div>
               ) : (
-                <span className="text-[11px] font-semibold text-amber-500 flex items-center gap-1">
-                  <AlertCircle size={13} />
-                  Écart de {formatCurrency(diffTotal, { showSign: false })} entre le total et la somme
-                </span>
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <AlertCircle size={14} className="shrink-0" />
+                    Écart de calcul : {formatCurrency(diffEquation, { showSign: false })} (Articles : {formatCurrency(sumItems, { showSign: false })} {totalDiscounts > 0 ? `- Remises : ${formatCurrency(totalDiscounts, { showSign: false })}` : ''} ≠ Total : {formatCurrency(totalAmount, { showSign: false })})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAutoAlignTotal}
+                    className="text-[11px] font-bold underline hover:opacity-80 text-left sm:text-right shrink-0"
+                  >
+                    Ajuster à l'équation ({formatCurrency(expectedTotal, { showSign: false })})
+                  </button>
+                </div>
               )}
             </div>
 
@@ -657,7 +749,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
               <Button
                 type="submit"
                 size="sm"
-                disabled={isSaving || items.length === 0}
+                disabled={isSaving || items.length === 0 || isDuplicate}
                 className="h-10 sm:h-9 text-xs font-bold gap-1.5 shadow-md flex-1 sm:flex-none"
               >
                 {isSaving ? (

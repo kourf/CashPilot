@@ -29,6 +29,7 @@ import { ComparisonMatrixView } from './components/ComparisonMatrixView';
 import { ReceiptHistoryView } from './components/ReceiptHistoryView';
 import { ReceiptValidationModal } from './components/ReceiptValidationModal';
 import { ManualReceiptModal } from './components/ManualReceiptModal';
+import { SpendingChartsView } from './components/SpendingChartsView';
 
 interface UploadedFilePreview {
   id: string;
@@ -162,6 +163,9 @@ export default function Receipts() {
   const handleSaveValidatedReceipt = async (validatedData: {
     storeName: string;
     date: string;
+    time?: string;
+    subtotal?: number;
+    totalDiscounts?: number;
     totalAmount: number;
     items: ReceiptItem[];
     rawFileCount?: number;
@@ -169,6 +173,9 @@ export default function Receipts() {
     await addReceipt({
       storeName: validatedData.storeName,
       date: validatedData.date,
+      time: validatedData.time,
+      subtotal: validatedData.subtotal,
+      totalDiscounts: validatedData.totalDiscounts,
       totalAmount: validatedData.totalAmount,
       items: validatedData.items,
       rawFileCount: validatedData.rawFileCount
@@ -183,12 +190,18 @@ export default function Receipts() {
   const handleSaveManualReceipt = async (data: {
     storeName: string;
     date: string;
+    time?: string;
+    subtotal?: number;
+    totalDiscounts?: number;
     totalAmount: number;
     items: ReceiptItem[];
   }) => {
     await addReceipt({
       storeName: data.storeName,
       date: data.date,
+      time: data.time,
+      subtotal: data.subtotal,
+      totalDiscounts: data.totalDiscounts,
       totalAmount: data.totalAmount,
       items: data.items,
       rawFileCount: 0
@@ -335,6 +348,13 @@ export default function Receipts() {
             <X size={14} />
           </button>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* AUDIT VISUEL DES DÉPENSES : GRAPHIQUE DONUT & DRILL-DOWN (RÈGLE 6)        */}
+      {/* ========================================================================= */}
+      {receipts.length > 0 && (
+        <SpendingChartsView receipts={receipts} />
       )}
 
       {/* NAVIGATION PAR ONGLETS (STYLE APPLE GLASS & HARMONYOS) */}
@@ -599,6 +619,7 @@ export default function Receipts() {
         <ReceiptValidationModal
           isOpen={Boolean(pendingValidationReceipt) && isValidationModalOpen}
           initialData={pendingValidationReceipt}
+          existingReceipts={receipts}
           onCancel={() => setIsValidationModalOpen(false)}
           onSave={handleSaveValidatedReceipt}
         />
@@ -610,6 +631,7 @@ export default function Receipts() {
       {isManualModalOpen && (
         <ManualReceiptModal
           isOpen={isManualModalOpen}
+          existingReceipts={receipts}
           onClose={() => setIsManualModalOpen(false)}
           onSave={handleSaveManualReceipt}
         />

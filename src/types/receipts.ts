@@ -58,9 +58,12 @@ export interface ReceiptItem {
 export interface Receipt {
   id: string;
   userId: string;
-  storeName: string;
+  storeName: string; // Nom de l'enseigne ET ville/localisation (ex: "E.Leclerc Ville-la-Grand")
   date: string; // Format ISO YYYY-MM-DD
-  totalAmount: number;
+  time?: string; // Heure de passage en caisse au format HH:mm (ex: "14:32")
+  subtotal?: number; // Sous-total brut des articles TTC
+  totalDiscounts?: number; // Montant total des remises / bons immédiats
+  totalAmount: number; // Total final net payé en caisse
   items: ReceiptItem[];
   createdAt: string;
   updatedAt?: string;
@@ -77,6 +80,7 @@ export interface StorePriceDetail {
   brand: string;
   weightOrVolume: string;
   date: string;
+  time?: string;
   receiptId: string;
   quantity: number;
   rawName: string;
@@ -84,6 +88,17 @@ export interface StorePriceDetail {
 }
 
 export type ProductComparisonStatus = 'UNIQUE' | 'COMPARABLE';
+
+export type PriceEvolutionType = 'HIKE' | 'DROP' | 'STABLE';
+
+export interface PriceEvolutionInfo {
+  status: PriceEvolutionType;
+  message: string;
+  diffUnitPrice: number; // Différence positive ou négative en €/u
+  previousDate: string;
+  previousUnitPrice: number;
+  previousStore?: string;
+}
 
 /**
  * Ligne de la matrice comparative représentant un produit normalisé
@@ -95,7 +110,9 @@ export interface ProductComparisonRow {
   categoryKey: SupermarketAisleKey;
   sampleRawNames: string[];
   sampleBrands: string[];
-  storePrices: Record<string, StorePriceDetail>; // Enseigne -> Détails de prix
+  storePrices: Record<string, StorePriceDetail>; // Enseigne -> Détails du dernier prix constaté
+  priceHistory: StorePriceDetail[]; // Tous les relevés historiques chronologiques pour ce produit
+  priceEvolution?: PriceEvolutionInfo; // Évolution textuelle explicite selon règle 5
   storeCount: number; // Nombre d'enseignes distinctes où ce produit a été acheté
   status: ProductComparisonStatus;
   lowestUnitPrice?: number; // Prix de référence (€/kg ou €/L) le plus avantageux
@@ -137,4 +154,21 @@ export interface ComparativeMatrix {
     cheapestCount: number;
     percentage: number;
   };
+}
+
+/**
+ * Clé unique stricte d'anti-doublon (Règle 4) :
+ * Nom du Magasin + Date + Heure/Minute + Montant Total
+ */
+export function getReceiptUniqueKey(
+  storeName: string, 
+  date: string, 
+  time: string = '12:00', 
+  totalAmount: number
+): string {
+  const cleanStore = storeName.trim().toLowerCase().replace(/\s+/g, ' ');
+  const cleanDate = date.trim();
+  const cleanTime = (time || '12:00').trim().slice(0, 5); // Conserve HH:mm
+  const cleanAmount = Number(totalAmount || 0).toFixed(2);
+  return `${cleanStore}__${cleanDate}__${cleanTime}__${cleanAmount}`;
 }

@@ -471,7 +471,8 @@ export function buildComparativeMatrix(
           rawNames: new Set<string>(),
           brands: new Set<string>(),
           unit,
-          storePrices: {}
+          storePrices: {} as Record<string, import('../types/receipts').StorePriceDetail>,
+          allPriceRecords: [] as import('../types/receipts').StorePriceDetail[]
         });
       }
 
@@ -483,22 +484,27 @@ export function buildComparativeMatrix(
         acc.brands.add(brand);
       }
 
+      const priceDetail: import('../types/receipts').StorePriceDetail = {
+        storeName: receiptStore,
+        pricePaid,
+        unitPrice,
+        brand,
+        weightOrVolume,
+        date: receipt.date,
+        time: receipt.time,
+        receiptId: receipt.id,
+        quantity,
+        rawName: item.rawName || canonical,
+        unit
+      };
+
+      acc.allPriceRecords.push(priceDetail);
+
       const currentStored = acc.storePrices[receiptStore];
 
       // Conserver le relevé de prix le plus récent pour ce magasin
       if (!currentStored || new Date(receipt.date).getTime() >= new Date(currentStored.date).getTime()) {
-        acc.storePrices[receiptStore] = {
-          storeName: receiptStore,
-          pricePaid,
-          unitPrice,
-          brand,
-          weightOrVolume,
-          date: receipt.date,
-          receiptId: receipt.id,
-          quantity,
-          rawName: item.rawName || canonical,
-          unit
-        };
+        acc.storePrices[receiptStore] = priceDetail;
       }
     });
   });
@@ -516,6 +522,63 @@ export function buildComparativeMatrix(
     const presentStores = Object.keys(acc.storePrices);
     const storeCount = presentStores.length;
     if (storeCount === 0) return;
+
+    // Trier tous les relevés historiques chronologiquement (du plus ancien au plus récent)
+    const sortedHistory = [...acc.allPriceRecords].sort((a, b) => {
+      const dateA = new Date(`${a.date}T${a.time || '12:00'}:00`).getTime();
+      const dateB = new Date(`${b.date}T${b.time || '12:00'}:00`).getTime();
+      return dateA - dateB;
+    });
+
+    // Calcul de l'évolution du prix (Règle 5)
+    let priceEvolution: import('../types/receipts').PriceEvolutionInfo | undefined = undefined;
+    if (sortedHistory.length >= 2) {
+      const latest = sortedHistory[sortedHistory.length - 1];
+      // Chercher si possible un achat antérieur dans le même magasin, sinon le dernier achat global
+      const sameStoreRecords = sortedHistory.filter(r => r.storeName === latest.storeName);
+      const comparisonTarget = sameStoreRecords.length >= 2
+        ? sameStoreRecords[sameStoreRecords.length - 2]
+        : sortedHistory[sortedHistory.length - 2];
+
+      const diff = Number((latest.unitPrice - comparisonTarget.unitPrice).toFixed(2));
+      const targetDate = new Date(comparisonTarget.date);
+      let previousMonth = 'le dernier achat';
+      try {
+        const monthName = new Intl.DateTimeFormat('fr-FR', { month: 'long' }).format(targetDate);
+        previousMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+      } catch {}
+
+      const unitLabel = latest.unit ? `€/${latest.unit}` : '€';
+
+      if (diff > 0.01) {
+        priceEvolution = {
+          status: 'HIKE',
+          message: `🚨 Attention : Prix en hausse (+${diff.toFixed(2).replace('.', ',')} ${unitLabel} depuis le dernier achat)`,
+          diffUnitPrice: diff,
+          previousDate: comparisonTarget.date,
+          previousUnitPrice: comparisonTarget.unitPrice,
+          previousStore: comparisonTarget.storeName
+        };
+      } else if (diff < -0.01) {
+        priceEvolution = {
+          status: 'DROP',
+          message: `✅ Bonne affaire : Moins cher qu'en ${previousMonth} (-${Math.abs(diff).toFixed(2).replace('.', ',')} ${unitLabel})`,
+          diffUnitPrice: diff,
+          previousDate: comparisonTarget.date,
+          previousUnitPrice: comparisonTarget.unitPrice,
+          previousStore: comparisonTarget.storeName
+        };
+      } else {
+        priceEvolution = {
+          status: 'STABLE',
+          message: `Prix stable (${latest.unitPrice.toFixed(2).replace('.', ',')} ${unitLabel})`,
+          diffUnitPrice: 0,
+          previousDate: comparisonTarget.date,
+          previousUnitPrice: comparisonTarget.unitPrice,
+          previousStore: comparisonTarget.storeName
+        };
+      }
+    }
 
     // Règle d'audit : Produit comparable UNIQUEMENT s'il y a >= 2 tickets ET >= 2 magasins pour ce produit
     const isComparable = !isSingleReceipt && storeCount >= 2;
@@ -559,6 +622,8 @@ export function buildComparativeMatrix(
       sampleRawNames: Array.from(acc.rawNames),
       sampleBrands: Array.from(acc.brands),
       storePrices: acc.storePrices,
+      priceHistory: sortedHistory,
+      priceEvolution,
       storeCount,
       status: isComparable ? 'COMPARABLE' : 'UNIQUE',
       lowestUnitPrice,
