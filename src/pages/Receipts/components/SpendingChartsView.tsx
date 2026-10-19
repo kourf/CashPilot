@@ -5,24 +5,26 @@ import {
   Cell, 
   ResponsiveContainer, 
   Tooltip, 
-  Legend 
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  LabelList
 } from 'recharts';
 import { 
   Store, 
-  ShoppingBag, 
   Layers, 
-  ChevronRight, 
-  Filter, 
   TrendingUp, 
-  Calendar,
-  X,
-  Tag
+  X, 
+  Tag,
+  BarChart3,
+  PieChart as PieIcon
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../../components/ui/card';
-import { type Receipt, type ReceiptItem, type SupermarketAisle } from '../../../types/receipts';
+import { type Receipt } from '../../../types/receipts';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
-import { AISLE_CONFIGS } from '../../../lib/receiptClassifier';
 import { cn } from '../../../lib/utils';
 
 interface SpendingChartsViewProps {
@@ -57,10 +59,13 @@ interface DrillDownItem {
 }
 
 export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts }) => {
-  const [chartMode, setChartMode] = useState<'store' | 'aisle'>('store');
+  // Mode de regroupement : 'aisle' (Par Rayon) ou 'store' (Par Enseigne)
+  const [chartMode, setChartMode] = useState<'store' | 'aisle'>('aisle');
+  // Type de diagramme : 'donut' (Camembert) ou 'bar' (Bâtons décroissants)
+  const [chartType, setChartType] = useState<'donut' | 'bar'>('donut');
   const [selectedSliceName, setSelectedSliceName] = useState<string | null>(null);
 
-  // 1. Calcul des données par Enseigne
+  // 1. Calcul des données par Enseigne (classées décroissantes de gauche à droite)
   const storeData = useMemo(() => {
     const storeMap: Record<string, { total: number; receiptCount: number; items: DrillDownItem[] }> = {};
     
@@ -100,7 +105,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
       .sort((a, b) => b.value - a.value);
   }, [receipts]);
 
-  // 2. Calcul des données par Rayon
+  // 2. Calcul des données par Rayon (classées décroissantes de gauche à droite)
   const aisleData = useMemo(() => {
     const aisleMap: Record<string, { total: number; count: number; items: DrillDownItem[] }> = {};
 
@@ -144,18 +149,83 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
     return activeData.reduce((acc, curr) => acc + curr.value, 0);
   }, [activeData]);
 
-  // Éléments du drill-down pour la tranche cliquée
+  // Éléments du drill-down pour la tranche / barre sélectionnée
   const selectedSliceData = useMemo(() => {
     if (!selectedSliceName) return null;
     return activeData.find(d => d.name === selectedSliceName) || null;
   }, [selectedSliceName, activeData]);
+
+  // Info-bulle personnalisée : affiche le nom réel de la catégorie (jamais le terme générique "Dépenses")
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload || !payload.length) return null;
+    const data = payload[0].payload;
+    const val = Number(data.value || 0);
+    const pct = totalSpent > 0 ? ((val / totalSpent) * 100).toFixed(1) : '0';
+    const color = data.fill || PALETTE[0];
+
+    return (
+      <div className="bg-slate-900/95 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2.5 text-xs shadow-2xl space-y-1.5 z-50 pointer-events-none">
+        <div className="flex items-center gap-2">
+          <span 
+            className="w-3 h-3 rounded-full shrink-0 shadow-xs" 
+            style={{ backgroundColor: color }} 
+          />
+          <span className="font-extrabold text-white text-xs sm:text-sm">
+            {data.name}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4 pt-1 font-mono">
+          <span className="text-cyan-400 font-bold text-xs sm:text-sm">
+            {formatCurrency(val, { showSign: false })}
+          </span>
+          <span className="text-slate-300 font-semibold text-xs">
+            {pct}% du total
+          </span>
+        </div>
+        {data.itemCount !== undefined && (
+          <div className="text-[10px] text-slate-400 pt-0.5 border-t border-white/10 flex items-center justify-between">
+            <span>{data.itemCount} article{data.itemCount > 1 ? 's' : ''}</span>
+            {data.receiptCount ? <span>{data.receiptCount} ticket{data.receiptCount > 1 ? 's' : ''}</span> : null}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Étiquette visible directement sur les tranches du camembert sans devoir survoler à la souris
+  const renderCustomPieLabel = (props: any) => {
+    const { cx, cy, midAngle, outerRadius, percent, name, value } = props;
+    if (percent < 0.02) return null;
+    const RADIAN = Math.PI / 180;
+    const radius = outerRadius + 22;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+    const isRight = x > cx;
+    const shortName = name.length > 15 ? name.slice(0, 13) + '…' : name;
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="#cbd5e1"
+        textAnchor={isRight ? 'start' : 'end'}
+        dominantBaseline="central"
+        className="text-[10px] font-medium select-none"
+      >
+        <tspan fill="#f8fafc" fontWeight="bold">{shortName}</tspan>
+        <tspan fill="#38bdf8" dx="4" fontFamily="monospace" fontWeight="600">
+          {formatCurrency(value, { showSign: false })}
+        </tspan>
+      </text>
+    );
+  };
 
   if (receipts.length === 0) return null;
 
   return (
     <Card className="glass-card border-border/80 dark:border-white/[0.08] shadow-sm overflow-hidden">
       <CardHeader className="p-4 sm:p-5 pb-2 sm:pb-3 border-b border-border/60">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
@@ -165,122 +235,269 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
               </CardTitle>
             </div>
             <CardDescription className="text-xs text-muted-foreground mt-0.5">
-              Analyse visuelle interactive de vos {receipts.length} ticket{receipts.length > 1 ? 's' : ''} scannés. Cliquez sur une tranche pour voir le détail des produits.
+              Analyse visuelle interactive de vos {receipts.length} ticket{receipts.length > 1 ? 's' : ''} scannés. {chartType === 'donut' ? 'Cliquez sur une tranche' : 'Cliquez sur un bâton'} pour voir le détail des produits.
             </CardDescription>
           </div>
 
-          {/* COMMUTATEUR ENSEIGNE VS RAYON */}
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-secondary/60 border border-border/70 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={() => {
-                setChartMode('store');
-                setSelectedSliceName(null);
-              }}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
-                chartMode === 'store'
-                  ? "bg-card text-foreground shadow-xs border border-border/80"
-                  : "text-muted-foreground hover:text-foreground hover:bg-card/40"
-              )}
-            >
-              <Store size={13} className={chartMode === 'store' ? "text-primary" : ""} />
-              <span>Par Enseigne</span>
-            </button>
+          <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
+            {/* COMMUTATEUR FORMAT : CAMEMBERT VS BÂTONS */}
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-secondary/60 border border-border/70">
+              <button
+                type="button"
+                onClick={() => setChartType('donut')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  chartType === 'donut'
+                    ? "bg-card text-foreground shadow-xs border border-border/80"
+                    : "text-muted-foreground hover:text-foreground hover:bg-card/40"
+                )}
+                title="Affichage en Diagramme Circulaire / Camembert"
+              >
+                <PieIcon size={13} className={chartType === 'donut' ? "text-primary" : ""} />
+                <span>Camembert</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setChartMode('aisle');
-                setSelectedSliceName(null);
-              }}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
-                chartMode === 'aisle'
-                  ? "bg-card text-foreground shadow-xs border border-border/80"
-                  : "text-muted-foreground hover:text-foreground hover:bg-card/40"
-              )}
-            >
-              <Layers size={13} className={chartMode === 'aisle' ? "text-primary" : ""} />
-              <span>Par Rayon</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setChartType('bar')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  chartType === 'bar'
+                    ? "bg-card text-foreground shadow-xs border border-border/80"
+                    : "text-muted-foreground hover:text-foreground hover:bg-card/40"
+                )}
+                title="Affichage en Diagramme en Bâtons (Décroissant de gauche à droite)"
+              >
+                <BarChart3 size={13} className={chartType === 'bar' ? "text-primary" : ""} />
+                <span>Bâtons</span>
+              </button>
+            </div>
+
+            {/* COMMUTATEUR NIVEAU : PAR ENSEIGNE VS PAR RAYON */}
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-secondary/60 border border-border/70">
+              <button
+                type="button"
+                onClick={() => {
+                  setChartMode('store');
+                  setSelectedSliceName(null);
+                }}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  chartMode === 'store'
+                    ? "bg-card text-foreground shadow-xs border border-border/80"
+                    : "text-muted-foreground hover:text-foreground hover:bg-card/40"
+                )}
+              >
+                <Store size={13} className={chartMode === 'store' ? "text-primary" : ""} />
+                <span>Par Enseigne</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setChartMode('aisle');
+                  setSelectedSliceName(null);
+                }}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                  chartMode === 'aisle'
+                    ? "bg-card text-foreground shadow-xs border border-border/80"
+                    : "text-muted-foreground hover:text-foreground hover:bg-card/40"
+                )}
+              >
+                <Layers size={13} className={chartMode === 'aisle' ? "text-primary" : ""} />
+                <span>Par Rayon</span>
+              </button>
+            </div>
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="p-4 sm:p-5 space-y-5">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
-          
-          {/* GRAPHIQUE DONUT RECHARTS */}
-          <div className="lg:col-span-6 h-[260px] sm:h-[280px] w-full flex items-center justify-center relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Tooltip
-                  formatter={(val: number) => [
-                    `${formatCurrency(val, { showSign: false })} (${totalSpent > 0 ? ((val / totalSpent) * 100).toFixed(1) : 0}%)`,
-                    'Dépenses'
-                  ]}
-                  contentStyle={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                    borderColor: 'rgba(255, 255, 255, 0.1)',
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                    color: '#fff',
-                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4)'
-                  }}
-                  itemStyle={{ color: '#38bdf8', fontWeight: 600 }}
-                />
-                <Pie
-                  data={activeData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={88}
-                  paddingAngle={3}
-                  dataKey="value"
-                  cursor="pointer"
-                  onClick={(entry) => {
-                    setSelectedSliceName(prev => prev === entry.name ? null : entry.name);
-                  }}
-                >
-                  {activeData.map((entry, index) => {
-                    const isSelected = selectedSliceName === entry.name;
-                    return (
-                      <Cell 
-                        key={`cell-${entry.name}`} 
-                        fill={PALETTE[index % PALETTE.length]}
-                        stroke={isSelected ? '#ffffff' : 'transparent'}
-                        strokeWidth={isSelected ? 3 : 1}
-                        opacity={selectedSliceName && !isSelected ? 0.45 : 1}
-                      />
-                    );
-                  })}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
+        {chartType === 'donut' ? (
+          /* ========================================================================= */
+          /* FORMAT 1 : DIAGRAMME EN CAMEMBERT / DONUT                                  */
+          /* ========================================================================= */
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+            
+            {/* GRAPHIQUE DONUT RECHARTS AVEC ÉTIQUETTES VISIBLES SANS SURVOL */}
+            <div className="lg:col-span-6 h-[280px] sm:h-[300px] w-full flex items-center justify-center relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 20, right: 35, left: 35, bottom: 20 }}>
+                  <Tooltip content={<CustomTooltip />} />
+                  <Pie
+                    data={activeData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={75}
+                    paddingAngle={3}
+                    dataKey="value"
+                    cursor="pointer"
+                    labelLine={{ stroke: 'rgba(255, 255, 255, 0.3)', strokeWidth: 1 }}
+                    label={renderCustomPieLabel}
+                    onClick={(entry) => {
+                      setSelectedSliceName(prev => prev === entry.name ? null : entry.name);
+                    }}
+                  >
+                    {activeData.map((entry, index) => {
+                      const isSelected = selectedSliceName === entry.name;
+                      return (
+                        <Cell 
+                          key={`cell-${entry.name}`} 
+                          fill={PALETTE[index % PALETTE.length]}
+                          stroke={isSelected ? '#ffffff' : 'transparent'}
+                          strokeWidth={isSelected ? 3 : 1}
+                          opacity={selectedSliceName && !isSelected ? 0.45 : 1}
+                        />
+                      );
+                    })}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
 
-            {/* TOTAL AU CENTRE DU DONUT */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                Total Audit
-              </span>
-              <span className="text-base sm:text-lg font-black font-mono text-foreground">
-                {formatCurrency(totalSpent, { showSign: false })}
-              </span>
-              <span className="text-[9px] text-muted-foreground">
-                {activeData.length} {chartMode === 'store' ? 'enseigne(s)' : 'rayon(s)'}
-              </span>
+              {/* TOTAL AU CENTRE DU DONUT */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                  Total Audit
+                </span>
+                <span className="text-base sm:text-lg font-black font-mono text-foreground">
+                  {formatCurrency(totalSpent, { showSign: false })}
+                </span>
+                <span className="text-[9px] text-muted-foreground">
+                  {activeData.length} {chartMode === 'store' ? 'enseigne(s)' : 'rayon(s)'}
+                </span>
+              </div>
             </div>
+
+            {/* LISTE DES TRANCHES AVEC NOM, PRIX & POURCENTAGE DISPONIBLES SANS TOUCHER LA SOURIS */}
+            <div className="lg:col-span-6 space-y-2 max-h-[290px] overflow-y-auto pr-1">
+              <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-1 pb-1 flex items-center justify-between">
+                <span>{chartMode === 'store' ? 'Enseignes auditées' : 'Rayons de supermarché'}</span>
+                <span>Dépenses (%)</span>
+              </div>
+
+              <div className="space-y-1.5">
+                {activeData.map((entry, idx) => {
+                  const color = PALETTE[idx % PALETTE.length];
+                  const pct = totalSpent > 0 ? ((entry.value / totalSpent) * 100).toFixed(1) : '0';
+                  const isSelected = selectedSliceName === entry.name;
+
+                  return (
+                    <button
+                      key={entry.name}
+                      type="button"
+                      onClick={() => setSelectedSliceName(prev => prev === entry.name ? null : entry.name)}
+                      className={cn(
+                        "w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between gap-3 text-xs",
+                        isSelected
+                          ? "bg-primary/10 border-primary shadow-xs font-bold"
+                          : "bg-secondary/30 hover:bg-secondary/60 border-border/70"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span 
+                          className="w-3 h-3 rounded-full shrink-0 shadow-xs" 
+                          style={{ backgroundColor: color }} 
+                        />
+                        <div className="truncate">
+                          <span className="text-foreground block truncate font-medium">{entry.name}</span>
+                          <span className="text-[10px] text-muted-foreground block font-mono">
+                            {entry.itemCount} article{entry.itemCount > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="font-bold font-mono text-foreground block">
+                          {formatCurrency(entry.value, { showSign: false })}
+                        </span>
+                        <span className="text-[10px] font-bold text-cyan-400 font-mono">
+                          {pct}%
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
           </div>
-
-          {/* LISTE DES TRANCHES AVEC POURCENTAGE & CLIC POUR DRILL-DOWN */}
-          <div className="lg:col-span-6 space-y-2 max-h-[280px] overflow-y-auto pr-1">
-            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-1 pb-1 flex items-center justify-between">
-              <span>{chartMode === 'store' ? 'Enseignes auditées' : 'Rayons de supermarché'}</span>
-              <span>Dépenses (%)</span>
+        ) : (
+          /* ========================================================================= */
+          /* FORMAT 2 : DIAGRAMME EN BÂTONS (CLASSÉ DÉCROISSANT DE GAUCHE À DROITE)    */
+          /* NOM DE LA CATÉGORIE ET PRIX VISIBLES SANS TOUCHER LA SOURIS              */
+          /* ========================================================================= */
+          <div className="space-y-4">
+            <div className="w-full overflow-x-auto pb-2 scrollbar-thin">
+              <div className="min-w-[620px] sm:min-w-full h-[340px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={activeData}
+                    margin={{ top: 38, right: 20, left: 10, bottom: 65 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255, 255, 255, 0.08)" />
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{ fontSize: 11, fill: '#94a3b8' }}
+                      interval={0}
+                      angle={-25}
+                      textAnchor="end"
+                      height={65}
+                      tickFormatter={(name: string) => name.length > 18 ? name.slice(0, 16) + '…' : name}
+                    />
+                    <YAxis 
+                      tick={{ fontSize: 10, fill: '#94a3b8' }}
+                      tickFormatter={(val) => `${val} €`}
+                      width={55}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar 
+                      dataKey="value" 
+                      radius={[6, 6, 0, 0]}
+                      cursor="pointer"
+                      onClick={(entry: any) => {
+                        if (entry && entry.name) {
+                          setSelectedSliceName(prev => prev === entry.name ? null : entry.name);
+                        }
+                      }}
+                    >
+                      {activeData.map((entry, index) => {
+                        const isSelected = selectedSliceName === entry.name;
+                        return (
+                          <Cell 
+                            key={`bar-cell-${entry.name}`} 
+                            fill={PALETTE[index % PALETTE.length]}
+                            stroke={isSelected ? '#ffffff' : 'transparent'}
+                            strokeWidth={isSelected ? 2 : 0}
+                            opacity={selectedSliceName && !isSelected ? 0.45 : 1}
+                          />
+                        );
+                      })}
+                      {/* NOM DE LA CATÉGORIE AFFICHÉ AU-DESSUS DE CHAQUE BÂTON SANS TOUCHER LA SOURIS */}
+                      <LabelList 
+                        dataKey="name" 
+                        position="top" 
+                        offset={18}
+                        formatter={(name: string) => name.length > 13 ? name.slice(0, 11) + '…' : name}
+                        style={{ fontSize: 10, fill: '#f8fafc', fontWeight: 'bold' }} 
+                      />
+                      {/* PRIX AFFICHÉ AU-DESSUS DE CHAQUE BÂTON SANS TOUCHER LA SOURIS */}
+                      <LabelList 
+                        dataKey="value" 
+                        position="top" 
+                        offset={4}
+                        formatter={(val: number) => formatCurrency(val, { showSign: false })}
+                        style={{ fontSize: 10, fill: '#38bdf8', fontWeight: 'bold', fontFamily: 'monospace' }} 
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            <div className="space-y-1.5">
+            {/* GRILLE RÉCAPITULATIVE INTERACTIVE SOUS LE DIAGRAMME EN BÂTONS */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 pt-1 border-t border-border/50">
               {activeData.map((entry, idx) => {
                 const color = PALETTE[idx % PALETTE.length];
                 const pct = totalSpent > 0 ? ((entry.value / totalSpent) * 100).toFixed(1) : '0';
@@ -292,30 +509,24 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
                     type="button"
                     onClick={() => setSelectedSliceName(prev => prev === entry.name ? null : entry.name)}
                     className={cn(
-                      "w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between gap-3 text-xs",
+                      "text-left p-2.5 rounded-xl border transition-all text-xs flex flex-col justify-between gap-1.5",
                       isSelected
                         ? "bg-primary/10 border-primary shadow-xs font-bold"
                         : "bg-secondary/30 hover:bg-secondary/60 border-border/70"
                     )}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <span 
-                        className="w-3 h-3 rounded-full shrink-0 shadow-xs" 
+                        className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs" 
                         style={{ backgroundColor: color }} 
                       />
-                      <div className="truncate">
-                        <span className="text-foreground block truncate">{entry.name}</span>
-                        <span className="text-[10px] text-muted-foreground block font-mono">
-                          {entry.itemCount} article{entry.itemCount > 1 ? 's' : ''}
-                        </span>
-                      </div>
+                      <span className="text-foreground truncate text-[11px] font-semibold">{entry.name}</span>
                     </div>
-
-                    <div className="text-right shrink-0">
-                      <span className="font-bold font-mono text-foreground block">
+                    <div className="flex items-center justify-between font-mono text-[11px] pt-1 border-t border-border/40">
+                      <span className="font-bold text-foreground">
                         {formatCurrency(entry.value, { showSign: false })}
                       </span>
-                      <span className="text-[10px] font-bold text-muted-foreground font-mono">
+                      <span className="text-[10px] text-cyan-400 font-semibold">
                         {pct}%
                       </span>
                     </div>
@@ -324,11 +535,10 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
               })}
             </div>
           </div>
-
-        </div>
+        )}
 
         {/* ========================================================================= */}
-        {/* DRILL-DOWN : DÉTAIL DES ARTICLES POUR LA TRANCHE SÉLECTIONNÉE            */}
+        {/* DRILL-DOWN : DÉTAIL DES ARTICLES POUR LA TRANCHE / LE BÂTON SÉLECTIONNÉ    */}
         {/* ========================================================================= */}
         {selectedSliceData && (
           <div className="border border-primary/30 bg-primary/5 rounded-2xl p-3.5 sm:p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
