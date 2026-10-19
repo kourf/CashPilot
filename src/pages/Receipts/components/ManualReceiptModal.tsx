@@ -31,6 +31,7 @@ interface ManualReceiptModalProps {
     storeName: string;
     date: string;
     time?: string;
+    totalArticles?: number;
     subtotal?: number;
     totalDiscounts?: number;
     totalAmount: number;
@@ -71,7 +72,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
 
   if (!isOpen) return null;
 
-  const sumItems = items.reduce((acc, it) => acc + (it.pricePaid * it.quantity), 0);
+  const sumItems = Number(items.reduce((acc, it) => acc + (Number(it.pricePaid) || 0), 0).toFixed(2));
   const expectedTotal = Number(Math.max(0, sumItems - totalDiscounts).toFixed(2));
   const finalTotal = totalAmount > 0 ? totalAmount : expectedTotal;
   const diffEquation = Math.abs(expectedTotal - finalTotal);
@@ -161,6 +162,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
         storeName: cleanStore,
         date,
         time: time.trim() || undefined,
+        totalArticles: Number(sumItems.toFixed(2)),
         subtotal: Number(sumItems.toFixed(2)),
         totalDiscounts: Number(totalDiscounts.toFixed(2)),
         totalAmount: Number(finalTotal.toFixed(2)),

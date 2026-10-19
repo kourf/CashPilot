@@ -273,7 +273,7 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
       ) : (
         <div className="space-y-3">
           {filteredReceipts.map((receipt) => {
-            const sumLineItems = receipt.items.reduce((acc, it) => acc + ((it.pricePaid ?? it.price) * it.quantity), 0);
+            const sumLineItems = receipt.items.reduce((acc, it) => acc + (it.pricePaid ?? it.price ?? 0), 0);
 
             return (
               <div 

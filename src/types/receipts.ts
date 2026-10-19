@@ -39,8 +39,8 @@ export interface ReceiptItem {
   rawName: string; // Nom brut sur le ticket (ex: "COLA ZERO FREW 1.5L")
   normalizedName: string; // Nom générique du produit nettoyé de la marque (ex: "Cola gazeux sans sucres")
   brand: string; // Marque constatée (ex: "Freeway", "Coca-Cola", "Marque Repère", "Générique")
-  pricePaid: number; // Prix net payé en caisse (en €)
-  quantity: number; // Quantité achetée
+  pricePaid: number; // Prix total TTC de la ligne payé en caisse (ex: 3.70 pour 2 x 1.85)
+  quantity: number; // Quantité achetée (ex: 2)
   weightOrVolume: string; // Contenance formatée (ex: "1.5 L", "500 g", "1 kg", "6x1.5 L")
   weightOrVolumeValue?: number; // Valeur numérique (ex: 1.5, 500, 75)
   weightOrVolumeUnit?: string; // Unité ('kg', 'g', 'l', 'cl', 'piece')
@@ -61,7 +61,8 @@ export interface Receipt {
   storeName: string; // Nom de l'enseigne ET ville/localisation (ex: "E.Leclerc Ville-la-Grand")
   date: string; // Format ISO YYYY-MM-DD
   time?: string; // Heure de passage en caisse au format HH:mm (ex: "14:32")
-  subtotal?: number; // Sous-total brut des articles TTC
+  totalArticles?: number; // Total brut des articles TTC avant remises
+  subtotal?: number; // Sous-total brut des articles TTC (synonyme de totalArticles)
   totalDiscounts?: number; // Montant total des remises / bons immédiats
   totalAmount: number; // Total final net payé en caisse
   items: ReceiptItem[];

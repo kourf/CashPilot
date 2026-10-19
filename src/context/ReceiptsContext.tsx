@@ -158,7 +158,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             };
           });
 
-          const totalCalculated = items.reduce((acc, it) => acc + (it.pricePaid * it.quantity), 0);
+          const totalCalculated = items.reduce((acc, it) => acc + (it.pricePaid ?? it.price ?? 0), 0);
           const totalAmount = Number(data.totalAmount ?? data.totalPaid ?? data.total) || Number(totalCalculated.toFixed(2));
 
           const r: Receipt = {
@@ -167,6 +167,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             storeName: String(data.storeName || 'Supermarché').trim(),
             date: String(data.date || new Date().toISOString().slice(0, 10)),
             time: data.time ? String(data.time).trim() : undefined,
+            totalArticles: typeof data.totalArticles === 'number' ? Number(data.totalArticles.toFixed(2)) : (typeof data.subtotal === 'number' ? Number(data.subtotal.toFixed(2)) : undefined),
             subtotal: typeof data.subtotal === 'number' ? Number(data.subtotal.toFixed(2)) : undefined,
             totalDiscounts: typeof data.totalDiscounts === 'number' ? Number(data.totalDiscounts.toFixed(2)) : undefined,
             totalAmount: Number(totalAmount.toFixed(2)),

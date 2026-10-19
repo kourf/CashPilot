@@ -37,13 +37,15 @@ export const ReceiptDetailModal: React.FC<ReceiptDetailModalProps> = ({
 
   if (!isOpen || !receipt) return null;
 
-  const sumItems = receipt.items.reduce((acc, it) => acc + ((it.pricePaid ?? it.price) * it.quantity), 0);
-  const subtotal = receipt.subtotal !== undefined ? receipt.subtotal : Number(sumItems.toFixed(2));
+  const sumItems = Number(receipt.items.reduce((acc, it) => acc + (it.pricePaid ?? it.price ?? 0), 0).toFixed(2));
+  const subtotal = receipt.totalArticles !== undefined 
+    ? receipt.totalArticles 
+    : (receipt.subtotal !== undefined ? receipt.subtotal : sumItems);
   const discounts = receipt.totalDiscounts || 0;
   const netTotal = receipt.totalAmount;
 
   // Règle 3 : Audit mathématique
-  const expectedTotal = Number(Math.max(0, subtotal - discounts).toFixed(2));
+  const expectedTotal = Number(Math.max(0, sumItems - discounts).toFixed(2));
   const diff = Math.abs(expectedTotal - netTotal);
   const isEquationBalanced = diff <= 0.05;
 
@@ -179,7 +181,7 @@ export const ReceiptDetailModal: React.FC<ReceiptDetailModalProps> = ({
                   <tbody className="divide-y divide-border/50">
                     {receipt.items.map((it) => {
                       const aisleMeta = AISLE_CONFIGS[it.category as SupermarketAisle] || AISLE_CONFIGS['Autres / Divers'];
-                      const lineTotal = (it.pricePaid ?? it.price) * it.quantity;
+                      const lineTotal = it.pricePaid ?? it.price ?? 0;
 
                       return (
                         <tr key={it.id} className="hover:bg-muted/20">
@@ -206,7 +208,7 @@ export const ReceiptDetailModal: React.FC<ReceiptDetailModalProps> = ({
                             {it.unitPrice > 0 ? (
                               <span>{formatCurrency(it.unitPrice, { showSign: false })}/{it.unit || 'u'}</span>
                             ) : (
-                              <span>{formatCurrency(it.pricePaid ?? it.price, { showSign: false })}</span>
+                              <span>{formatCurrency(it.quantity > 1 ? lineTotal / it.quantity : lineTotal, { showSign: false })}</span>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-center font-mono text-muted-foreground">

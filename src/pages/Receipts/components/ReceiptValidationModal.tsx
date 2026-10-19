@@ -31,6 +31,7 @@ interface ReceiptValidationModalProps {
     storeName: string;
     date: string;
     time?: string;
+    totalArticles?: number;
     subtotal?: number;
     totalDiscounts?: number;
     totalAmount: number;
@@ -58,6 +59,7 @@ interface ReceiptValidationModalProps {
     storeName: string;
     date: string;
     time?: string;
+    totalArticles?: number;
     subtotal?: number;
     totalDiscounts?: number;
     totalAmount: number;
@@ -123,8 +125,10 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
   if (!isOpen) return null;
 
   // Calcul du total des lignes pour vérification d'audit (Règle 3)
-  const sumItems = items.reduce((acc, it) => acc + (it.pricePaid * it.quantity), 0);
-  const subtotal = initialData.subtotal !== undefined ? initialData.subtotal : Number(sumItems.toFixed(2));
+  const sumItems = Number(items.reduce((acc, it) => acc + (Number(it.pricePaid) || 0), 0).toFixed(2));
+  const subtotal = initialData.totalArticles !== undefined 
+    ? initialData.totalArticles 
+    : (initialData.subtotal !== undefined ? initialData.subtotal : sumItems);
   const expectedTotal = Number(Math.max(0, sumItems - totalDiscounts).toFixed(2));
   const diffEquation = Math.abs(expectedTotal - totalAmount);
   const isEquationBalanced = diffEquation <= 0.05;
@@ -240,7 +244,8 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
         storeName: cleanStore,
         date,
         time: time.trim() || undefined,
-        subtotal: Number(subtotal.toFixed(2)),
+        totalArticles: Number(sumItems.toFixed(2)),
+        subtotal: Number(sumItems.toFixed(2)),
         totalDiscounts: Number(totalDiscounts.toFixed(2)),
         totalAmount: Number(totalAmount.toFixed(2)),
         items: validItems,

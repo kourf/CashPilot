@@ -84,7 +84,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
           unitPrice: it.unitPrice,
           unit: it.unit,
           quantity: it.quantity,
-          totalPaid: Number(((it.pricePaid ?? it.price) * it.quantity).toFixed(2))
+          totalPaid: Number((it.pricePaid ?? it.price ?? 0).toFixed(2))
         });
       });
     });
@@ -110,7 +110,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
         if (!aisleMap[cat]) {
           aisleMap[cat] = { total: 0, count: 0, items: [] };
         }
-        const lineTotal = (it.pricePaid ?? it.price) * it.quantity;
+        const lineTotal = it.pricePaid ?? it.price ?? 0;
         aisleMap[cat].total += lineTotal;
         aisleMap[cat].count += it.quantity;
         aisleMap[cat].items.push({

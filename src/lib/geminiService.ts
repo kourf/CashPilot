@@ -1526,21 +1526,23 @@ export interface ExtractedReceiptResult {
   storeName: string; // Enseigne ET Ville (ex: "E.Leclerc Ville-la-Grand")
   date: string;
   time?: string; // Heure au format HH:mm (ex: "14:32")
-  subtotal?: number; // Somme brute des articles
+  totalArticles?: number; // Total des articles (sous-total brut avant remises)
+  subtotal?: number; // Sous-total brut des articles (synonyme de totalArticles)
   totalDiscounts?: number; // Montant total des remises / bons immédiats
-  totalAmount: number; // Total net payé en caisse
+  totalAmount: number; // Total final net payé en caisse
   items: RawExtractedItem[];
   rawFileCount: number;
 }
 
 /**
  * Extraction automatisée haute fidélité via Google Gemini Flash (Palier 100% gratuit).
- * Respecte scrupuleusement les 7 règles d'audit financier de CashPilot :
- * 1. Prix finaux TTC uniquement, interdiction des codes TVA ("6", "8", etc.) et omission totale des récapitulatifs TVA.
- * 2. Enseigne ET localisation/ville précise (ex: "E.Leclerc Ville-la-Grand").
- * 3. Extraction séparée : Sous-total brut, Remises totales, Total final payé.
- * 4. Extraction de l'heure précise (HH:mm) pour l'anti-doublon.
- * 5. Classification dans la nomenclature officielle des 8 rayons.
+ * Respecte scrupuleusement les règles d'audit financier de CashPilot :
+ * 1. Fusion stricte anti-double comptage (lignes quantité x prix unitaire fusionnées avec le total).
+ * 2. Auto-contrôle mathématique strict par l'IA (somme des articles == totalArticles brut).
+ * 3. Prix finaux TTC uniquement, interdiction des codes TVA ("6", "8", etc.) et omission totale des récapitulatifs TVA.
+ * 4. Enseigne ET localisation/ville précise (ex: "E.Leclerc Ville-la-Grand").
+ * 5. Extraction de l'heure précise (HH:mm) pour l'anti-doublon.
+ * 6. Classification dans la nomenclature officielle des 8 rayons.
  */
 export async function extractReceiptItemsFromFiles(
   files: File[]
@@ -1571,48 +1573,93 @@ Tu es un auditeur financier et expert OCR de CashPilot spécialisé dans la num�
 OBJECTIF :
 Extrais avec une rigueur comptable et mathématique absolue les données réelles du ticket photographié (ou pages PDF). Si plusieurs photos sont fournies, assemble les fragments sans doublonner les coupures.
 
-RÈGLE D'AUDIT 1 : TVA ET PRIX TTC STRICTS
-- Tous les prix des articles ('pricePaid') doivent obligatoirement être les PRIX FINAUX TTC (Toutes Taxes Comprises) payés pour la ligne.
-- INTERDICTION ABSOLUE de capturer les codes de TVA (souvent "6" pour 5,5%, "8" ou "4" pour 20%, "1", "2", "3", "A", "B" figurant en fin de ligne) comme des prix ou des montants.
-- TU DOIS TOTALEMENT IGNORER les tableaux et encarts récapitulatifs de TVA situés en bas de ticket (taux de TVA, base HT, montant TVA, etc.). Ne les inclus JAMAIS comme articles ni comme lignes d'achats !
+================================================================================
+RÈGLE 1 : FUSION STRICTE ANTI-DOUBLE COMPTAGE (RÈGLE LECLERC / MULTI-LIGNES)
+================================================================================
+Sur de nombreux tickets de caisse (notamment E.Leclerc, Carrefour, Intermarché), lorsqu'un article est acheté en plusieurs exemplaires ou vendu au poids, le ticket le présente sur DEUX ou TROIS lignes consécutives :
+  Exemple typique E.Leclerc :
+    Ligne 1 : "CHEVRE FRAIS P.P."       (Nom du produit)
+    Ligne 2 : "2 X 1,85 €"              (Détail Quantité x Prix unitaire)
+    Ligne 2 ou 3 : "3,70 €"             (Prix total payé pour ce regroupement)
+  Autre exemple :
+    Ligne 1 : "BAGUETTE CAMPAGNE"
+    Ligne 2 : "3 X 0,95                 2,85 €"
 
-RÈGLE D'AUDIT 2 : ENSEIGNE ET VILLE / LOCALISATION PRÉCISE
-- 'storeName' : Tu dois extraire le nom de l'enseigne ET la ville/localisation exacte (ex: "E.Leclerc Ville-la-Grand", "Lidl Annemasse", "Carrefour Market Antibes", "Intermarché Gaillard").
-- Le comparateur doit différencier deux magasins de la même enseigne situés dans des villes différentes. Si l'adresse ou la ville figure sur le ticket, associe-la impérativement à l'enseigne dans 'storeName'.
+INTERDICTION ABSOLUE DE CRÉER DEUX ARTICLES DISTINCTS !
+Tu dois FORMELLEMENT FUSIONNER la ligne de détail unitaire ("Quantité x Prix unitaire") avec le nom du produit et sa ligne de total.
+Pour chaque produit acheté en plusieurs exemplaires :
+- Tu ne dois générer qu'UNE SEULE ET UNIQUE LIGNE D'ARTICLE dans le tableau "items" du JSON.
+- 'quantity' : Le nombre d'exemplaires achetés (ex: 2).
+- 'unitPrice' : Le prix unitaire d'un exemplaire (ex: 1.85).
+- 'pricePaid' : LE PRIX TOTAL TTC PAYÉ POUR CE REGROUPEMENT (ex: 3.70). Retiens UNIQUEMENT le prix total TTC de ce regroupement.
 
-RÈGLE D'AUDIT 3 : CONTRÔLE MATHÉMATIQUE (SOUS-TOTAL, REMISES, TOTAL)
-N'essaie pas de calculer les écarts, extrais uniquement ces 3 valeurs globales du ticket :
-- 'subtotal' : Sous-total brut des articles (somme des articles avant remises éventuelles).
-- 'totalDiscounts' : Montant total cumulé des remises immédiates, bons de réduction ou rabais déduits (nombre décimal positif, ex: 2.50, mettre 0 si aucune remise).
-- 'totalAmount' : Montant total final net TTC payé en caisse par le client.
+================================================================================
+RÈGLE 2 : AUTO-CONTRÔLE MATHÉMATIQUE OBLIGATOIRE PAR L'IA (AVANT RÉPONSE)
+================================================================================
+Tu dois obligatoirement extraire :
+- 'totalArticles' : Le "Total des articles" (le sous-total brut avant remises imprimé sur le ticket, souvent libellé "TOTAL", "SOUS-TOTAL", "TOTAL ARTICLES", "MONTANT BRUT").
+- 'subtotal' : Identique à 'totalArticles'.
 
-RÈGLE D'AUDIT 4 : DATE ET HEURE (ANTI-DOUBLON)
+CONSIGNE D'AUTO-CONTRÔLE STRICTE AVANT DE RÉPONDRE :
+Avant de renvoyer ton JSON final, tu dois IMPÉRATIVEMENT réaliser cet auto-contrôle interne :
+1. Fais la somme du 'pricePaid' de TOUS les articles que tu as placés dans la liste 'items' :
+   Somme_Calculée = item_1.pricePaid + item_2.pricePaid + ... + item_n.pricePaid
+2. Compare cette Somme_Calculée avec le 'totalArticles' imprimé sur le ticket :
+   - Si Somme_Calculée > totalArticles : Tu as commis une erreur de DOUBLE COMPTAGE (ex: tu as créé un article pour la ligne "2 x 1,85 €" ET un autre pour la ligne "3,70 €", ou tu as inclus un récapitulatif de TVA). FUSIONNE les lignes et élimine les doublons !
+   - Si Somme_Calculée < totalArticles : Tu as oublié une ligne d'article ou confondu un prix unitaire avec un prix total.
+3. Tu ne dois émettre ton JSON QUE lorsque la somme de tes 'pricePaid' correspond TRÈS EXACTEMENT au 'totalArticles' imprimé sur le ticket.
+
+================================================================================
+RÈGLE 3 : PRIX FINAUX TTC ET OMISSION TOTALE DE LA TVA
+================================================================================
+- 'pricePaid' : Doit OBLIGATOIREMENT être le montant final TTC (Toutes Taxes Comprises) payé pour la ligne.
+- INTERDICTION ABSOLUE de capturer les codes de TVA (souvent "6" pour 5,5%, "8" ou "4" pour 20%, "1", "2", "3", "A", "B" figurant en fin de ligne de caisse) comme des prix ou des montants.
+- TU DOIS TOTALEMENT IGNORER les tableaux récapitulatifs de TVA situés en bas de ticket (taux, base HT, montant TVA). Ne les inclus JAMAIS comme articles.
+
+================================================================================
+RÈGLE 4 : ENSEIGNE ET LOCALISATION PRÉCISE
+================================================================================
+- 'storeName' : Tu dois extraire le nom de l'enseigne ET la ville/localisation exacte (ex: "E.Leclerc Ville-la-Grand", "Lidl Annemasse", "Carrefour Market Antibes").
+- Deux magasins d'une même marque dans des villes différentes doivent être différenciés.
+
+================================================================================
+RÈGLE 5 : REMISES ET TOTAL FINAL NET
+================================================================================
+- 'totalDiscounts' : Montant total cumulé des remises immédiates, bons de réduction ou rabais déduits en bas de ticket (nombre décimal positif, ex: 2.50, mettre 0 si aucune remise).
+- 'totalAmount' : Montant total net final payé en caisse (débit carte bancaire ou espèces).
+
+================================================================================
+RÈGLE 6 : DATE ET HEURE (ANTI-DOUBLON)
+================================================================================
 - 'date' : Date de l'achat au format YYYY-MM-DD.
-- 'time' : Heure exacte du passage en caisse au format HH:mm (ex: "14:32", "09:15"). Si non visible sur le ticket, indique "12:00".
+- 'time' : Heure exacte du passage en caisse au format HH:mm (ex: "14:32"). Si non visible, "12:00".
 
-NOMENCLATURE STRICTE DES 8 RAYONS (+ 1 FILET DE SÉCURITÉ) :
-Pour chaque article, affecte obligatoirement 'categoryKey' à l'une des 9 clés slug suivantes :
-1. "boucherie_poissonnerie" : Boucherie, Volaille & Poissonnerie (viandes, poissons, volailles, charcuterie)
-2. "epicerie_salee" : Épicerie salée & Épices (épices, pâtes, riz, huiles, conserves, sauces)
-3. "fruits_legumes" : Fruits & Légumes (primeur, herbes fraîches, salades)
-4. "frais_cremerie" : Produits frais & Crèmerie (laits, beurres, crèmes, fromages, yaourts, œufs)
-5. "epicerie_sucree" : Épicerie sucrée (cafés, thés, biscuits, confitures, chocolats, céréales, farines)
-6. "hygiene_beaute" : Hygiène, Beauté & Sanitaire (savons, shampoings, dentifrice, papier toilette, cotons)
-7. "entretien_maison" : Entretien & Maison (lessive, éponges, produits ménagers, liquide vaisselle)
-8. "boissons" : Boissons (eaux minérales, jus de fruits, sodas, sirops)
-9. "autres_divers" : Autres / Divers (tout article inclassable dans les 8 rayons ci-dessus)
+================================================================================
+NOMENCLATURE DES 8 RAYONS (+ 1 FILET DE SÉCURITÉ)
+================================================================================
+Pour chaque article, affecte obligatoirement 'categoryKey' à l'une des 9 clés :
+1. "boucherie_poissonnerie" : Boucherie, Volaille & Poissonnerie
+2. "epicerie_salee" : Épicerie salée & Épices
+3. "fruits_legumes" : Fruits & Légumes
+4. "frais_cremerie" : Produits frais & Crèmerie
+5. "epicerie_sucree" : Épicerie sucrée
+6. "hygiene_beaute" : Hygiène, Beauté & Sanitaire
+7. "entretien_maison" : Entretien & Maison
+8. "boissons" : Boissons
+9. "autres_divers" : Autres / Divers
 
 DONNÉES À EXTRAIRE POUR CHAQUE ARTICLE :
-- 'rawName' : Nom brut exact imprimé sur le ticket de caisse (ex: "COLA ZERO FREW 1.5L").
-- 'normalizedName' : Nom générique du produit nettoyé de sa marque commerciale (ex: "Cola sans sucres", "Lait demi-écrémé", "Pâtes spaghetti", "Liquide vaisselle").
-- 'brand' : Marque constatée sur le ticket ou déduite du libellé (ex: "Freeway", "Coca-Cola", "Marque Repère", "Président", "Barilla", "Générique").
-- 'categoryKey' : L'une des 9 clés slug obligatoires ci-dessus.
-- 'pricePaid' : Prix net total TTC payé en caisse pour cette ligne (en euros, nombre décimal).
-- 'quantity' : Quantité ou nombre d'unités achetées (défaut: 1).
-- 'weightOrVolume' : Contenance formatée (ex: "1.5 L", "500 g", "1 kg", "6x33 cL").
-- 'weightOrVolumeValue' : Valeur numérique de la contenance (ex: 1.5, 500, 1, 33).
+- 'rawName' : Nom brut exact imprimé sur le ticket (ex: "CHEVRE FRAIS P.P.").
+- 'normalizedName' : Nom générique du produit nettoyé de sa marque (ex: "Fromage de chèvre frais").
+- 'brand' : Marque constatée sur le ticket ou déduite (ex: "Marque Repère", "Président", "Milbona", "Générique").
+- 'categoryKey' : L'une des 9 clés slug ci-dessus.
+- 'quantity' : Nombre d'unités achetées (défaut: 1).
+- 'unitPrice' : Prix unitaire à la pièce ou au kilo/litre (ex: 1.85).
+- 'pricePaid' : PRIX TOTAL TTC PAYÉ POUR LA LIGNE (ex: 3.70 pour 2 unités à 1.85).
+- 'weightOrVolume' : Contenance formatée (ex: "2x150 g", "1.5 L", "1 kg").
+- 'weightOrVolumeValue' : Valeur numérique.
 - 'weightOrVolumeUnit' : Unité ('kg', 'g', 'l', 'cl', 'ml', 'piece').
-- 'referenceUnitPrice' : Calcul du prix de référence standardisé (€/kg, €/L ou €/pièce) pour comparaison équitable (ex: 0.90 pour 1.5L à 1.35€).
+- 'referenceUnitPrice' : Prix de référence standardisé (€/kg, €/L ou €/pièce).
 - 'unit' : "L", "kg", ou "pièce".
 
 RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
@@ -1620,22 +1667,24 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
   "storeName": "E.Leclerc Ville-la-Grand",
   "date": "2026-10-18",
   "time": "14:32",
+  "totalArticles": 31.25,
   "subtotal": 31.25,
   "totalDiscounts": 2.80,
   "totalAmount": 28.45,
   "items": [
     {
-      "rawName": "LT DEMI ECR 1L",
-      "normalizedName": "Lait demi-écrémé",
-      "brand": "Milbona",
+      "rawName": "CHEVRE FRAIS P.P.",
+      "normalizedName": "Fromage de chèvre frais",
+      "brand": "Marque Repère",
       "categoryKey": "frais_cremerie",
-      "pricePaid": 0.95,
       "quantity": 2,
-      "weightOrVolume": "1 L",
-      "weightOrVolumeValue": 1,
-      "weightOrVolumeUnit": "l",
-      "referenceUnitPrice": 0.95,
-      "unit": "L"
+      "unitPrice": 1.85,
+      "pricePaid": 3.70,
+      "weightOrVolume": "2x150 g",
+      "weightOrVolumeValue": 300,
+      "weightOrVolumeUnit": "g",
+      "referenceUnitPrice": 12.33,
+      "unit": "kg"
     }
   ]
 }
@@ -1749,8 +1798,10 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
       };
     });
 
-    const sumItems = items.reduce((acc, it) => acc + (it.pricePaid * it.quantity), 0);
-    const subtotal = Number(parsed.subtotal) > 0 ? Number(Number(parsed.subtotal).toFixed(2)) : Number(sumItems.toFixed(2));
+    const sumItems = items.reduce((acc, it) => acc + it.pricePaid, 0);
+    const rawArticles = Number(parsed.totalArticles ?? parsed.subtotal);
+    const totalArticles = rawArticles > 0 ? Number(rawArticles.toFixed(2)) : Number(sumItems.toFixed(2));
+    const subtotal = totalArticles;
     const totalDiscounts = Number(parsed.totalDiscounts) > 0 ? Number(Number(parsed.totalDiscounts).toFixed(2)) : 0;
     
     let totalAmount = Number(parsed.totalAmount || parsed.total);
@@ -1766,6 +1817,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
       storeName: parsed.storeName || 'Supermarché',
       date: parsed.date || new Date().toISOString().slice(0, 10),
       time,
+      totalArticles,
       subtotal,
       totalDiscounts,
       totalAmount,

@@ -385,8 +385,8 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
           <div className="divide-y divide-border/40 text-xs">
             {activeReceipt.items.map((item, idx) => {
               const aisleMeta = AISLE_CONFIGS[item.category as SupermarketAisle] || AISLE_CONFIGS['Autres / Divers'];
-              const lineTotal = item.pricePaid * item.quantity;
-              const unitPriceVal = item.unitPrice || item.referenceUnitPrice || (item.pricePaid / Math.max(1, item.quantity));
+              const lineTotal = item.pricePaid ?? item.price ?? 0;
+              const unitPriceVal = item.unitPrice || item.referenceUnitPrice || (item.quantity > 1 ? lineTotal / item.quantity : lineTotal);
 
               return (
                 <div key={item.id || idx} className="py-2.5 flex items-start justify-between gap-3">
@@ -427,7 +427,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                     </span>
                     {item.quantity > 1 && (
                       <span className="block text-[10px] text-muted-foreground">
-                        ({formatCurrency(item.pricePaid, { showSign: false })}/u)
+                        ({formatCurrency(lineTotal / item.quantity, { showSign: false })}/u)
                       </span>
                     )}
                   </div>

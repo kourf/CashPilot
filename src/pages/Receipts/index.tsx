@@ -164,6 +164,7 @@ export default function Receipts() {
     storeName: string;
     date: string;
     time?: string;
+    totalArticles?: number;
     subtotal?: number;
     totalDiscounts?: number;
     totalAmount: number;
@@ -174,6 +175,7 @@ export default function Receipts() {
       storeName: validatedData.storeName,
       date: validatedData.date,
       time: validatedData.time,
+      totalArticles: validatedData.totalArticles,
       subtotal: validatedData.subtotal,
       totalDiscounts: validatedData.totalDiscounts,
       totalAmount: validatedData.totalAmount,
@@ -191,6 +193,7 @@ export default function Receipts() {
     storeName: string;
     date: string;
     time?: string;
+    totalArticles?: number;
     subtotal?: number;
     totalDiscounts?: number;
     totalAmount: number;
@@ -200,6 +203,7 @@ export default function Receipts() {
       storeName: data.storeName,
       date: data.date,
       time: data.time,
+      totalArticles: data.totalArticles,
       subtotal: data.subtotal,
       totalDiscounts: data.totalDiscounts,
       totalAmount: data.totalAmount,
