@@ -189,6 +189,11 @@ export const calculateKpis = (transactions: Transaction[], initialBalance: numbe
       return;
     }
 
+    // Ignorer le solde de départ pour le reste à vivre, il est ajouté à un solde de départ global si besoin.
+    // Mais on peut le compter dans les revenus globaux si on veut,
+    // ou plutôt l'exclure du calcul des revenus normaux pour ne pas fausser le budget du mois.
+    if (t.isStartingBalance || t.category === "Solde de départ") return;
+
     if (isIncome) {
       if (t.category === 'Remboursements' || t.category === 'Remboursements/Avances') {
         remboursements += amt;

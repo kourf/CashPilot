@@ -1,5 +1,11 @@
 import { getGeminiApiKey } from './geminiService';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from './firebase';
+import type {
+  SubscriptionOptimizationRequest,
+  SubscriptionOptimizationResponse
+} from '../types/index';
 
 export interface CheaperAlternative {
   id: string;
@@ -301,3 +307,28 @@ Directives :
 
   return `Sur le marché actuel, l'offre ${analysis.bestAlternative.provider} (${analysis.bestAlternative.planName}) à ${analysis.bestAlternative.monthlyPrice}€/mois est le meilleur compromis qualité/prix par rapport à ${subscriptionName}. Vous pouvez conserver votre numéro ou vos identifiants sans coupure grâce au code RIO.`;
 }
+
+export const optimizeSubscription = async (
+  request: SubscriptionOptimizationRequest
+): Promise<SubscriptionOptimizationResponse> => {
+  try {
+    const optimizeFn = httpsCallable<SubscriptionOptimizationRequest, any>(
+      functions,
+      'optimizeSubscription'
+    );
+
+    const result = await optimizeFn(request);
+
+    // Cloud functions returning standard { success: boolean, data: T }
+    // Need to extract the data part as response
+    if (result.data?.success) {
+        return result.data.data as SubscriptionOptimizationResponse;
+    }
+
+    throw new Error('Unexpected response format from optimization function');
+
+  } catch (error) {
+    console.error('Error optimizing subscription:', error);
+    throw error;
+  }
+};
