@@ -6,9 +6,10 @@ import {
   type Receipt, 
   type ReceiptItem,
   type ComparativeMatrix,
-  type SupermarketAisle 
+  type SupermarketAisle,
+  type SupermarketAisleKey 
 } from '../types/receipts';
-import { buildComparativeMatrix, classifyItemAisle } from '../lib/receiptClassifier';
+import { buildComparativeMatrix, classifyItemAisle, normalizeAisle, computeUnitPrice } from '../lib/receiptClassifier';
 import { extractReceiptItemsFromFiles, type ExtractedReceiptResult } from '../lib/geminiService';
 
 export interface ReceiptsContextType {
@@ -131,9 +132,12 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const pricePaid = Number(it.pricePaid ?? it.price ?? it.paidPrice) || 0;
             const quantity = Math.max(1, Number(it.quantity) || 1);
             const weightOrVolume = String(it.weightOrVolume || it.volume || it.weight || '').trim();
-            const category: SupermarketAisle = (it.category as SupermarketAisle) || classifyItemAisle(normalizedName, rawName);
-            const unit = String(it.unit || '').trim() || 'pièce';
-            const unitPrice = Number(it.unitPrice) > 0 ? Number(it.unitPrice) : pricePaid;
+            const weightOrVolumeValue = typeof it.weightOrVolumeValue === 'number' ? it.weightOrVolumeValue : undefined;
+            const weightOrVolumeUnit = typeof it.weightOrVolumeUnit === 'string' ? it.weightOrVolumeUnit : undefined;
+            const comp = computeUnitPrice(pricePaid, weightOrVolume, quantity, weightOrVolumeValue, weightOrVolumeUnit);
+            const unit = String(it.unit || '').trim() || comp.unit;
+            const unitPrice = Number(it.referenceUnitPrice || it.unitPrice) > 0 ? Number(it.referenceUnitPrice || it.unitPrice) : comp.unitPrice;
+            const aisle = normalizeAisle(String(it.categoryKey || it.category || classifyItemAisle(normalizedName, rawName)));
 
             return {
               id: String(it.id || `item-${d.id}-${idx}`),
@@ -144,8 +148,12 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               price: Number(pricePaid.toFixed(2)),
               quantity,
               weightOrVolume,
+              weightOrVolumeValue,
+              weightOrVolumeUnit,
               unitPrice: Number(unitPrice.toFixed(2)),
-              category,
+              referenceUnitPrice: Number(unitPrice.toFixed(2)),
+              category: aisle.label,
+              categoryKey: aisle.key,
               unit
             };
           });

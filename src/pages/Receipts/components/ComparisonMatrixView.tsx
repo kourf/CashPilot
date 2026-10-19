@@ -15,6 +15,7 @@ import {
   Cookie,
   Home,
   CupSoda,
+  MoreHorizontal,
   Eye,
   RefreshCw,
   ShoppingBag,
@@ -55,7 +56,8 @@ const AISLE_ICONS: Record<SupermarketAisle, React.ComponentType<{ size?: number;
   'Épicerie sucrée': Cookie,
   'Hygiène, Beauté & Sanitaire': Sparkles,
   'Entretien & Maison': Home,
-  'Boissons': CupSoda
+  'Boissons': CupSoda,
+  'Autres / Divers': MoreHorizontal
 };
 
 export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
@@ -72,6 +74,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
   
   // Mode d'affichage : 'aisles' (vue matricielle par rayons) ou 'ticket' (vue ticket de caisse immersive)
   const [viewMode, setViewMode] = useState<'aisles' | 'ticket'>('aisles');
+  const [selectedReceiptId, setSelectedReceiptId] = useState<string>(() => receipts[0]?.id || '');
 
   // Accordéons ouverts par défaut
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>(() => {
@@ -84,8 +87,10 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showHiddenModal, setShowHiddenModal] = useState(false);
 
+  // RÈGLE STRICTE D'AUDIT : Moins de 2 tickets ou moins de 2 enseignes -> Comparaison strictement désactivée
+  const isSingleReceipt = matrix.isSingleReceipt || matrix.receiptsCount < 2 || matrix.stores.length < 2;
   const isSingleStore = matrix.stores.length === 1;
-  const singleReceipt = isSingleStore && receipts.length > 0 ? receipts[0] : null;
+  const activeReceipt = receipts.find(r => r.id === selectedReceiptId) || receipts[0] || null;
   const coveredAislesCount = matrix.aisleGroups.filter(g => g.products.length > 0).length;
 
   const toggleAccordion = (aisle: SupermarketAisle) => {
@@ -176,15 +181,15 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
         <div className="p-3.5 sm:p-4 rounded-2xl glass-card border border-border/70 flex flex-col justify-between">
           <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
             <Store size={13} className="text-primary" />
-            {isSingleStore ? 'Enseigne Relevée' : 'Enseignes Réelles'}
+            {isSingleReceipt ? 'Enseigne Relevée' : 'Enseignes Réelles'}
           </span>
           <div className="mt-2">
             <span className="text-xl sm:text-2xl font-extrabold text-foreground font-mono truncate block">
-              {isSingleStore ? matrix.stores[0] : matrix.stores.length}
+              {isSingleReceipt ? (matrix.stores[0] || '1 enseigne') : matrix.stores.length}
             </span>
             <span className="text-[10px] text-muted-foreground block truncate mt-0.5" title={matrix.stores.join(', ')}>
-              {isSingleStore 
-                ? (singleReceipt?.date ? `Ticket du ${formatDateFR(singleReceipt.date)}` : '1er ticket enregistré') 
+              {isSingleReceipt 
+                ? (activeReceipt?.date ? `Ticket du ${formatDateFR(activeReceipt.date)}` : '1er ticket enregistré') 
                 : matrix.stores.join(' • ')}
             </span>
           </div>
@@ -194,20 +199,20 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
         <div className="p-3.5 sm:p-4 rounded-2xl glass-card border border-border/70 flex flex-col justify-between">
           <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
             <ShoppingBag size={13} className="text-cyan-500" />
-            {isSingleStore ? 'Articles Achetés' : 'Références Produits'}
+            {isSingleReceipt ? 'Articles Achetés' : 'Références Produits'}
           </span>
           <div className="mt-2">
             <span className="text-xl sm:text-2xl font-extrabold text-foreground font-mono">
               {matrix.totalUniqueProducts}
             </span>
             <span className="text-[10px] text-muted-foreground block mt-0.5">
-              {isSingleStore ? `Sur ${coveredAislesCount} rayon${coveredAislesCount > 1 ? 's' : ''}` : 'Normalisées & auditées'}
+              {isSingleReceipt ? `Sur ${coveredAislesCount} rayon${coveredAislesCount > 1 ? 's' : ''}` : 'Normalisées & auditées'}
             </span>
           </div>
         </div>
 
         {/* CARTE 3 : TOTAL TICKET OU PRODUITS COMPARABLES */}
-        {isSingleStore ? (
+        {isSingleReceipt ? (
           <div className="p-3.5 sm:p-4 rounded-2xl glass-card border border-border/70 flex flex-col justify-between">
             <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
               <ReceiptIcon size={13} className="text-emerald-500" />
@@ -215,10 +220,10 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
             </span>
             <div className="mt-2">
               <span className="text-xl sm:text-2xl font-extrabold text-emerald-500 font-mono">
-                {formatCurrency(singleReceipt?.totalAmount || 0, { showSign: false })}
+                {formatCurrency(activeReceipt?.totalAmount || 0, { showSign: false })}
               </span>
               <span className="text-[10px] text-muted-foreground block mt-0.5">
-                Montant total en caisse
+                Montant net en caisse
               </span>
             </div>
           </div>
@@ -240,7 +245,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
         )}
 
         {/* CARTE 4 : RAYONS COUVERTS OU GAIN CONSTATÉ */}
-        {isSingleStore ? (
+        {isSingleReceipt ? (
           <div className="p-3.5 sm:p-4 rounded-2xl glass-card border border-border/70 flex flex-col justify-between">
             <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
               <Layers size={13} className="text-teal-500" />
@@ -273,91 +278,111 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
         )}
       </div>
 
-      {/* BANDEAU INFORMATION CONSTRUCTIF : VISUALISATION ACTIVE ET INVITATION COMPARATIF */}
-      {isSingleStore && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-primary/5 to-cyan-500/10 border border-cyan-500/20 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+      {/* BANDEAU RÈGLE STRICTE D'AUDIT : TICKET UNIQUE ET INVITATION COMPARATIF */}
+      {isSingleReceipt && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-primary/5 to-cyan-500/10 border border-amber-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
-              <ReceiptIcon size={20} />
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <Info size={20} />
             </div>
             <div>
-              <p className="font-bold text-foreground text-sm flex items-center gap-2">
-                <span>Ticket « {matrix.stores[0]} » audité avec succès</span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-700 dark:text-cyan-300">
-                  {matrix.totalUniqueProducts} articles • {formatCurrency(singleReceipt?.totalAmount || 0, { showSign: false })}
-                </span>
+              <p className="font-extrabold text-foreground text-sm flex items-center gap-2">
+                <span>1 seul ticket enregistré — importez un 2ᵉ ticket d'une autre enseigne pour activer le comparatif</span>
               </p>
               <p className="text-muted-foreground text-[11px] mt-0.5 leading-relaxed">
-                Retrouvez ci-dessous le visuel complet de vos produits achetés avec leurs prix réels, prix unitaires (€/kg, €/L) et rayons. Dès que vous ajouterez un ticket d'un second magasin, le comparateur multi-enseignes calculera automatiquement les écarts de prix !
+                Tous les articles achetés de votre ticket « {matrix.stores[0] || 'Supermarché'} » sont détaillés ci-dessous par rayon avec leurs prix réels et prix au kilo/litre. Dès le 2ᵉ ticket d'une autre enseigne importé, le calcul comparatif et les badges « Moins cher » s'activeront automatiquement !
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
             <Button 
               size="sm" 
-              variant="outline" 
               onClick={onOpenUpload}
-              className="h-8 text-xs font-bold gap-1.5 border-cyan-500/30 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20"
+              className="h-8 text-xs font-bold gap-1.5 shadow-sm"
             >
-              <Sparkles size={13} className="text-cyan-500" />
-              <span>+ Scanner un 2ème ticket</span>
+              <Sparkles size={13} className="text-cyan-400" />
+              <span>+ Scanner un 2ᵉ ticket</span>
             </Button>
           </div>
         </div>
       )}
 
-      {/* SÉLECTEUR DE MODE D'AFFICHAGE (POUR POUVOIR AUSSI VOIR LE STYLE REÇU DE CAISSE DÉTAILLÉ) */}
-      {isSingleStore && singleReceipt && (
-        <div className="flex items-center justify-between gap-2 p-1 rounded-2xl bg-secondary/40 border border-border/70 w-fit">
-          <button
-            onClick={() => setViewMode('aisles')}
-            className={cn(
-              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
-              viewMode === 'aisles'
-                ? "bg-card text-foreground shadow-xs border border-border/70"
-                : "text-muted-foreground hover:text-foreground hover:bg-card/40"
-            )}
-          >
-            <Package size={13} className={viewMode === 'aisles' ? "text-primary" : ""} />
-            <span>Vue par Rayons de Supermarché ({coveredAislesCount})</span>
-          </button>
+      {/* SÉLECTEUR DE MODE D'AFFICHAGE & SÉLECTION DE TICKET */}
+      {receipts.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 p-1 rounded-2xl bg-secondary/40 border border-border/70 w-fit">
+            <button
+              onClick={() => setViewMode('aisles')}
+              className={cn(
+                "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                viewMode === 'aisles'
+                  ? "bg-card text-foreground shadow-xs border border-border/70"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card/40"
+              )}
+            >
+              <Package size={13} className={viewMode === 'aisles' ? "text-primary" : ""} />
+              <span>Vue par Rayons de Supermarché ({coveredAislesCount})</span>
+            </button>
 
-          <button
-            onClick={() => setViewMode('ticket')}
-            className={cn(
-              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
-              viewMode === 'ticket'
-                ? "bg-card text-foreground shadow-xs border border-border/70"
-                : "text-muted-foreground hover:text-foreground hover:bg-card/40"
-            )}
-          >
-            <ReceiptIcon size={13} className={viewMode === 'ticket' ? "text-primary" : ""} />
-            <span>Vue Ticket de Caisse Stylisée</span>
-          </button>
+            <button
+              onClick={() => setViewMode('ticket')}
+              className={cn(
+                "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                viewMode === 'ticket'
+                  ? "bg-card text-foreground shadow-xs border border-border/70"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card/40"
+              )}
+            >
+              <ReceiptIcon size={13} className={viewMode === 'ticket' ? "text-primary" : ""} />
+              <span>Vue Ticket de Caisse Stylisée</span>
+            </button>
+          </div>
+
+          {/* SÉLECTEUR DE TICKET SPÉCIFIQUE EN VUE TICKET */}
+          {viewMode === 'ticket' && receipts.length > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-muted-foreground">Ticket affiché :</span>
+              <select
+                value={selectedReceiptId}
+                onChange={(e) => setSelectedReceiptId(e.target.value)}
+                className="px-2.5 py-1 text-xs rounded-xl border border-border bg-card text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {receipts.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {r.storeName} ({formatDateFR(r.date)}) - {formatCurrency(r.totalAmount, { showSign: false })}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
       {/* VUE SPÉCIALE : TICKET DE CAISSE STYLISÉ (VISUEL IMMERSIF RÉCLAMÉ PAR L'UTILISATEUR) */}
-      {viewMode === 'ticket' && isSingleStore && singleReceipt ? (
-        <div className="max-w-xl mx-auto rounded-3xl bg-card border-2 border-dashed border-border/90 p-5 sm:p-7 shadow-lg space-y-5 font-mono text-xs">
-          {/* EN-TÊTE DU TICKET */}
+      {viewMode === 'ticket' && activeReceipt ? (
+        <div className="max-w-xl mx-auto rounded-3xl bg-card border-2 border-dashed border-border/90 p-5 sm:p-7 shadow-xl space-y-5 font-mono text-xs relative overflow-hidden">
+          {/* BANDE DÉCORATIVE HAUT DU TICKET */}
           <div className="text-center space-y-1.5 border-b border-dashed border-border/90 pb-4">
-            <h2 className="text-lg font-black tracking-widest uppercase text-foreground">
-              {singleReceipt.storeName}
+            <div className="inline-block px-3 py-1 rounded-full bg-secondary text-primary font-bold text-[10px] uppercase tracking-wider mb-1">
+              Reçu de Caisse Officiel
+            </div>
+            <h2 className="text-xl font-black tracking-widest uppercase text-foreground">
+              {activeReceipt.storeName}
             </h2>
             <p className="text-[11px] text-muted-foreground">
-              Date : {formatDateFR(singleReceipt.date)}
+              Date : {formatDateFR(activeReceipt.date)}
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {singleReceipt.items.length} article{singleReceipt.items.length > 1 ? 's' : ''} • Audit Financier CashPilot
+              {activeReceipt.items.length} article{activeReceipt.items.length > 1 ? 's' : ''} • Audit Financier CashPilot
             </p>
           </div>
 
           {/* TABLEAU DES ARTICLES DU TICKET */}
           <div className="divide-y divide-border/40 text-xs">
-            {singleReceipt.items.map((item, idx) => {
-              const aisleMeta = AISLE_CONFIGS[item.category];
+            {activeReceipt.items.map((item, idx) => {
+              const aisleMeta = AISLE_CONFIGS[item.category as SupermarketAisle] || AISLE_CONFIGS['Autres / Divers'];
               const lineTotal = item.pricePaid * item.quantity;
+              const unitPriceVal = item.unitPrice || item.referenceUnitPrice || (item.pricePaid / Math.max(1, item.quantity));
 
               return (
                 <div key={item.id || idx} className="py-2.5 flex items-start justify-between gap-3">
@@ -377,16 +402,16 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                         Ticket : {item.rawName}
                       </p>
                     )}
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground pt-0.5">
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground pt-0.5 flex-wrap">
                       <span className={cn("px-1.5 py-0.2 rounded text-[9px] font-semibold border", aisleMeta?.badgeClass)}>
                         {item.category}
                       </span>
                       {item.weightOrVolume && (
-                        <span>Contenance : {item.weightOrVolume}</span>
+                        <span>Format : {item.weightOrVolume}</span>
                       )}
-                      {item.unitPrice > 0 && (
-                        <span className="font-bold text-cyan-600 dark:text-cyan-400">
-                          {formatCurrency(item.unitPrice, { showSign: false })}/{item.unit || 'u'}
+                      {unitPriceVal > 0 && (
+                        <span className="font-semibold text-cyan-600 dark:text-cyan-400">
+                          {formatCurrency(unitPriceVal, { showSign: false })}/{item.unit || 'pièce'}
                         </span>
                       )}
                     </div>
@@ -411,12 +436,12 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
           <div className="border-t-2 border-dashed border-border/90 pt-4 space-y-2">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>Nombre d'articles :</span>
-              <span className="font-bold text-foreground">{singleReceipt.items.length}</span>
+              <span className="font-bold text-foreground">{activeReceipt.items.length}</span>
             </div>
             <div className="flex items-center justify-between text-base font-black text-foreground pt-1">
               <span>TOTAL PAYÉ :</span>
               <span className="text-xl font-mono text-emerald-500">
-                {formatCurrency(singleReceipt.totalAmount, { showSign: false })}
+                {formatCurrency(activeReceipt.totalAmount, { showSign: false })}
               </span>
             </div>
           </div>
@@ -433,7 +458,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
               <span className="w-0.5 h-6 bg-foreground/60" />
             </div>
             <p className="text-[9px] text-muted-foreground uppercase">
-              Réf : {singleReceipt.id}
+              Réf : {activeReceipt.id}
             </p>
           </div>
         </div>
@@ -625,8 +650,8 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                               ))}
 
                               {/* COLONNE STATUT & DÉTAILS */}
-                              <th className="py-3 px-4 text-right w-[20%] font-semibold">
-                                {isSingleStore ? 'Détail Achat' : 'Statut & Écart'}
+                              <th className="py-3 px-4 text-right w-[24%] font-semibold">
+                                {isSingleReceipt ? 'Détail Achat' : 'Statut & Écart Audit'}
                               </th>
 
                               {/* COLONNE ACTION (SUPPRESSION PRODUIT MATRICE) */}
@@ -676,7 +701,8 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                     }
 
                                     const unitPrice = priceInfo.unitPrice || priceInfo.pricePaid;
-                                    const isCheapestInRow = isComparable && unitPrice === product.lowestUnitPrice;
+                                    // RÈGLE STRICTE D'AUDIT : Badge "Moins cher" UNIQUEMENT si >= 2 tickets ET produit comparable
+                                    const isCheapestInRow = !isSingleReceipt && isComparable && unitPrice === product.lowestUnitPrice;
 
                                     return (
                                       <td 
@@ -715,11 +741,11 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                             </span>
                                           )}
 
-                                          {/* BADGE MEILLEUR PRIX OU DATE D'ACHAT */}
+                                          {/* BADGE "MOINS CHER" OU DATE D'ACHAT */}
                                           {isCheapestInRow ? (
                                             <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 mt-1 border border-emerald-500/30">
                                               <Check size={9} className="stroke-[3]" />
-                                              Meilleur prix
+                                              Moins cher
                                             </span>
                                           ) : (
                                             <span className="text-[9px] text-muted-foreground font-mono mt-0.5">
@@ -733,7 +759,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
 
                                   {/* 3. STATUT ET DÉTAILS D'ACHAT */}
                                   <td className="py-3 px-4 text-right">
-                                    {isSingleStore ? (
+                                    {isSingleReceipt ? (
                                       <div className="flex flex-col items-end">
                                         <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20">
                                           <Tag size={10} />
@@ -752,10 +778,14 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                         </span>
 
                                         {product.unitPriceDifference && product.unitPriceDifference > 0 ? (
-                                          <span className="text-[11px] font-bold text-green-500 font-mono mt-1">
-                                            Écart : +{formatCurrency(product.unitPriceDifference, { showSign: false })}/{product.unit || 'u'}
-                                            {product.unitPriceDifferencePercent ? ` (+${product.unitPriceDifferencePercent}%)` : ''}
-                                          </span>
+                                          <div className="text-right mt-1">
+                                            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 font-mono block">
+                                              {formatCurrency(product.lowestUnitPrice || 0, { showSign: false })}/{product.unit || 'u'} vs {formatCurrency(product.highestUnitPrice || 0, { showSign: false })}/{product.unit || 'u'}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-green-500 font-mono block">
+                                              Économie : {product.unitPriceDifferencePercent}% (+{formatCurrency(product.unitPriceDifference, { showSign: false })}/{product.unit || 'u'})
+                                            </span>
+                                          </div>
                                         ) : (
                                           <span className="text-[10px] text-muted-foreground font-mono mt-0.5">
                                             Prix identique
@@ -768,9 +798,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                           Unique ({Object.keys(product.storePrices)[0] || '1 enseigne'})
                                         </span>
                                         <span className="text-[10px] text-muted-foreground mt-0.5">
-                                          {Object.keys(product.storePrices).length === 1
-                                            ? `Acheté à ${Object.keys(product.storePrices)[0]}`
-                                            : `${Object.keys(product.storePrices).length} enseignes`}
+                                          Non comparable
                                         </span>
                                       </div>
                                     )}

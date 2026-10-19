@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIES } from './bankParser.ts';
-import { classifyItemAisle } from './receiptClassifier';
-import { type SupermarketAisle } from '../types/receipts';
+import { classifyItemAisle, normalizeAisle, computeUnitPrice } from './receiptClassifier';
+import { type SupermarketAisle, type SupermarketAisleKey } from '../types/receipts';
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
   {
@@ -1512,8 +1512,12 @@ export interface RawExtractedItem {
   pricePaid: number;
   quantity: number;
   weightOrVolume: string;
+  weightOrVolumeValue?: number;
+  weightOrVolumeUnit?: string;
   unitPrice: number;
+  referenceUnitPrice?: number;
   category: SupermarketAisle;
+  categoryKey?: SupermarketAisleKey;
   unit: string;
   price?: number; // Rétrocompatibilité
 }
@@ -1530,6 +1534,7 @@ export interface ExtractedReceiptResult {
  * Extraction automatisée haute fidélité via Google Gemini Flash (Palier 100% gratuit).
  * Reconstitue les tickets fragmentés et classe rigoureusement les articles dans la nomenclature
  * officielle des 8 rayons de grande surface avec calcul systématique du prix unitaire standardisé.
+ * Cascade automatique transparente : gemini-3.8-flash -> gemini-2.5-flash -> gemini-2.0-flash -> gemini-1.5-flash.
  */
 export async function extractReceiptItemsFromFiles(
   files: File[]
@@ -1560,16 +1565,17 @@ Tu es un auditeur financier et expert OCR de CashPilot spécialisé dans la num�
 OBJECTIF :
 Extrais avec une rigueur comptable absolue les données réelles du ticket photographié (ou pages PDF). Si plusieurs photos sont fournies, assemble les fragments sans doublonner les coupures.
 
-NOMENCLATURE OBLIGATOIRE DES 8 RAYONS :
-Pour chaque article, affecte obligatoirement 'category' à l'un des 8 rayons suivants (et aucun autre) :
-1. "Boucherie, Volaille & Poissonnerie" (viandes, poissons, volailles, charcuterie)
-2. "Épicerie salée & Épices" (épices, pâtes, riz, huiles, conserves, sauces)
-3. "Fruits & Légumes" (primeur, herbes fraîches, salades)
-4. "Produits frais & Crèmerie" (laits, beurres, crèmes, fromages, yaourts, œufs)
-5. "Épicerie sucrée" (cafés, thés, biscuits, confitures, chocolats, céréales, farines)
-6. "Hygiène, Beauté & Sanitaire" (savons, shampoings, dentifrice, papier toilette, cotons)
-7. "Entretien & Maison" (lessive, éponges, produits ménagers, liquide vaisselle)
-8. "Boissons" (eaux minérales, jus de fruits, sodas, sirops)
+NOMENCLATURE STRICTE DES 8 RAYONS (+ 1 FILET DE SÉCURITÉ) :
+Pour chaque article, affecte obligatoirement 'categoryKey' à l'une des 9 clés slug suivantes :
+1. "boucherie_poissonnerie" : Boucherie, Volaille & Poissonnerie (viandes, poissons, volailles, charcuterie)
+2. "epicerie_salee" : Épicerie salée & Épices (épices, pâtes, riz, huiles, conserves, sauces)
+3. "fruits_legumes" : Fruits & Légumes (primeur, herbes fraîches, salades)
+4. "frais_cremerie" : Produits frais & Crèmerie (laits, beurres, crèmes, fromages, yaourts, œufs)
+5. "epicerie_sucree" : Épicerie sucrée (cafés, thés, biscuits, confitures, chocolats, céréales, farines)
+6. "hygiene_beaute" : Hygiène, Beauté & Sanitaire (savons, shampoings, dentifrice, papier toilette, cotons)
+7. "entretien_maison" : Entretien & Maison (lessive, éponges, produits ménagers, liquide vaisselle)
+8. "boissons" : Boissons (eaux minérales, jus de fruits, sodas, sirops)
+9. "autres_divers" : Autres / Divers (tout article inclassable dans les 8 rayons ci-dessus)
 
 DONNÉES À EXTRAIRE OBLIGATOIREMENT :
 - 'storeName' : Nom exact de l'enseigne (ex: "Lidl", "Carrefour", "E.Leclerc", "Intermarché", "Aldi", "Monoprix", "Migros", "Coop").
@@ -1577,13 +1583,15 @@ DONNÉES À EXTRAIRE OBLIGATOIREMENT :
 - 'totalAmount' : Montant total payé sur le ticket en euros (nombre décimal).
 - 'items' : Liste de tous les articles achetés :
   * 'rawName' : Nom brut exact imprimé sur le ticket de caisse (ex: "COLA ZERO FREW 1.5L").
-  * 'normalizedName' : Nom générique du produit nettoyé de sa marque commerciale (ex: "Cola gazeux sans sucres", "Lait demi-écrémé", "Pâtes spaghetti", "Liquide vaisselle").
+  * 'normalizedName' : Nom générique du produit nettoyé de sa marque commerciale (ex: "Cola sans sucres", "Lait demi-écrémé", "Pâtes spaghetti", "Liquide vaisselle").
   * 'brand' : Marque constatée sur le ticket ou déduite du libellé (ex: "Freeway", "Coca-Cola", "Marque Repère", "Président", "Barilla", "Générique").
-  * 'category' : L'un des 8 rayons obligatoires listés ci-dessus.
+  * 'categoryKey' : L'une des 9 clés slug obligatoires ci-dessus.
   * 'pricePaid' : Prix net total payé en caisse pour cette ligne (en euros, nombre décimal).
   * 'quantity' : Quantité ou nombre d'unités achetées (défaut: 1).
-  * 'weightOrVolume' : Contenance ou poids unitaire (ex: "1.5 L", "500 g", "1 kg", "6x33 cL").
-  * 'unitPrice' : Calcul du prix de référence standardisé (€/kg, €/L ou €/pièce) pour comparaison équitable (ex: 0.90 pour 1.5L à 1.35€).
+  * 'weightOrVolume' : Contenance formatée (ex: "1.5 L", "500 g", "1 kg", "6x33 cL").
+  * 'weightOrVolumeValue' : Valeur numérique de la contenance (ex: 1.5, 500, 1, 33).
+  * 'weightOrVolumeUnit' : Unité ('kg', 'g', 'l', 'cl', 'ml', 'piece').
+  * 'referenceUnitPrice' : Calcul du prix de référence standardisé (€/kg, €/L ou €/pièce) pour comparaison équitable (ex: 0.90 pour 1.5L à 1.35€).
   * 'unit' : "L", "kg", ou "pièce".
 
 RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
@@ -1596,11 +1604,13 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
       "rawName": "LT DEMI ECR 1L",
       "normalizedName": "Lait demi-écrémé",
       "brand": "Milbona",
-      "category": "Produits frais & Crèmerie",
+      "categoryKey": "frais_cremerie",
       "pricePaid": 0.95,
       "quantity": 2,
       "weightOrVolume": "1 L",
-      "unitPrice": 0.95,
+      "weightOrVolumeValue": 1,
+      "weightOrVolumeUnit": "l",
+      "referenceUnitPrice": 0.95,
       "unit": "L"
     }
   ]
@@ -1610,12 +1620,13 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
   let rawJsonText = '';
 
   if (apiKey) {
+    const preferredModel = getGeminiModelName();
     const candidateModels = [
-      getGeminiModelName(),
+      preferredModel,
       'gemini-3.8-flash',
-      'gemini-flash-latest',
       'gemini-2.5-flash',
-      'gemini-2.0-flash'
+      'gemini-2.0-flash',
+      'gemini-1.5-flash'
     ];
     const uniqueModels = Array.from(new Set(candidateModels));
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -1641,7 +1652,8 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
           break;
         }
       } catch (err: any) {
-        console.warn(`Tentative extraction modèle ${modelName} échouée:`, err?.message || err);
+        // En cas d'erreur de quota (HTTP 429) ou modèle temporairement indisponible, on passe de façon transparente au modèle suivant
+        console.warn(`Tentative extraction modèle ${modelName} échouée (repli cascade transparent):`, err?.message || err);
       }
     }
   }
@@ -1673,21 +1685,23 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
       const brand = String(it.brand || '').trim();
       const qty = Math.max(1, Number(it.quantity) || 1);
       const weightOrVolume = String(it.weightOrVolume || '').trim();
+      const weightOrVolumeValue = typeof it.weightOrVolumeValue === 'number' ? it.weightOrVolumeValue : undefined;
+      const weightOrVolumeUnit = typeof it.weightOrVolumeUnit === 'string' ? it.weightOrVolumeUnit : undefined;
       
       let pricePaid = Number(it.pricePaid ?? it.price ?? it.paidPrice) || 0;
       if (pricePaid <= 0 && Number(it.unitPrice) > 0) {
         pricePaid = Number(it.unitPrice) * qty;
       }
 
-      // Classification rigoureuse dans l'un des 8 rayons
-      const cat: SupermarketAisle = classifyItemAisle(norm, raw);
+      // Classification rigoureuse dans l'un des 8 rayons ou Autres / Divers
+      const aisle = normalizeAisle(it.categoryKey || it.category || classifyItemAisle(norm, raw));
 
       // Calcul standardisé du prix unitaire
-      let unitPrice = Number(it.unitPrice) || 0;
-      let unit = it.unit || 'pièce';
+      const comp = computeUnitPrice(pricePaid, weightOrVolume, qty, weightOrVolumeValue, weightOrVolumeUnit);
+      let unitPrice = Number(it.referenceUnitPrice || it.unitPrice) || 0;
+      let unit = it.unit || comp.unit;
       if (unitPrice <= 0) {
-        const computed = (pricePaid > 0) ? (pricePaid / qty) : 0;
-        unitPrice = computed;
+        unitPrice = comp.unitPrice;
       }
 
       return {
@@ -1697,14 +1711,18 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
         pricePaid: Number(pricePaid.toFixed(2)),
         quantity: qty,
         weightOrVolume,
+        weightOrVolumeValue,
+        weightOrVolumeUnit,
         unitPrice: Number(unitPrice.toFixed(2)),
-        category: cat,
+        referenceUnitPrice: Number(unitPrice.toFixed(2)),
+        category: aisle.label,
+        categoryKey: aisle.key,
         unit,
         price: Number(pricePaid.toFixed(2)) // rétrocompatibilité
       };
     });
 
-    const totalCalculated = items.reduce((acc, it) => acc + it.pricePaid, 0);
+    const totalCalculated = items.reduce((acc, it) => acc + (it.pricePaid * it.quantity), 0);
     const totalAmount = Number(parsed.totalAmount || parsed.total) || Number(totalCalculated.toFixed(2));
 
     return {

@@ -3,6 +3,20 @@
  * Respect rigoureux du cahier des charges d'audit financier CashPilot (zéro type any).
  */
 
+export const SUPERMARKET_AISLE_KEYS = [
+  'boucherie_poissonnerie',
+  'epicerie_salee',
+  'fruits_legumes',
+  'frais_cremerie',
+  'epicerie_sucree',
+  'hygiene_beaute',
+  'entretien_maison',
+  'boissons',
+  'autres_divers'
+] as const;
+
+export type SupermarketAisleKey = typeof SUPERMARKET_AISLE_KEYS[number];
+
 export const SUPERMARKET_AISLES = [
   'Boucherie, Volaille & Poissonnerie',
   'Épicerie salée & Épices',
@@ -11,7 +25,8 @@ export const SUPERMARKET_AISLES = [
   'Épicerie sucrée',
   'Hygiène, Beauté & Sanitaire',
   'Entretien & Maison',
-  'Boissons'
+  'Boissons',
+  'Autres / Divers'
 ] as const;
 
 export type SupermarketAisle = typeof SUPERMARKET_AISLES[number];
@@ -26,9 +41,13 @@ export interface ReceiptItem {
   brand: string; // Marque constatée (ex: "Freeway", "Coca-Cola", "Marque Repère", "Générique")
   pricePaid: number; // Prix net payé en caisse (en €)
   quantity: number; // Quantité achetée
-  weightOrVolume: string; // Contenance (ex: "1.5 L", "500 g", "1 kg", "6x1.5 L")
+  weightOrVolume: string; // Contenance formatée (ex: "1.5 L", "500 g", "1 kg", "6x1.5 L")
+  weightOrVolumeValue?: number; // Valeur numérique (ex: 1.5, 500, 75)
+  weightOrVolumeUnit?: string; // Unité ('kg', 'g', 'l', 'cl', 'piece')
   unitPrice: number; // Prix de référence standardisé (€/kg ou €/L ou €/pièce) pour comparaison équitable
-  category: SupermarketAisle; // Affectation à l'un des 8 rayons standards
+  referenceUnitPrice?: number; // Calcul automatique du prix unitaire de référence
+  category: SupermarketAisle | string; // Affectation à l'un des 8 rayons standards ou Autres / Divers
+  categoryKey?: SupermarketAisleKey; // Clé normalisée (ex: 'boissons')
   unit: string; // Unité standardisée ("L", "kg", "pièce")
   price?: number; // Alias rétrocompatible vers pricePaid
 }
@@ -73,6 +92,7 @@ export type ProductComparisonStatus = 'UNIQUE' | 'COMPARABLE';
 export interface ProductComparisonRow {
   normalizedName: string;
   category: SupermarketAisle;
+  categoryKey: SupermarketAisleKey;
   sampleRawNames: string[];
   sampleBrands: string[];
   storePrices: Record<string, StorePriceDetail>; // Enseigne -> Détails de prix
@@ -95,6 +115,7 @@ export interface ProductComparisonRow {
  */
 export interface AisleGroup {
   aisle: SupermarketAisle;
+  key: SupermarketAisleKey;
   products: ProductComparisonRow[];
   totalProducts: number;
   comparableCount: number;
@@ -106,7 +127,7 @@ export interface AisleGroup {
 export interface ComparativeMatrix {
   stores: string[]; // Liste ordonnée des magasins réels audités
   receiptsCount: number; // Nombre total de tickets enregistrés
-  isSingleReceipt: boolean; // Vrai si <= 1 ticket (règle du ticket unique : comparaison désactivée)
+  isSingleReceipt: boolean; // Vrai si < 2 tickets (règle du ticket unique : comparaison désactivée)
   aisleGroups: AisleGroup[];
   totalUniqueProducts: number;
   totalComparableProducts: number;

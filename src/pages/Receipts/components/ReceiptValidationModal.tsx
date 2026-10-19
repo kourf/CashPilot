@@ -11,9 +11,9 @@ import {
   Tag
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
-import { type ReceiptItem, type SupermarketAisle, SUPERMARKET_AISLES } from '../../../types/receipts';
+import { type ReceiptItem, type SupermarketAisle, type SupermarketAisleKey, SUPERMARKET_AISLES } from '../../../types/receipts';
 import { formatCurrency } from '../../../lib/bankUtils';
-import { AISLE_CONFIGS, computeUnitPrice } from '../../../lib/receiptClassifier';
+import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle } from '../../../lib/receiptClassifier';
 
 interface ReceiptValidationModalProps {
   isOpen: boolean;
@@ -29,8 +29,12 @@ interface ReceiptValidationModalProps {
       price?: number;
       quantity?: number;
       weightOrVolume?: string;
+      weightOrVolumeValue?: number;
+      weightOrVolumeUnit?: string;
       unitPrice?: number;
-      category: SupermarketAisle;
+      referenceUnitPrice?: number;
+      category: SupermarketAisle | string;
+      categoryKey?: SupermarketAisleKey;
       unit?: string;
     }>;
     rawFileCount?: number;
@@ -60,12 +64,18 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
       const pricePaid = Number(it.pricePaid ?? it.price) || 0;
       const quantity = Math.max(1, Number(it.quantity) || 1);
       const weightOrVolume = String(it.weightOrVolume || '').trim();
-      const unit = it.unit || 'pièce';
-      let unitPrice = Number(it.unitPrice) || 0;
-      if (unitPrice <= 0) {
-        const computed = computeUnitPrice(pricePaid, weightOrVolume, quantity);
-        unitPrice = computed.unitPrice;
-      }
+      const comp = computeUnitPrice(
+        pricePaid, 
+        weightOrVolume, 
+        quantity, 
+        it.weightOrVolumeValue, 
+        it.weightOrVolumeUnit
+      );
+      const unit = it.unit || comp.unit;
+      const unitPrice = Number(it.referenceUnitPrice || it.unitPrice) > 0 
+        ? Number(it.referenceUnitPrice || it.unitPrice) 
+        : comp.unitPrice;
+      const aisle = normalizeAisle(it.categoryKey || it.category);
 
       return {
         id: `val-item-${Date.now()}-${idx}`,
@@ -76,8 +86,12 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
         price: Number(pricePaid.toFixed(2)),
         quantity,
         weightOrVolume,
+        weightOrVolumeValue: it.weightOrVolumeValue,
+        weightOrVolumeUnit: it.weightOrVolumeUnit,
         unitPrice: Number(unitPrice.toFixed(2)),
-        category: it.category || 'Épicerie salée & Épices',
+        referenceUnitPrice: Number(unitPrice.toFixed(2)),
+        category: aisle.label,
+        categoryKey: aisle.key,
         unit
       };
     });
@@ -163,7 +177,9 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
       const pricePaid = Number(Number(it.pricePaid || it.price || 0).toFixed(2));
       const quantity = Math.max(1, Number(it.quantity || 1));
       const weightOrVolume = (it.weightOrVolume || '').trim();
-      const comp = computeUnitPrice(pricePaid, weightOrVolume, quantity);
+      const comp = computeUnitPrice(pricePaid, weightOrVolume, quantity, it.weightOrVolumeValue, it.weightOrVolumeUnit);
+      const aisle = normalizeAisle(it.categoryKey || it.category);
+      const unitPrice = Number(it.unitPrice) > 0 ? Number(Number(it.unitPrice).toFixed(2)) : (it.referenceUnitPrice || comp.unitPrice);
 
       return {
         id: it.id || `item-${Date.now()}-${idx}`,
@@ -174,8 +190,12 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
         price: pricePaid,
         quantity,
         weightOrVolume,
-        unitPrice: Number(it.unitPrice) > 0 ? Number(Number(it.unitPrice).toFixed(2)) : comp.unitPrice,
-        category: it.category,
+        weightOrVolumeValue: it.weightOrVolumeValue,
+        weightOrVolumeUnit: it.weightOrVolumeUnit,
+        unitPrice,
+        referenceUnitPrice: unitPrice,
+        category: aisle.label,
+        categoryKey: aisle.key,
         unit: it.unit || comp.unit
       };
     });

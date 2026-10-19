@@ -1,14 +1,101 @@
 import { 
   type SupermarketAisle, 
+  type SupermarketAisleKey,
   SUPERMARKET_AISLES, 
+  SUPERMARKET_AISLE_KEYS,
   type Receipt, 
   type ProductComparisonRow, 
   type ComparativeMatrix,
   type AisleGroup
 } from '../types/receipts';
 
+export const AISLE_KEY_TO_LABEL: Record<SupermarketAisleKey, SupermarketAisle> = {
+  boucherie_poissonnerie: 'Boucherie, Volaille & Poissonnerie',
+  epicerie_salee: 'Épicerie salée & Épices',
+  fruits_legumes: 'Fruits & Légumes',
+  frais_cremerie: 'Produits frais & Crèmerie',
+  epicerie_sucree: 'Épicerie sucrée',
+  hygiene_beaute: 'Hygiène, Beauté & Sanitaire',
+  entretien_maison: 'Entretien & Maison',
+  boissons: 'Boissons',
+  autres_divers: 'Autres / Divers'
+};
+
+export const AISLE_LABEL_TO_KEY: Record<SupermarketAisle, SupermarketAisleKey> = {
+  'Boucherie, Volaille & Poissonnerie': 'boucherie_poissonnerie',
+  'Épicerie salée & Épices': 'epicerie_salee',
+  'Fruits & Légumes': 'fruits_legumes',
+  'Produits frais & Crèmerie': 'frais_cremerie',
+  'Épicerie sucrée': 'epicerie_sucree',
+  'Hygiène, Beauté & Sanitaire': 'hygiene_beaute',
+  'Entretien & Maison': 'entretien_maison',
+  'Boissons': 'boissons',
+  'Autres / Divers': 'autres_divers'
+};
+
 /**
- * Configuration visuelle et ergonomique pour chacun des 8 rayons de grande surface.
+ * Normalise n'importe quelle clé ou libellé de catégorie (slug, label complet, partiel sans accent)
+ * vers sa clé canonique et son libellé officiel strict.
+ * Si inconnu, bascule sur 'autres_divers' / 'Autres / Divers' comme filet de sécurité.
+ */
+export function normalizeAisle(input?: string): { key: SupermarketAisleKey; label: SupermarketAisle } {
+  if (!input || typeof input !== 'string') {
+    return { key: 'autres_divers', label: 'Autres / Divers' };
+  }
+
+  const trimmed = input.trim();
+
+  // 1. Correspondance directe avec une clé slug connue
+  if (trimmed in AISLE_KEY_TO_LABEL) {
+    const k = trimmed as SupermarketAisleKey;
+    return { key: k, label: AISLE_KEY_TO_LABEL[k] };
+  }
+
+  // 2. Correspondance directe avec un libellé officiel exact
+  if (trimmed in AISLE_LABEL_TO_KEY) {
+    const l = trimmed as SupermarketAisle;
+    return { key: AISLE_LABEL_TO_KEY[l], label: l };
+  }
+
+  // 3. Normalisation phonétique / sans accents
+  const clean = trimmed
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+
+  if (clean.includes('boucherie') || clean.includes('poisson') || clean.includes('volaille') || clean.includes('viande')) {
+    return { key: 'boucherie_poissonnerie', label: 'Boucherie, Volaille & Poissonnerie' };
+  }
+  if (clean.includes('epicerie_salee') || clean.includes('epice') || clean.includes('salee') || clean.includes('conserve') || clean.includes('sauce')) {
+    return { key: 'epicerie_salee', label: 'Épicerie salée & Épices' };
+  }
+  if (clean.includes('fruit') || clean.includes('legume') || clean.includes('primeur') || clean.includes('salade')) {
+    return { key: 'fruits_legumes', label: 'Fruits & Légumes' };
+  }
+  if (clean.includes('frais') || clean.includes('cremerie') || clean.includes('lait') || clean.includes('fromage') || clean.includes('yaourt')) {
+    return { key: 'frais_cremerie', label: 'Produits frais & Crèmerie' };
+  }
+  if (clean.includes('epicerie_sucree') || clean.includes('sucree') || clean.includes('biscuit') || clean.includes('chocolat') || clean.includes('cafe')) {
+    return { key: 'epicerie_sucree', label: 'Épicerie sucrée' };
+  }
+  if (clean.includes('hygiene') || clean.includes('beaute') || clean.includes('sanitaire') || clean.includes('shampoing') || clean.includes('savon')) {
+    return { key: 'hygiene_beaute', label: 'Hygiène, Beauté & Sanitaire' };
+  }
+  if (clean.includes('entretien') || clean.includes('maison') || clean.includes('menage') || clean.includes('lessive') || clean.includes('vaisselle')) {
+    return { key: 'entretien_maison', label: 'Entretien & Maison' };
+  }
+  if (clean.includes('boisson') || clean.includes('soda') || clean.includes('eau') || clean.includes('jus') || clean.includes('sirop')) {
+    return { key: 'boissons', label: 'Boissons' };
+  }
+
+  return { key: 'autres_divers', label: 'Autres / Divers' };
+}
+
+/**
+ * Configuration visuelle et ergonomique pour chacun des rayons de grande surface (+ filet de sécurité).
  */
 export interface AisleMetadata {
   id: SupermarketAisle;
@@ -92,6 +179,15 @@ export const AISLE_CONFIGS: Record<SupermarketAisle, AisleMetadata> = {
     iconName: 'CupSoda',
     badgeClass: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20',
     accentBorder: 'border-l-teal-500'
+  },
+  'Autres / Divers': {
+    id: 'Autres / Divers',
+    order: 9,
+    label: 'Autres / Divers',
+    description: 'Articles non classés ou divers',
+    iconName: 'MoreHorizontal',
+    badgeClass: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
+    accentBorder: 'border-l-slate-500'
   }
 };
 
@@ -176,10 +272,38 @@ export function normalizeProductName(rawName: string): string {
 export function computeUnitPrice(
   pricePaid: number,
   weightOrVolume?: string,
-  quantity: number = 1
+  quantity: number = 1,
+  weightOrVolumeValue?: number,
+  weightOrVolumeUnit?: string
 ): { unitPrice: number; unit: string } {
   const safeQty = Math.max(1, quantity);
   const safePrice = Math.max(0, pricePaid);
+
+  // 1. Calcul prioritaire si valeur et unité numériques sont directement fournies
+  if (typeof weightOrVolumeValue === 'number' && weightOrVolumeValue > 0 && weightOrVolumeUnit) {
+    const u = weightOrVolumeUnit.toLowerCase().trim();
+    if (u === 'kg') {
+      return { unitPrice: Number((safePrice / weightOrVolumeValue).toFixed(2)), unit: 'kg' };
+    }
+    if (u === 'g') {
+      const kg = weightOrVolumeValue / 1000;
+      return { unitPrice: Number((safePrice / (kg > 0 ? kg : 1)).toFixed(2)), unit: 'kg' };
+    }
+    if (u === 'l') {
+      return { unitPrice: Number((safePrice / weightOrVolumeValue).toFixed(2)), unit: 'L' };
+    }
+    if (u === 'cl') {
+      const l = weightOrVolumeValue / 100;
+      return { unitPrice: Number((safePrice / (l > 0 ? l : 1)).toFixed(2)), unit: 'L' };
+    }
+    if (u === 'ml') {
+      const l = weightOrVolumeValue / 1000;
+      return { unitPrice: Number((safePrice / (l > 0 ? l : 1)).toFixed(2)), unit: 'L' };
+    }
+    if (u === 'piece' || u === 'piece' || u === 'unite' || u === 'u') {
+      return { unitPrice: Number((safePrice / (weightOrVolumeValue * safeQty)).toFixed(2)), unit: 'pièce' };
+    }
+  }
 
   if (!weightOrVolume || !weightOrVolume.trim()) {
     const unitPrice = safePrice / safeQty;
@@ -292,6 +416,7 @@ export function buildComparativeMatrix(
   interface ProductAccumulator {
     canonicalName: string;
     category: SupermarketAisle;
+    categoryKey: SupermarketAisleKey;
     rawNames: Set<string>;
     brands: Set<string>;
     unit: string;
@@ -325,15 +450,24 @@ export function buildComparativeMatrix(
       const pricePaid = Number(item.pricePaid ?? item.price) || 0;
       const weightOrVolume = String(item.weightOrVolume || '').trim();
       const quantity = Math.max(1, Number(item.quantity) || 1);
-      const computed = computeUnitPrice(pricePaid, weightOrVolume, quantity);
-      const unitPrice = Number(item.unitPrice) > 0 ? Number(item.unitPrice) : computed.unitPrice;
+      const computed = computeUnitPrice(
+        pricePaid, 
+        weightOrVolume, 
+        quantity, 
+        item.weightOrVolumeValue, 
+        item.weightOrVolumeUnit
+      );
+      const unitPrice = Number(item.unitPrice) > 0 ? Number(item.unitPrice) : (item.referenceUnitPrice || computed.unitPrice);
       const unit = item.unit || computed.unit;
       const brand = String(item.brand || '').trim();
+
+      const normalizedCat = normalizeAisle(item.categoryKey || item.category || classifyItemAisle(canonical, item.rawName));
 
       if (!productMap.has(lookupKey)) {
         productMap.set(lookupKey, {
           canonicalName: canonical,
-          category: item.category || classifyItemAisle(canonical, item.rawName),
+          category: normalizedCat.label,
+          categoryKey: normalizedCat.key,
           rawNames: new Set<string>(),
           brands: new Set<string>(),
           unit,
@@ -421,6 +555,7 @@ export function buildComparativeMatrix(
     allRows.push({
       normalizedName: acc.canonicalName,
       category: acc.category,
+      categoryKey: acc.categoryKey,
       sampleRawNames: Array.from(acc.rawNames),
       sampleBrands: Array.from(acc.brands),
       storePrices: acc.storePrices,
@@ -439,10 +574,11 @@ export function buildComparativeMatrix(
     });
   });
 
-  // 4. Regroupement par Rayons (8 sections standard de supermarché)
+  // 4. Regroupement par Rayons (8 sections standard de supermarché + filet Autres / Divers)
   const aisleGroups: AisleGroup[] = SUPERMARKET_AISLES.map(aisle => {
+    const key = AISLE_LABEL_TO_KEY[aisle];
     const productsInAisle = allRows
-      .filter(r => r.category === aisle)
+      .filter(r => r.categoryKey === key || r.category === aisle)
       .sort((a, b) => {
         // En premier les produits comparables, puis ordre alphabétique
         if (a.status === 'COMPARABLE' && b.status !== 'COMPARABLE') return -1;
@@ -454,6 +590,7 @@ export function buildComparativeMatrix(
 
     return {
       aisle,
+      key,
       products: productsInAisle,
       totalProducts: productsInAisle.length,
       comparableCount

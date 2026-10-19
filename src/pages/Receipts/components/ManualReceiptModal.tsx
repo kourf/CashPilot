@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { type ReceiptItem, type SupermarketAisle, SUPERMARKET_AISLES } from '../../../types/receipts';
-import { AISLE_CONFIGS, computeUnitPrice } from '../../../lib/receiptClassifier';
+import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle } from '../../../lib/receiptClassifier';
 import { formatCurrency } from '../../../lib/bankUtils';
 
 interface ManualReceiptModalProps {
@@ -137,6 +137,8 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
           const quantity = Math.max(1, Number(it.quantity) || 1);
           const weightOrVolume = (it.weightOrVolume || '').trim();
           const comp = computeUnitPrice(pricePaid, weightOrVolume, quantity);
+          const aisle = normalizeAisle(it.category);
+          const unitPrice = Number(it.unitPrice) > 0 ? Number(Number(it.unitPrice).toFixed(2)) : comp.unitPrice;
 
           return {
             ...it,
@@ -148,7 +150,10 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
             price: pricePaid,
             quantity,
             weightOrVolume,
-            unitPrice: Number(it.unitPrice) > 0 ? Number(Number(it.unitPrice).toFixed(2)) : comp.unitPrice,
+            unitPrice,
+            referenceUnitPrice: unitPrice,
+            category: aisle.label,
+            categoryKey: aisle.key,
             unit: it.unit || comp.unit
           };
         })
