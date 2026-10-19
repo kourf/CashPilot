@@ -30,6 +30,7 @@ import { ReceiptHistoryView } from './components/ReceiptHistoryView';
 import { ReceiptValidationModal } from './components/ReceiptValidationModal';
 import { ManualReceiptModal } from './components/ManualReceiptModal';
 import { SpendingChartsView } from './components/SpendingChartsView';
+import { WhereToBuySection } from './components/WhereToBuySection';
 
 interface UploadedFilePreview {
   id: string;
@@ -67,6 +68,7 @@ export default function Receipts() {
   // Modale de saisie manuelle 100% hors-ligne
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isValidationModalOpen, setIsValidationModalOpen] = useState(true);
+  const [selectedAisleFocus, setSelectedAisleFocus] = useState<string | null>(null);
 
   useEffect(() => {
     if (pendingValidationReceipt) {
@@ -355,10 +357,24 @@ export default function Receipts() {
       )}
 
       {/* ========================================================================= */}
-      {/* AUDIT VISUEL DES DÉPENSES : GRAPHIQUE DONUT & DRILL-DOWN (RÈGLE 6)        */}
+      {/* AUDIT VISUEL DES DÉPENSES : GRAPHIQUE DONUT & BÂTONS (RÈGLE 6)            */}
       {/* ========================================================================= */}
       {receipts.length > 0 && (
         <SpendingChartsView receipts={receipts} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* OÙ ACHETER QUOI ? RECOMMANDATIONS ÉCONOMIQUES PAR CATÉGORIE              */}
+      {/* ========================================================================= */}
+      {receipts.length > 0 && (
+        <WhereToBuySection 
+          receipts={receipts}
+          matrix={matrix}
+          onSelectAisle={(aisle) => {
+            setSelectedAisleFocus(aisle);
+            setActiveTab('matrix');
+          }}
+        />
       )}
 
       {/* NAVIGATION PAR ONGLETS (STYLE APPLE GLASS & HARMONYOS) */}
@@ -414,6 +430,7 @@ export default function Receipts() {
           onHideProduct={hideProductFromMatrix}
           onRestoreProduct={restoreProductToMatrix}
           onOpenUpload={() => setActiveTab('upload')}
+          selectedAisleFocus={selectedAisleFocus}
         />
       )}
 

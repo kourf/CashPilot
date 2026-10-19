@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Store, 
   Search, 
@@ -49,6 +49,7 @@ interface ComparisonMatrixViewProps {
   onHideProduct: (normalizedName: string) => Promise<void>;
   onRestoreProduct: (normalizedName: string) => Promise<void>;
   onOpenUpload: () => void;
+  selectedAisleFocus?: string | null;
 }
 
 const AISLE_ICONS: Record<SupermarketAisle, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -69,11 +70,22 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
   hiddenProductNames,
   onHideProduct,
   onRestoreProduct,
-  onOpenUpload
+  onOpenUpload,
+  selectedAisleFocus
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedAisleFilter, setSelectedAisleFilter] = useState<string>('ALL');
+  const [selectedAisleFilter, setSelectedAisleFilter] = useState<string>(() => selectedAisleFocus || 'ALL');
   const [onlyComparable, setOnlyComparable] = useState(false);
+
+  useEffect(() => {
+    if (selectedAisleFocus) {
+      setSelectedAisleFilter(selectedAisleFocus);
+      setOpenAccordions(prev => ({
+        ...prev,
+        [selectedAisleFocus]: true
+      }));
+    }
+  }, [selectedAisleFocus]);
   
   // Mode d'affichage : 'aisles' (vue matricielle par rayons) ou 'ticket' (vue ticket de caisse immersive)
   const [viewMode, setViewMode] = useState<'aisles' | 'ticket'>('aisles');
