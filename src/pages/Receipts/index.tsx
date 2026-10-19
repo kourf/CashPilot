@@ -384,6 +384,7 @@ export default function Receipts() {
       {activeTab === 'matrix' && (
         <ComparisonMatrixView
           matrix={matrix}
+          receipts={receipts}
           hiddenProductNames={hiddenProductNames}
           onHideProduct={hideProductFromMatrix}
           onRestoreProduct={restoreProductToMatrix}
