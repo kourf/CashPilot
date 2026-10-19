@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import AppRouter from './Router';
 import { getActiveAccountId, migrateLegacyDeviceDataIfNeeded } from './lib/userUtils';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   useEffect(() => {
@@ -15,7 +16,9 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
-      <AppRouter />
+      <ErrorBoundary>
+        <AppRouter />
+      </ErrorBoundary>
     </div>
   );
 }

@@ -65,8 +65,14 @@ export default {
         'glow-cyan': '0 0 25px -5px rgba(6, 182, 212, 0.25)',
         'glow-emerald': '0 0 25px -5px rgba(16, 185, 129, 0.25)',
       },
+      keyframes: {
+        shimmer: {
+          '100%': { transform: 'translateX(100%)' },
+        }
+      },
       animation: {
         'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'shimmer': 'shimmer 1.5s infinite',
       }
     },
   },

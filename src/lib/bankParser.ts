@@ -22,6 +22,10 @@ export interface BankTransaction {
 }
 
 export const CATEGORIES = [
+  'Charges fixes',
+  'Charges variables courantes',
+  'Dépenses de confort',
+  'Revenus',
   'Salaire & Revenus',
   'Aides & Allocations',
   'Virement Reçu (Proches)',
@@ -73,11 +77,78 @@ export function detectBankName(csvContent: string): string {
 }
 
 /**
+ * Nettoie et assainit le libellé brut d'une ligne de relevé bancaire (élimine les points superflus, double espaces et codes parasites)
+ */
+export function sanitizeRawBankLabel(raw: string): string {
+  if (!raw) return '';
+  let s = String(raw).trim();
+  // Normalisation des espaces insécables et caractères d'espacement bizarres
+  s = s.replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, ' ');
+  // Supprime les suites de points (ex: "...", "..", "....")
+  s = s.replace(/\.{2,}/g, ' ');
+  // Élimine les mentions de fin de ligne parasites
+  s = s.replace(/\s+COMMERCE ELECTRONIQUE.*$/i, '');
+  s = s.replace(/\s+NOTRE REF:\s*.*$/i, '');
+  s = s.replace(/\s+REF:\s*.*$/i, '');
+  s = s.replace(/\s+MANDAT\s*.*$/i, '');
+  s = s.replace(/\s+ICS:\s*.*$/i, '');
+  // Supprime la ponctuation traînante ou isolée en début/fin
+  s = s.replace(/^[\s"'\-.,;:/]+|[\s"'\-.,;:/]+$/g, '');
+  s = s.replace(/\s{2,}/g, ' ');
+  return s.trim();
+}
+
+/**
  * Nettoie le libellé bancaire brut pour extraire le nom propre du commerçant / tiers
  */
 export function cleanMerchantDescription(raw: string): string {
   if (!raw) return 'Opération Bancaire';
-  let clean = raw.trim();
+  let clean = sanitizeRawBankLabel(raw);
+
+  // Détections prioritaires de commerçants & organismes courants
+  const upper = clean.toUpperCase();
+  if (upper.includes('AMERICAN EXPRESS') || upper.includes('AMEX')) return 'American Express';
+  if (upper.includes('FRANCE TRAVAIL') || upper.includes('POLE EMPLOI')) return 'France Travail';
+  if (upper.includes('CAF LOIRE') || upper.includes('CAF DE') || upper.startsWith('CAF ')) return 'CAF Loire-Atlantique';
+  if (upper.includes('SWYPE')) return 'Swype';
+  if (upper.includes('TOTALENERGIES') || upper.includes('TOTAL DIRECT ENERGIE')) return 'TotalEnergies';
+  if (upper.includes('ORANGE FIBRE')) return 'Orange Fibre';
+  if (upper.includes('ORANGE MOBILE') || (upper.includes('ORANGE') && upper.includes('PRLV'))) return 'Orange';
+  if (upper.includes('LA POSTE MOBILE')) return 'La Poste Mobile';
+  if (upper.includes('SOBRIO')) return 'Cotisation Sobrio (Banque)';
+  if (upper.includes('CRYPTO DYNAMIQUE') || upper.includes('OPTION CRYPTO')) return 'Option Crypto (Frais)';
+  if (upper.includes('COMMISSION D\'INTERVENTION') || upper.includes('COMMISSION INTERVENTION')) return 'Commission d\'intervention (Frais)';
+  if (upper.includes('SATD')) return 'Frais sur SATD (Impôts)';
+  if (upper.includes('SOGESSUR')) return 'Sogessur (Assurance)';
+  if (upper.includes('GROUPAMA') && (upper.includes('SOIN') || upper.includes('SANTE'))) return 'Groupama (Santé)';
+  if (upper.includes('GROUPAMA')) return 'Groupama (Assurance)';
+  if (upper.includes('SOGECAP')) return 'Sogecap (Épargne)';
+  if (upper.includes('ONEY')) return 'Oney (3x/4x)';
+  if (upper.includes('KLARNA')) return 'Klarna';
+
+  // Détection des virements vers proches / personnes physiques : VIR ... POUR: [Nom] ou DE: [Nom]
+  const pourMatch = clean.match(/(?:POUR|DE|FAVEUR DE)\s*:\s*([^/,\-]+)/i);
+  if (pourMatch && pourMatch[1]) {
+    let name = pourMatch[1].trim();
+    name = name.replace(/\b(LOGITEL|WERO|REVOLUT|CEPA|SG|FORTUNEO)\b/gi, '').trim();
+    if (name.length >= 2) {
+      // Format propre
+      return name
+        .toLowerCase()
+        .split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    }
+  }
+
+  // Détection des remboursements commerçants (Xiaomi, Amazon, etc.)
+  const rembtMatch = clean.match(/(?:REMBT|REMBOURSEMENT)\s+(?:CB\s+)?([A-Za-z0-9\s]+?)(?:\s+\+?\d+|$)/i);
+  if (rembtMatch && rembtMatch[1]) {
+    const march = rembtMatch[1].replace(/PAYMENTS|FRANCE|PARIS/gi, '').trim();
+    if (march.length >= 3) {
+      return `${march.charAt(0).toUpperCase() + march.slice(1).toLowerCase()} (Remboursement)`;
+    }
+  }
 
   // Supprime les préfixes techniques bancaires courants français
   clean = clean.replace(/^PAIEMENT\s+PAR\s+CARTE\s+DU\s+\d{1,2}\/\d{1,2}(?:\/\d{2,4})?(?:\s*(?:A\s*)?\d{1,2}[:hH]\d{2})?\s*/i, '');
@@ -118,9 +189,10 @@ export function cleanMerchantDescription(raw: string): string {
   clean = clean.replace(/\s+RUM:\s*.*$/i, '');
   clean = clean.replace(/\s+\d{2}\s+\d{2}\s+BQ\s+\w+\s+CPT\s+\w+.*$/i, '');
   clean = clean.replace(/\s+\d{5}\s+[A-Z\s-]+$/i, '');
+  clean = clean.replace(/[\s.,;:/\-_]+$/g, '');
 
   const result = clean.replace(/\s+/g, ' ').trim();
-  if (!result) return raw.trim() || 'Opération Bancaire';
+  if (!result) return sanitizeRawBankLabel(raw) || 'Opération Bancaire';
 
   // Si tout en majuscules et de longueur raisonnable, formater en Title Case
   if (result === result.toUpperCase() && result.length > 2 && result.length < 40) {
@@ -152,6 +224,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
   // 0. Moteur de règles personnalisées dynamiques (Lecture depuis localStorage)
   try {
     if (typeof window !== 'undefined') {
+      // 0a. Règles explicites personnalisées
       const savedRules = localStorage.getItem('cashpilot_custom_rules');
       if (savedRules) {
         const rules = JSON.parse(savedRules);
@@ -163,6 +236,26 @@ export function classifyTransaction(rawDescription: string, amount: number): {
                 flowType: rule.flowType,
                 category: rule.category,
                 isSubscription: rule.flowType === 'FIXED_EXPENSE' || Boolean(rule.isSubscription)
+              };
+            }
+          }
+        }
+      }
+
+      // 0b. Dictionnaire direct de remappage mémorisé
+      const remapRules = localStorage.getItem('cashpilot_category_remap_rules');
+      if (remapRules) {
+        const dict = JSON.parse(remapRules);
+        if (dict && typeof dict === 'object') {
+          for (const [key, targetCat] of Object.entries(dict)) {
+            if (key && (norm.includes(key.toLowerCase()) || cleanDesc.toLowerCase().includes(key.toLowerCase()))) {
+              const isIncome = targetCat === 'Salaire & Revenus' || targetCat === 'Aides & Allocations' || (targetCat as string).includes('Reçu');
+              const isFixed = (targetCat as string).includes('Abonnement') || (targetCat as string).includes('Logement') || (targetCat as string).includes('Assurance') || (targetCat as string).includes('Frais');
+              return {
+                cleanDesc,
+                flowType: isIncome ? 'INCOME' : (isFixed ? 'FIXED_EXPENSE' : 'VARIABLE_EXPENSE'),
+                category: targetCat as string,
+                isSubscription: (targetCat as string).includes('Abonnement')
               };
             }
           }
@@ -209,9 +302,25 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     }
   }
 
-  // 2. Virements Famille & Proches (Règles spécifiques utilisateur)
-  const isFamily = ['naistaba', 'mahawa', 'mohame', 'karamokho', 'nayssa', 'el hani', 'beauf'].some(k => norm.includes(k)) ||
-    (norm.includes('drame') && !norm.includes('kouroufia') && !norm.includes('assurance vie'));
+  // 2. Virements Famille & Proches (Wero, Paylib, Lyf, Vir inst, Prénoms & Noms de proches)
+  const isFamily = 
+    norm.includes('famille') || 
+    norm.includes('solidarite') || 
+    norm.includes('argent de poche') ||
+    norm.includes('wero') ||
+    norm.includes('paylib') ||
+    norm.includes('lydia') ||
+    norm.includes('lyf') ||
+    norm.includes('vir inst') ||
+    norm.includes('virement instantane') ||
+    norm.includes('virement instantané') ||
+    norm.includes('nayssa') ||
+    norm.includes('naustaba') ||
+    norm.includes('naistaba') ||
+    norm.includes('malaguti') ||
+    norm.includes('el hani') ||
+    ((norm.includes('drame') || norm.includes('dramé')) && !norm.includes('kouroufia'));
+
   if (isFamily) {
     if (amount > 0) {
       return {
@@ -222,7 +331,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
       };
     } else {
       return {
-        cleanDesc: cleanDesc || "Envoi d'argent (Proches)",
+        cleanDesc: cleanDesc || "Virements Famille & Proches",
         flowType: 'VARIABLE_EXPENSE',
         category: 'Virements Famille & Proches',
         isSubscription: false
@@ -231,8 +340,8 @@ export function classifyTransaction(rawDescription: string, amount: number): {
   }
 
   // 3. Mouvements internes, virements compte à compte & épargne (Neutralisés du reste à vivre)
-  // Attention : Ne neutraliser QUE les vrais mouvements d'épargne personnels et comptes propres de l'utilisateur
-  const isInternalAccount = (norm.includes('drame kouroufia') || norm.includes('kouroufia fortuneo') || norm.includes('virement avec fortuneo')) &&
+  // Attention : Ne neutraliser QUE les vrais mouvements d'épargne personnels et comptes propres
+  const isInternalAccount = (norm.includes('virement interne') || norm.includes('compte a compte') || norm.includes('virement de compte')) &&
     !norm.includes('de: generation') && !norm.includes('cpam');
   const isSavingsAccount = norm.includes('livret a') ||
     norm.includes('livret de developpement') ||
@@ -263,12 +372,12 @@ export function classifyTransaction(rawDescription: string, amount: number): {
         isSubscription: false,
       };
     }
-    // Rentrées d'argent depuis Fortuneo sur SG : Considéré comme une entrée d'argent sur SG
-    if (isInternalAccount && (norm.includes('de: drame kouroufia') || norm.includes('fortuneo'))) {
+    // Rentrées d'argent depuis un compte interne
+    if (isInternalAccount) {
       return {
-        cleanDesc: 'Virement reçu de Fortuneo',
-        flowType: 'INCOME',
-        category: 'Virement reçu de Fortuneo',
+        cleanDesc: cleanDesc || 'Virement Interne Reçu',
+        flowType: 'SAVINGS_TRANSFER',
+        category: 'Virements Internes',
         isSubscription: false,
       };
     }
@@ -289,12 +398,12 @@ export function classifyTransaction(rawDescription: string, amount: number): {
         isSubscription: false,
       };
     }
-    // Sorties d'argent vers Fortuneo : Considéré comme une sortie d'argent du compte SG
-    if (isInternalAccount || norm.includes('pour: kouroufia fortuneo') || norm.includes('fortuneo')) {
+    // Sorties d'argent vers un autre compte propre
+    if (isInternalAccount) {
       return {
-        cleanDesc: 'Virement vers Fortuneo',
-        flowType: 'VARIABLE_EXPENSE',
-        category: 'Virement vers Fortuneo',
+        cleanDesc: cleanDesc || 'Virement Interne Émis',
+        flowType: 'SAVINGS_TRANSFER',
+        category: 'Virements Internes',
         isSubscription: false,
       };
     }
@@ -941,6 +1050,158 @@ export function sanitizeHeader(header: string): string {
     .replace(/[^a-z0-9]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+export interface CleanBankStatementRow {
+  index: number;
+  date: string;     // YYYY-MM-DD
+  rawLabel: string; // Libellé brut d'origine uniquement
+  amount: number;   // Montant numérique signé
+}
+
+/**
+ * Filtre et supprime TOUTES les colonnes inutiles de la banque.
+ * Ne conserve strictement que 3 informations : Date, Libellé brut, et Montant.
+ */
+export function extractCleanBankStatementRows(csvContent: string): CleanBankStatementRow[] {
+  const parsed = Papa.parse(csvContent.trim(), {
+    skipEmptyLines: true
+  });
+
+  const rows = (parsed.data as string[][]) || [];
+  if (rows.length < 2) return [];
+
+  // Détection de la ligne d'en-tête
+  let headerLineIndex = 0;
+  let maxScore = -1;
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const rowJoined = rows[i].map(sanitizeHeader).join(' ');
+    let score = 0;
+    if (rowJoined.includes('date')) score += 3;
+    if (rowJoined.includes('libelle') || rowJoined.includes('desc') || rowJoined.includes('operation')) score += 3;
+    if (rowJoined.includes('montant') || rowJoined.includes('debit') || rowJoined.includes('credit')) score += 3;
+    if (score > maxScore) {
+      maxScore = score;
+      headerLineIndex = i;
+    }
+  }
+
+  const headers = (rows[headerLineIndex] || []).map(sanitizeHeader);
+
+  const dateColIndices = new Set<number>();
+  headers.forEach((h, idx) => {
+    if (h.includes('date')) dateColIndices.add(idx);
+  });
+
+  let dateIdx = headers.findIndex(h => 
+    h.includes('date operation') || 
+    h.includes('date transaction') || 
+    h.includes('date compta') || 
+    h === 'date'
+  );
+  if (dateIdx === -1) dateIdx = headers.findIndex(h => h.includes('date'));
+
+  let rawLabelIdx = headers.findIndex(h => 
+    (h.includes('libelle') && h.includes('complet')) ||
+    (h.includes('libelle') && h.includes('detail')) ||
+    (h.includes('libelle') && h.includes('complementaire')) ||
+    (h.includes('libelle') && h.includes('enrichi')) ||
+    (h.includes('libelle') && h.includes('etendu'))
+  );
+  if (rawLabelIdx === -1) {
+    rawLabelIdx = headers.findIndex((h, idx) => {
+      if (dateColIndices.has(idx)) return false;
+      if (h.includes('categorie') || h.includes('sous cat') || h.includes('rubrique') || h.includes('classification')) return false;
+      return h.includes('libelle operation') || 
+             h.includes('libelle') || 
+             h.includes('description') || 
+             h.includes('motif') || 
+             h.includes('detail') ||
+             h.includes('texte');
+    });
+  }
+
+  const amountIdx = headers.findIndex(h => h.includes('montant') || (h.includes('valeur') && !h.includes('date')));
+  const debitIdx = headers.findIndex(h => h.includes('debit'));
+  const creditIdx = headers.findIndex(h => h.includes('credit'));
+
+  const cleanRows: CleanBankStatementRow[] = [];
+  const seenRowKeys = new Set<string>();
+  let itemIndex = 0;
+
+  for (let i = headerLineIndex + 1; i < rows.length; i++) {
+    const cols = rows[i];
+    if (!cols || cols.length < 2) continue;
+
+    // 1. Date (YYYY-MM-DD)
+    let rawDate = dateIdx >= 0 && cols[dateIdx] ? cols[dateIdx] : cols[0];
+    let formattedDate = '';
+    if (rawDate) {
+      const dmy = String(rawDate).match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+      if (dmy) {
+        formattedDate = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+      } else if (/^\d{4}-\d{2}-\d{2}/.test(String(rawDate))) {
+        formattedDate = String(rawDate).slice(0, 10);
+      }
+    }
+    if (!formattedDate) continue;
+
+    // 2. Libellé brut d'origine
+    let rawLabel = '';
+    if (rawLabelIdx >= 0 && cols[rawLabelIdx] && String(cols[rawLabelIdx]).trim()) {
+      rawLabel = String(cols[rawLabelIdx]).trim();
+    } else {
+      for (let c = 0; c < cols.length; c++) {
+        if (dateColIndices.has(c)) continue;
+        if (c === amountIdx || c === debitIdx || c === creditIdx) continue;
+        const val = String(cols[c] || '').trim();
+        if (
+          val.length > 2 && 
+          isNaN(Number(val.replace(',', '.'))) &&
+          !/^\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?$/.test(val) &&
+          !/^\d{4}-\d{2}-\d{2}$/.test(val)
+        ) {
+          rawLabel = val;
+          break;
+        }
+      }
+    }
+    if (!rawLabel) continue;
+    const sanitizedLabel = sanitizeRawBankLabel(rawLabel);
+    if (!sanitizedLabel) continue;
+
+    // 3. Montant
+    let amount = 0;
+    if (debitIdx >= 0 || creditIdx >= 0) {
+      const debitRaw = debitIdx >= 0 ? String(cols[debitIdx] || '') : '';
+      const creditRaw = creditIdx >= 0 ? String(cols[creditIdx] || '') : '';
+      const debit = parseFloat(debitRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0;
+      const credit = parseFloat(creditRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0;
+      amount = credit !== 0 ? Math.abs(credit) : -Math.abs(debit);
+    } else if (amountIdx >= 0 && cols[amountIdx]) {
+      const cleanAmt = String(cols[amountIdx]).replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+      amount = parseFloat(cleanAmt) || 0;
+    }
+
+    if (isNaN(amount) || amount === 0) continue;
+
+    // Suppression stricte des doublons au sein du fichier CSV (même date, montant identique et même libellé normalisé)
+    const rowKey = `${formattedDate}_${amount.toFixed(2)}_${sanitizedLabel.toLowerCase()}`;
+    if (seenRowKeys.has(rowKey)) {
+      continue;
+    }
+    seenRowKeys.add(rowKey);
+
+    // Conserve UNIQUEMENT Date, Libellé brut assaini, Montant
+    cleanRows.push({
+      index: itemIndex++,
+      date: formattedDate,
+      rawLabel: sanitizedLabel,
+      amount
+    });
+  }
+
+  return cleanRows;
 }
 
 /**

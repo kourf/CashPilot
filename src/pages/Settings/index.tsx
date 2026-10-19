@@ -15,7 +15,7 @@ import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { useTransactions } from '../../context/TransactionsContext';
 import { db } from '../../lib/firebase';
-import { doc, writeBatch, collection, getDocs } from 'firebase/firestore';
+import { writeBatch, collection, getDocs } from 'firebase/firestore';
 import { getActiveAccountId } from '../../lib/userUtils';
 
 interface Transaction {
@@ -167,17 +167,12 @@ export const Settings: React.FC = () => {
   };
 
   const executeDeletePeriod = async () => {
-    let toDeleteIds: string[] = [];
     let updated: Transaction[] = [];
 
     if (selectedPeriodToDelete === 'ALL') {
-      toDeleteIds = transactions.map(t => t.id);
       updated = [];
       localStorage.removeItem('cashpilot_monthly_balances');
     } else {
-      toDeleteIds = transactions
-        .filter(t => t.date && t.date.startsWith(selectedPeriodToDelete))
-        .map(t => t.id);
       updated = transactions.filter(t => !t.date || !t.date.startsWith(selectedPeriodToDelete));
 
       try {

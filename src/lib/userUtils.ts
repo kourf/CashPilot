@@ -24,28 +24,23 @@ export function getActiveAccountId(): string {
     console.warn("Erreur lecture paramètre URL sync:", e);
   }
 
-  // 2. Vérifier si un identifiant personnalisé est configuré dans localStorage
-  const stored = localStorage.getItem('cashpilot_account_id');
-  if (stored && stored.trim() && stored !== 'default-user' && !stored.startsWith('device_')) {
-    return stored.trim();
-  }
-
-  // 3. Par défaut : Espace unifié partagé pour tous les appareils
+  // 2. Par défaut : Espace unifié partagé garanti pour tous les appareils (PC & Téléphone)
   localStorage.setItem('cashpilot_account_id', SHARED_ACCOUNT_ID);
+  localStorage.setItem('deviceId', SHARED_ACCOUNT_ID);
   return SHARED_ACCOUNT_ID;
 }
 
 /**
  * Migre automatiquement les transactions créées sous un ancien identifiant local (device_*)
- * vers l'espace partagé unifié, sans créer de doublons.
+ * ou ancien compte isolé vers l'espace partagé unifié, sans créer de doublons.
  */
 export async function migrateLegacyDeviceDataIfNeeded(): Promise<number> {
-  const targetAccountId = getActiveAccountId();
-  const legacyId = localStorage.getItem('deviceId');
+  const targetAccountId = SHARED_ACCOUNT_ID;
+  const legacyId = localStorage.getItem('legacy_device_id') || localStorage.getItem('deviceId');
 
-  if (!legacyId || legacyId === targetAccountId || !legacyId.startsWith('device_')) {
-    // Si déjà sur le compte partagé, on s'assure juste que deviceId est aligné
+  if (!legacyId || legacyId === targetAccountId) {
     localStorage.setItem('deviceId', targetAccountId);
+    localStorage.setItem('cashpilot_account_id', targetAccountId);
     return 0;
   }
 
@@ -56,6 +51,7 @@ export async function migrateLegacyDeviceDataIfNeeded(): Promise<number> {
     if (legacySnap.empty) {
       console.log(`[Sync] Aucune transaction isolée sur ${legacyId}. Alignement sur ${targetAccountId}.`);
       localStorage.setItem('deviceId', targetAccountId);
+      localStorage.setItem('cashpilot_account_id', targetAccountId);
       return 0;
     }
 
@@ -98,14 +94,49 @@ export async function migrateLegacyDeviceDataIfNeeded(): Promise<number> {
       console.log(`[Sync] ${migratedCount} transactions migrées avec succès vers l'espace partagé !`);
     }
 
+    // Migration des tickets de caisse éventuels créés sous l'ancien deviceId
+    try {
+      const legacyReceiptsSnap = await getDocs(collection(db, `users/${legacyId}/receipts`));
+      if (!legacyReceiptsSnap.empty) {
+        const targetReceiptsSnap = await getDocs(collection(db, `users/${targetAccountId}/receipts`));
+        const targetReceiptIds = new Set(targetReceiptsSnap.docs.map(d => d.id));
+        const receiptBatch = writeBatch(db);
+        let receiptMigratedCount = 0;
+
+        legacyReceiptsSnap.docs.forEach(docSnap => {
+          if (!targetReceiptIds.has(docSnap.id)) {
+            const data = docSnap.data();
+            const targetDocRef = doc(db, `users/${targetAccountId}/receipts/${docSnap.id}`);
+            receiptBatch.set(targetDocRef, {
+              ...data,
+              userId: targetAccountId,
+              migratedFrom: legacyId,
+              migratedAt: new Date().toISOString()
+            });
+            receiptMigratedCount++;
+          }
+        });
+
+        if (receiptMigratedCount > 0) {
+          await receiptBatch.commit();
+          console.log(`[Sync] ${receiptMigratedCount} tickets de caisse migrés vers l'espace partagé !`);
+        }
+      }
+    } catch (receiptErr) {
+      console.warn("[Sync] Erreur migration tickets de caisse legacy:", receiptErr);
+    }
+
     // Aligner le deviceId et forcer le rafraîchissement du cache
     localStorage.setItem('deviceId', targetAccountId);
+    localStorage.setItem('cashpilot_account_id', targetAccountId);
     localStorage.removeItem('cashpilot_tx_cache');
+    localStorage.removeItem('cashpilot_receipts_v2_cache');
 
     return migratedCount;
   } catch (err) {
     console.error("[Sync] Erreur lors de la migration des données de l'appareil :", err);
     localStorage.setItem('deviceId', targetAccountId);
+    localStorage.setItem('cashpilot_account_id', targetAccountId);
     return 0;
   }
 }

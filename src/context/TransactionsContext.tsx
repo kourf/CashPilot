@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, doc, setDoc } from 'firebase/firestore';
 import { getAvailableMonths, type Transaction } from '../lib/kpiUtils';
 import { getActiveAccountId } from '../lib/userUtils';
-
 
 interface TransactionsContextType {
   transactions: Transaction[];
@@ -13,9 +12,16 @@ interface TransactionsContextType {
   setSelectedMonth: (month: string) => void;
   availableMonths: string[];
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
+  currency: 'EUR' | 'CHF';
+  setCurrency: (newCurrency: 'EUR' | 'CHF') => Promise<void>;
+  customBalances: Record<string, { initial: number; closing: number }>;
+  setCustomBalances: (balances: Record<string, { initial: number; closing: number }>) => Promise<void>;
+  isRealtimeSynced: boolean;
 }
 
 const CACHE_KEY = 'cashpilot_tx_cache';
+const CURRENCY_KEY = 'cashpilot_statement_currency';
+const BALANCES_KEY = 'cashpilot_monthly_balances';
 
 const TransactionsContext = createContext<TransactionsContextType | undefined>(undefined);
 
@@ -42,6 +48,32 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const hasInitializedMonthRef = useRef(false);
 
+  // Synchronisation temps réel de la devise (€ par défaut absolu, purge du CHF obsolète sur mobile)
+  const [currency, setCurrencyState] = useState<'EUR' | 'CHF'>(() => {
+    try {
+      const saved = localStorage.getItem(CURRENCY_KEY);
+      if (saved === 'CHF') {
+        localStorage.setItem(CURRENCY_KEY, 'EUR');
+        return 'EUR';
+      }
+      return (saved as 'EUR' | 'CHF') || 'EUR';
+    } catch {
+      return 'EUR';
+    }
+  });
+
+  // Soldes mensuels personnalisés (synchronisés en direct)
+  const [customBalances, setCustomBalancesState] = useState<Record<string, { initial: number; closing: number }>>(() => {
+    try {
+      const saved = localStorage.getItem(BALANCES_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [isRealtimeSynced, setIsRealtimeSynced] = useState<boolean>(false);
+
   // Mois disponibles calculés à partir des transactions en mémoire
   const availableMonths = useMemo(() => getAvailableMonths(transactions), [transactions]);
 
@@ -56,7 +88,91 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [availableMonths]);
 
-  // 2. Écouteur Firestore persistant unique (au niveau racine de l'application)
+  // 2. Écouteur Firestore persistant pour la configuration globale (Devise, Soldes, Sync PC & Mobile en direct)
+  useEffect(() => {
+    let unsubConfig: (() => void) | undefined;
+    try {
+      const accountId = getActiveAccountId();
+      const configDocRef = doc(db, `users/${accountId}/settings/app_config`);
+
+      unsubConfig = onSnapshot(configDocRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const remoteCurr = data.currency === 'CHF' ? 'CHF' : 'EUR';
+          setCurrencyState(remoteCurr);
+          try {
+            localStorage.setItem(CURRENCY_KEY, remoteCurr);
+          } catch (e) {}
+
+          if (data.monthlyBalances && typeof data.monthlyBalances === 'object') {
+            setCustomBalancesState(data.monthlyBalances);
+            try {
+              localStorage.setItem(BALANCES_KEY, JSON.stringify(data.monthlyBalances));
+            } catch (e) {}
+          }
+          setIsRealtimeSynced(true);
+        } else {
+          // Si le document distant n'existe pas encore, on l'initialise avec l'Euro (€)
+          setDoc(configDocRef, {
+            currency: 'EUR',
+            monthlyBalances: {},
+            updatedAt: new Date().toISOString()
+          }, { merge: true }).catch(err => console.warn("Erreur initialisation config Firestore:", err));
+          setCurrencyState('EUR');
+          try {
+            localStorage.setItem(CURRENCY_KEY, 'EUR');
+          } catch (e) {}
+          setIsRealtimeSynced(true);
+        }
+      }, (err) => {
+        console.warn("Écouteur settings Firestore hors-ligne:", err);
+      });
+    } catch (e) {
+      console.warn("Erreur initialisation écouteur config:", e);
+    }
+
+    return () => {
+      if (unsubConfig) unsubConfig();
+    };
+  }, []);
+
+  const setCurrency = async (newCurr: 'EUR' | 'CHF') => {
+    setCurrencyState(newCurr);
+    try {
+      localStorage.setItem(CURRENCY_KEY, newCurr);
+    } catch (e) {}
+
+    try {
+      const accountId = getActiveAccountId();
+      const configDocRef = doc(db, `users/${accountId}/settings/app_config`);
+      await setDoc(configDocRef, {
+        currency: newCurr,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Erreur synchronisation devise Firestore:", err);
+    }
+  };
+
+  const setCustomBalances = async (balances: Record<string, { initial: number; closing: number }>) => {
+    setCustomBalancesState(balances);
+    try {
+      localStorage.setItem(BALANCES_KEY, JSON.stringify(balances));
+    } catch (e) {}
+
+    try {
+      const accountId = getActiveAccountId();
+      const configDocRef = doc(db, `users/${accountId}/settings/app_config`);
+      await setDoc(configDocRef, {
+        monthlyBalances: balances,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Erreur synchronisation soldes Firestore:", err);
+    }
+  };
+
+  // 3. Écouteur Firestore persistant unique pour les transactions (au niveau racine de l'application)
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     
@@ -71,12 +187,10 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     try {
       const accountId = getActiveAccountId();
 
-
       const q = query(
         collection(db, `users/${accountId}/transactions`),
         orderBy('date', 'desc')
       );
-
 
       unsubscribe = onSnapshot(q, (snapshot) => {
         const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as unknown as Transaction[];
@@ -127,7 +241,12 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         selectedMonth,
         setSelectedMonth,
         availableMonths,
-        setTransactions
+        setTransactions,
+        currency,
+        setCurrency,
+        customBalances,
+        setCustomBalances,
+        isRealtimeSynced
       }}
     >
       {children}

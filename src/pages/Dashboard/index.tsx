@@ -19,13 +19,42 @@ import {
   CreditCard,
   Layers,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  ArrowLeftRight,
+  Users,
+  Lock,
+  ChevronRight,
+  Eye,
+  Tag,
+  HandCoins
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { calculateKpis, filterByMonth, formatMonthLabel, buildCategoryBreakdown } from '../../lib/kpiUtils';
 import { formatDateFR, formatCurrency } from '../../lib/bankUtils';
 import { useTransactions } from '../../context/TransactionsContext';
+import { 
+  calculateCategoryStats, 
+  calculateInternalTransfers, 
+  calculatePeerTransfers, 
+  type CategoryStatsItem 
+} from '../../lib/categorizationRules';
+import { CategoryAuditDrawer } from '../../components/CategoryAuditDrawer';
+import { db } from '../../lib/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import { CATEGORIES } from '../../lib/bankParser';
+import { getActiveAccountId } from '../../lib/userUtils';
+const DEMO_TRANSACTIONS = [
+  { id: 'demo-1', cleanLabel: 'Carrefour Market', category: 'Alimentation & Courses', amount: -85.20, date: '2026-06-15', nature: 'variable' },
+  { id: 'demo-2', cleanLabel: 'Virement Salaire Mensuel', category: 'Revenus', amount: 3200.00, date: '2026-06-01', nature: 'autre' },
+  { id: 'demo-3', cleanLabel: 'Netflix & Spotify Family', category: 'Abonnements & Médias', amount: -27.98, date: '2026-06-12', nature: 'fixe', isSubscription: true },
+  { id: 'demo-4', cleanLabel: 'Virement Épargne Livret A', category: 'Épargne & Investissement', amount: -500.00, date: '2026-06-11', nature: 'autre', isInternalTransfer: true },
+  { id: 'demo-5', cleanLabel: 'Total Énergies EDF', category: 'Logement & Charges', amount: -94.50, date: '2026-06-05', nature: 'fixe' },
+  { id: 'demo-6', cleanLabel: 'Restaurant Le Comptoir', category: 'Restaurants & Sorties', amount: -64.00, date: '2026-06-10', nature: 'variable' },
+  { id: 'demo-7', cleanLabel: 'Prélèvement Amex (CB Diff)', category: 'Remboursement Carte (Amex)', amount: -350.00, date: '2026-06-28', nature: 'autre', isInternalTransfer: true },
+  { id: 'demo-8', cleanLabel: 'Virement Wero Reçu Thomas', category: 'Virement Reçu (Proches)', amount: 45.00, date: '2026-06-14', nature: 'autre', isFamilyTransfer: true },
+  { id: 'demo-9', cleanLabel: 'Virement Paylib Envoi Sarah', category: 'Virements Famille & Proches', amount: -30.00, date: '2026-06-13', nature: 'autre', isFamilyTransfer: true },
+];
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -44,12 +73,67 @@ export default function Dashboard() {
   const error = isDemo ? null : ctxError;
 
   const filteredTransactions = useMemo(() => {
-    return isDemo ? [] : filterByMonth(transactions, selectedMonth);
+    return isDemo ? (DEMO_TRANSACTIONS as any) : filterByMonth(transactions, selectedMonth);
   }, [transactions, selectedMonth, isDemo]);
-
 
   const kpis = useMemo(() => calculateKpis(filteredTransactions), [filteredTransactions]);
   const pieData = useMemo(() => buildCategoryBreakdown(filteredTransactions).slice(0, 5), [filteredTransactions]);
+
+  // Statistiques avancées et segmentation par nature
+  const categoryStats = useMemo(() => {
+    return calculateCategoryStats(filteredTransactions);
+  }, [filteredTransactions]);
+
+  // Mouvements Inter-Comptes (flux propres neutralisés)
+  const interAccountsSummary = useMemo(() => {
+    return calculateInternalTransfers(filteredTransactions);
+  }, [filteredTransactions]);
+
+  // Échanges Famille & Amis
+  const peerTransfersSummary = useMemo(() => {
+    return calculatePeerTransfers(filteredTransactions);
+  }, [filteredTransactions]);
+
+  // État du Drawer d'audit détaillé
+  const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
+  const [auditType, setAuditType] = useState<'category' | 'inter-accounts' | 'peer-transfers'>('category');
+  const [selectedCategoryData, setSelectedCategoryData] = useState<CategoryStatsItem | null>(null);
+
+  const handleOpenCategoryAuditByName = (catName: string) => {
+    const found = categoryStats.categories.find(c => c.category === catName);
+    if (found) {
+      setSelectedCategoryData(found);
+      setAuditType('category');
+      setIsAuditDrawerOpen(true);
+    }
+  };
+
+  const handleOpenCategoryAuditItem = (catItem: CategoryStatsItem) => {
+    setSelectedCategoryData(catItem);
+    setAuditType('category');
+    setIsAuditDrawerOpen(true);
+  };
+
+  const handleOpenInterAccountsAudit = () => {
+    setAuditType('inter-accounts');
+    setIsAuditDrawerOpen(true);
+  };
+
+  const handleOpenPeerTransfersAudit = () => {
+    setAuditType('peer-transfers');
+    setIsAuditDrawerOpen(true);
+  };
+
+  const handleTransactionCategoryChange = async (txId: string, newCategory: string) => {
+    try {
+      if (txId.startsWith('demo-')) return; // ignore for demo
+      const accountId = getActiveAccountId();
+      const docRef = doc(db, `users/${accountId}/transactions`, txId);
+      await updateDoc(docRef, { category: newCategory });
+    } catch (err) {
+      console.error('Failed to update category', err);
+    }
+  };
 
   // Luxury high-tech color accents (Cyan, Emerald, Amber, Violet, Rose)
   const COLORS = ['#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6', '#F43F5E'];
@@ -73,14 +157,6 @@ export default function Dashboard() {
     { name: 'Juin', depenses: 3800, revenus: 4300 },
   ];
 
-  const demoTx = [
-    { cleanLabel: 'Carrefour Market', category: 'Alimentation', amount: -85.20, date: '2026-06-15' },
-    { cleanLabel: 'Virement Salaire', category: 'Revenus', amount: 3200.00, date: '2026-06-01' },
-    { cleanLabel: 'Netflix & Spotify', category: 'Abonnements', amount: -27.98, date: '2026-06-12' },
-    { cleanLabel: 'Virement Épargne Sécurité', category: 'Épargne', amount: -500.00, date: '2026-06-11' },
-    { cleanLabel: 'Total Énergies', category: 'Logement', amount: -94.50, date: '2026-06-05' },
-  ];
-
   const isEmpty = !loading && !isDemo && filteredTransactions.length === 0 && !error;
   
   const displayRevenus = isDemo ? demoData.reduce((acc, d) => acc + d.revenus, 0) / demoData.length : kpis.revenus;
@@ -90,7 +166,7 @@ export default function Dashboard() {
   const displayAbonnements = isDemo ? '3' : kpis.abonnements > 0 ? (kpis.abonnements).toFixed(2) + ' €' : '0';
 
   const displayChartData = isDemo ? demoData : sortedChartData;
-  const displayTransactions = isDemo ? demoTx : filteredTransactions.slice(0, 5);
+  const displayTransactions = isDemo ? DEMO_TRANSACTIONS.slice(0, 5) : filteredTransactions.slice(0, 5);
 
   const Skeleton = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
     <div className={cn("animate-pulse bg-muted/60 dark:bg-white/[0.06] rounded-xl", className)} style={style} />
@@ -376,6 +452,237 @@ export default function Dashboard() {
 
       </div>
 
+      {/* DEDICATED MODULES: Mouvements Inter-Comptes & Échanges Famille/Amis */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Module Mouvements Inter-Comptes */}
+        <div 
+          onClick={handleOpenInterAccountsAudit}
+          className="glass-card rounded-2xl p-5 border border-primary/20 hover:border-primary/50 transition-all cursor-pointer relative overflow-hidden group shadow-sm hover:shadow-md"
+        >
+          <div className="absolute top-0 right-0 w-36 h-36 bg-primary/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform" />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-primary/15 text-primary flex items-center justify-center font-bold">
+                <ArrowLeftRight size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                  Mouvements Inter-Comptes
+                  <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">Flux Neutre</span>
+                </h3>
+                <p className="text-[11px] text-muted-foreground">Virements propres exclus des dépenses réelles</p>
+              </div>
+            </div>
+            <div className="flex items-center text-xs font-semibold text-primary group-hover:translate-x-1 transition-transform">
+              <span>Auditer</span>
+              <ChevronRight size={15} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/50 dark:border-white/[0.04]">
+            <div className="space-y-0.5">
+              <span className="text-[10px] text-muted-foreground">Entrées propres</span>
+              <p className="text-xs md:text-sm font-bold text-emerald-500 truncate">
+                +{formatCurrency(interAccountsSummary.inflows, { showSign: false })}
+              </p>
+            </div>
+            <div className="space-y-0.5">
+              <span className="text-[10px] text-muted-foreground">Sorties propres</span>
+              <p className="text-xs md:text-sm font-bold text-foreground truncate">
+                -{formatCurrency(interAccountsSummary.outflows, { showSign: false })}
+              </p>
+            </div>
+            <div className="space-y-0.5">
+              <span className="text-[10px] text-muted-foreground">Solde Net</span>
+              <p className={cn(
+                "text-xs md:text-sm font-extrabold truncate",
+                interAccountsSummary.net >= 0 ? "text-emerald-500" : "text-amber-500"
+              )}>
+                {interAccountsSummary.net >= 0 ? '+' : ''}{formatCurrency(interAccountsSummary.net, { showSign: false })}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground bg-secondary/30 rounded-lg px-2.5 py-1.5">
+            <span>{interAccountsSummary.transactions.length} opération{interAccountsSummary.transactions.length > 1 ? 's' : ''} neutralisée{interAccountsSummary.transactions.length > 1 ? 's' : ''}</span>
+            <span className="text-primary font-medium flex items-center gap-1">
+              <Lock size={11} /> 0 impact sur le Reste à Vivre
+            </span>
+          </div>
+        </div>
+
+        {/* Module Échanges Famille & Amis */}
+        <div 
+          onClick={handleOpenPeerTransfersAudit}
+          className="glass-card rounded-2xl p-5 border border-cyan-500/20 hover:border-cyan-500/50 transition-all cursor-pointer relative overflow-hidden group shadow-sm hover:shadow-md"
+        >
+          <div className="absolute top-0 right-0 w-36 h-36 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform" />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/15 text-cyan-500 flex items-center justify-center font-bold">
+                <Users size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                  Échanges Famille & Amis
+                  <span className="text-[10px] bg-cyan-500/10 text-cyan-500 px-1.5 py-0.5 rounded-full font-medium">Particuliers</span>
+                </h3>
+                <p className="text-[11px] text-muted-foreground">Wero, Paylib, proches & remboursements</p>
+              </div>
+            </div>
+            <div className="flex items-center text-xs font-semibold text-cyan-500 group-hover:translate-x-1 transition-transform">
+              <span>Auditer</span>
+              <ChevronRight size={15} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/50 dark:border-white/[0.04]">
+            <div className="space-y-0.5">
+              <span className="text-[10px] text-muted-foreground">Reçu de proches</span>
+              <p className="text-xs md:text-sm font-bold text-emerald-500 truncate">
+                +{formatCurrency(peerTransfersSummary.totalReceived, { showSign: false })}
+              </p>
+            </div>
+            <div className="space-y-0.5">
+              <span className="text-[10px] text-muted-foreground">Envoyé à proches</span>
+              <p className="text-xs md:text-sm font-bold text-rose-500 truncate">
+                -{formatCurrency(peerTransfersSummary.totalSent, { showSign: false })}
+              </p>
+            </div>
+            <div className="space-y-0.5">
+              <span className="text-[10px] text-muted-foreground">Position nette</span>
+              <p className={cn(
+                "text-xs md:text-sm font-extrabold truncate",
+                peerTransfersSummary.net >= 0 ? "text-emerald-500" : "text-rose-500"
+              )}>
+                {peerTransfersSummary.net >= 0 ? '+' : ''}{formatCurrency(peerTransfersSummary.net, { showSign: false })}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground bg-secondary/30 rounded-lg px-2.5 py-1.5">
+            <span>{peerTransfersSummary.transactions.length} flux P2P recensé{peerTransfersSummary.transactions.length > 1 ? 's' : ''}</span>
+            <span className={cn(
+              "font-medium flex items-center gap-1",
+              peerTransfersSummary.net >= 0 ? "text-emerald-500" : "text-rose-500"
+            )}>
+              <HandCoins size={11} /> {peerTransfersSummary.net >= 0 ? 'Position Créancière' : 'Position Débitrice'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION: VENTILATION DÉTAILLÉE PAR CATÉGORIE & NATURE (FIXE VS VARIABLE) */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <Tag size={16} className="text-primary" />
+              <h2 className="text-lg font-bold text-foreground">
+                Ventilation par Catégorie & Nature (Fixe vs Variable)
+              </h2>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Cliquez sur une catégorie pour ouvrir son drawer d'audit complet et réconcilier chaque centime
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-xs bg-card/60 border border-border/60 rounded-xl px-3 py-1.5">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="text-muted-foreground">Fixes :</span>
+              <strong className="text-foreground">{formatCurrency(categoryStats.totalFixed, { showSign: false })}</strong>
+            </span>
+            <span className="text-border">|</span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span className="text-muted-foreground">Variables :</span>
+              <strong className="text-foreground">{formatCurrency(categoryStats.totalVariable, { showSign: false })}</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* Categories Interactive Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {categoryStats.categories.length === 0 ? (
+            <div className="col-span-full py-8 text-center text-muted-foreground glass-card rounded-2xl">
+              <Info className="w-7 h-7 mx-auto mb-1.5 opacity-30" />
+              <p className="text-xs">Aucune dépense de consommation enregistrée sur cette période.</p>
+            </div>
+          ) : (
+            categoryStats.categories.map((catItem) => (
+              <div
+                key={catItem.category}
+                onClick={() => handleOpenCategoryAuditItem(catItem)}
+                className="glass-card rounded-2xl p-4 border border-border/70 hover:border-primary/50 hover:bg-secondary/20 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div 
+                        className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-white font-bold text-xs shadow-sm"
+                        style={{ backgroundColor: catItem.color }}
+                      >
+                        {catItem.category.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs md:text-sm font-bold text-foreground truncate" title={catItem.category}>
+                          {catItem.category}
+                        </h4>
+                        <span className="text-[10px] text-muted-foreground">
+                          {catItem.txCount} opé. ({catItem.percentage.toFixed(1)}%)
+                        </span>
+                      </div>
+                    </div>
+
+                    <span className={cn(
+                      "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 border uppercase",
+                      catItem.defaultNature === 'fixe'
+                        ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                        : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                    )}>
+                      {catItem.defaultNature}
+                    </span>
+                  </div>
+
+                  <div className="mt-2.5 flex items-baseline justify-between">
+                    <span className="text-xs text-muted-foreground">Total débité</span>
+                    <span className="text-sm md:text-base font-extrabold text-foreground">
+                      {formatCurrency(catItem.totalAmount, { showSign: false })}
+                    </span>
+                  </div>
+
+                  {/* Fixe vs Variable Progress mini bar */}
+                  <div className="mt-2 w-full h-1.5 rounded-full bg-secondary overflow-hidden flex">
+                    <div 
+                      className="h-full bg-blue-500 transition-all" 
+                      style={{ width: `${catItem.totalAmount > 0 ? (catItem.fixedAmount / catItem.totalAmount) * 100 : 0}%` }}
+                      title={`Fixe: ${catItem.fixedAmount.toFixed(2)} €`}
+                    />
+                    <div 
+                      className="h-full bg-amber-500 transition-all" 
+                      style={{ width: `${catItem.totalAmount > 0 ? (catItem.variableAmount / catItem.totalAmount) * 100 : 0}%` }}
+                      title={`Variable: ${catItem.variableAmount.toFixed(2)} €`}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2.5 border-t border-border/40 dark:border-white/[0.04] flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1 text-blue-500">
+                    Fixe: <strong>{formatCurrency(catItem.fixedAmount, { showSign: false })}</strong>
+                  </span>
+                  <span className="flex items-center gap-1 text-amber-500">
+                    Var: <strong>{formatCurrency(catItem.variableAmount, { showSign: false })}</strong>
+                  </span>
+                  <span className="text-primary font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                    <Eye size={11} /> Voir
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       {/* CHARTS GRID (High-End Flow & Evolution) */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
         
@@ -467,6 +774,12 @@ export default function Dashboard() {
                     paddingAngle={4} 
                     dataKey="value" 
                     nameKey="name"
+                    className="cursor-pointer outline-none"
+                    onClick={(entry: any) => {
+                      if (entry && entry.name) {
+                        handleOpenCategoryAuditByName(entry.name);
+                      }
+                    }}
                   >
                     {pieData.map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -551,11 +864,20 @@ export default function Dashboard() {
                           <p className="font-semibold text-xs md:text-sm text-foreground truncate" title={tx.description || tx.cleanLabel || tx.rawLabel}>
                             {tx.description || tx.cleanLabel || tx.rawLabel}
                           </p>
-                          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                            <span className="font-medium">{tx.category || 'Autres'}</span>
+                          <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                            <select
+                              value={tx.category || 'Autres'}
+                              onChange={(e) => handleTransactionCategoryChange(tx.id, e.target.value)}
+                              className="font-medium bg-transparent border-none p-0 cursor-pointer focus:ring-0 appearance-none max-w-[120px] sm:max-w-[150px] truncate hover:text-foreground transition-colors"
+                              title="Modifier la catégorie"
+                            >
+                              {CATEGORIES.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
                             <span>•</span>
                             <span>{formatDateFR(tx.date)}</span>
-                          </p>
+                          </div>
                         </div>
                       </div>
                       
@@ -652,6 +974,16 @@ export default function Dashboard() {
         </div>
 
       </div>
+
+      {/* Slide-Over Drawer d'audit détaillé */}
+      <CategoryAuditDrawer 
+        isOpen={isAuditDrawerOpen}
+        onClose={() => setIsAuditDrawerOpen(false)}
+        auditType={auditType}
+        categoryData={selectedCategoryData}
+        interTransfersData={interAccountsSummary}
+        peerTransfersData={peerTransfersSummary}
+      />
 
     </div>
   );

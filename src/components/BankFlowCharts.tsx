@@ -9,7 +9,8 @@ import {
   Bar,
   XAxis,
   YAxis,
-  CartesianGrid
+  CartesianGrid,
+  LabelList
 } from 'recharts';
 import { Card } from './ui/card';
 import { 
@@ -27,6 +28,8 @@ interface BankFlowChartsProps {
   selectedAccountName?: string;
   selectedMonthName?: string;
   currency?: 'EUR' | 'CHF';
+  initialBalance?: number;
+  onSelectCategory?: (categoryName: string) => void;
 }
 
 // Sophisticated color palette conforming to UI/UX Pro Max & luxury financial dashboards
@@ -51,7 +54,9 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
   transactions,
   selectedAccountName = 'Tous les comptes',
   selectedMonthName,
-  currency = 'EUR'
+  currency = 'EUR',
+  initialBalance = 0,
+  onSelectCategory
 }) => {
   const sankeyContainerRef = useRef<HTMLDivElement>(null);
   const [googleLoaded, setGoogleLoaded] = useState(false);
@@ -78,11 +83,19 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
 
     transactions.forEach(tx => {
       const amt = Math.abs(Number(tx.amount) || 0);
-      if (tx.flowType === 'INCOME') {
+      const isDebit = 
+        tx.type === 'debit' ||
+        tx.direction === 'debit' ||
+        (typeof tx.rawAmount === 'number' && tx.rawAmount < 0) ||
+        (tx.rawAmount === undefined && typeof tx.amount === 'number' && tx.amount < 0) ||
+        tx.flowType === 'FIXED_EXPENSE' ||
+        tx.flowType === 'VARIABLE_EXPENSE';
+
+      if (tx.flowType === 'INCOME' || (tx.type === 'credit' && !isDebit)) {
         totalIncome += amt;
         const source = tx.category || 'Revenus';
         incomeSourceMap.set(source, (incomeSourceMap.get(source) || 0) + amt);
-      } else if (tx.flowType === 'FIXED_EXPENSE' || tx.flowType === 'VARIABLE_EXPENSE') {
+      } else if (isDebit && !tx.isInternalTransfer && tx.flowType !== 'SAVINGS_TRANSFER') {
         totalExpenses += amt;
         const cat = tx.category || 'Autre';
         expenseCategoryMap.set(cat, (expenseCategoryMap.get(cat) || 0) + amt);
@@ -209,9 +222,13 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
       const totalExp = financialData.totalExpenses;
       const totalInc = financialData.totalIncome;
 
-      // Left Node Name
-      const incomeNodeLabel = totalInc > 0
-        ? `Revenus (${formatCurrency(totalInc, { decimals: 0 })})`
+      // Left Node Name incorporating starting balance (Point Zéro)
+      const initBal = Math.max(0, initialBalance);
+      const totalAvailableFunds = initBal + totalInc;
+      const incomeNodeLabel = totalAvailableFunds > 0
+        ? (initBal > 0 
+            ? `Fonds Disponibles (${formatCurrency(totalAvailableFunds, { decimals: 0 })})` 
+            : `Revenus (${formatCurrency(totalInc, { decimals: 0 })})`)
         : `Dépenses Décaissées (${formatCurrency(totalExp, { decimals: 0 })})`;
 
       // Right Branch Nodes for each Expense Category
@@ -224,12 +241,12 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
         }
       });
 
-      // If Income > Expenses: Add remaining surplus flow to Savings / Reste à Vivre
-      if (totalInc > totalExp && financialData.netSavings > 0.01) {
-        const savingsAmt = financialData.netSavings;
-        const savingsPct = totalInc > 0 ? (savingsAmt / totalInc) * 100 : 0;
-        const savingsLabel = `Épargne & Reste à Vivre (${formatCurrency(savingsAmt, { showSign: false })} • ${savingsPct.toFixed(1)}%)`;
-        rows.push([incomeNodeLabel, savingsLabel, Number(savingsAmt.toFixed(2))]);
+      // Reste à vivre réel tenant compte du solde initial
+      const realSurplus = totalAvailableFunds - totalExp;
+      if (realSurplus > 0.01) {
+        const surplusPct = totalAvailableFunds > 0 ? (realSurplus / totalAvailableFunds) * 100 : 0;
+        const surplusLabel = `Reste à Vivre Réel (${formatCurrency(realSurplus, { showSign: false })} • ${surplusPct.toFixed(1)}%)`;
+        rows.push([incomeNodeLabel, surplusLabel, Number(realSurplus.toFixed(2))]);
       }
 
       if (rows.length === 0) return;
@@ -262,6 +279,35 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
       };
 
       const chart = new google.visualization.Sankey(sankeyContainerRef.current);
+
+      google.visualization.events.addListener(chart, 'select', () => {
+        if (!onSelectCategory) return;
+        const selection = chart.getSelection();
+        if (selection && selection.length > 0) {
+          const item = selection[0];
+          let selectedName = '';
+          
+          try {
+            if (item.name) {
+              selectedName = String(item.name);
+            } else if (item.row !== null && item.row !== undefined) {
+              selectedName = String(dataTable.getValue(item.row, 1) || '');
+            }
+          } catch (e) {
+            console.error("Sankey desktop selection error", e);
+          }
+          
+          if (selectedName) {
+            const found = financialData.expenseItems.find((i: any) => selectedName.startsWith(i.name));
+            if (found) {
+              setTimeout(() => {
+                onSelectCategory(found.name);
+              }, 10);
+            }
+          }
+        }
+      });
+
       chart.draw(dataTable, options);
 
       // Re-draw on window resize
@@ -276,6 +322,13 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
     } catch (err) {
       console.error("Erreur génération diagramme Sankey:", err);
     }
+    
+    // Cleanup to prevent double-draw in strict mode or stale charts
+    return () => {
+      if (sankeyContainerRef.current) {
+         sankeyContainerRef.current.innerHTML = '';
+      }
+    };
   }, [googleLoaded, financialData, isDark, activeTab]);
 
   return (
@@ -437,8 +490,8 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                 </div>
               ) : (
                 <div className="w-full relative">
-                  <ResponsiveContainer width="100%" height={240}>
-                    <PieChart>
+                  <ResponsiveContainer width="100%" height={320}>
+                    <PieChart margin={{ top: 20, right: 30, left: 30, bottom: 20 }}>
                       <Pie
                         data={financialData.expenseItems}
                         dataKey="value"
@@ -449,6 +502,14 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                         outerRadius={92}
                         paddingAngle={3}
                         stroke="none"
+                        labelLine={true}
+                        label={({ name, value }) => `${name} (${Math.round(value).toLocaleString('fr-FR')} €)`}
+                        className={onSelectCategory ? "cursor-pointer outline-none" : "outline-none"}
+                        onClick={(entry: any) => {
+                          if (entry && entry.name && onSelectCategory) {
+                            onSelectCategory(entry.name);
+                          }
+                        }}
                       >
                         {financialData.expenseItems.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
@@ -499,7 +560,14 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
             {financialData.hasExpenses && (
               <div className="max-h-40 overflow-y-auto pr-1 space-y-1.5 pt-3 border-t border-border/40 scrollbar-thin">
                 {financialData.expenseItems.map(item => (
-                  <div key={item.name} className="flex items-center justify-between text-xs hover:bg-secondary/40 p-1.5 rounded-lg transition-colors">
+                  <div 
+                    key={item.name} 
+                    onClick={() => onSelectCategory && onSelectCategory(item.name)}
+                    className={`flex items-center justify-between text-xs hover:bg-secondary/60 p-1.5 rounded-lg transition-colors ${
+                      onSelectCategory ? 'cursor-pointer hover:ring-1 hover:ring-primary/30' : ''
+                    }`}
+                    title={onSelectCategory ? `Auditer ${item.name}` : undefined}
+                  >
                     <div className="flex items-center gap-2 min-w-0 pr-2">
                       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
                       <span className="font-medium text-foreground truncate">{item.name}</span>
@@ -552,7 +620,7 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart
                   data={categoryBarData}
-                  margin={{ top: 10, right: 10, left: 10, bottom: 45 }}
+                  margin={{ top: 40, right: 10, left: 10, bottom: 45 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} opacity={0.3} />
                   <XAxis 
@@ -590,10 +658,32 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                       return null;
                     }}
                   />
-                  <Bar dataKey="amount" radius={[6, 6, 0, 0]}>
+                  <Bar 
+                    dataKey="amount" 
+                    radius={[6, 6, 0, 0]}
+                    className={onSelectCategory ? "cursor-pointer outline-none" : "outline-none"}
+                    onClick={(entry: any) => {
+                      if (entry && entry.category && onSelectCategory) {
+                        onSelectCategory(entry.category);
+                      }
+                    }}
+                  >
                     {categoryBarData.map((entry, index) => (
                       <Cell key={`cat-bar-${index}`} fill={entry.color} />
                     ))}
+                    <LabelList 
+                      dataKey="category" 
+                      position="top" 
+                      offset={16}
+                      style={{ fontSize: 10, fill: isDark ? '#f1f5f9' : '#0f172a', fontWeight: 'bold' }} 
+                    />
+                    <LabelList 
+                      dataKey="amount" 
+                      position="top" 
+                      offset={4}
+                      formatter={(val: number) => `${Math.round(val).toLocaleString('fr-FR')} €`}
+                      style={{ fontSize: 10, fill: '#38bdf8', fontWeight: 'bold' }} 
+                    />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>

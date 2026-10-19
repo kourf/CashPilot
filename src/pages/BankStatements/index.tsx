@@ -2,6 +2,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   ArrowDownLeft, 
   ArrowUpRight, 
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
   ArrowLeftRight, 
   Search, 
   Upload, 
@@ -24,13 +27,26 @@ import {
   Sliders,
   AlertTriangle,
   Users,
-  UserCheck
+  UserCheck,
+  PiggyBank,
+  Info,
+  Tag,
+  Clock,
+  CheckCircle2,
+  Zap
 } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { BankFlowCharts } from '../../components/BankFlowCharts';
-import { SubscriptionOptimizerDrawer } from '../../components/ui/SubscriptionOptimizerDrawer';
+import { MobileCharts } from './components/MobileCharts';
+import { BankAuditReportDrawer } from './components/BankAuditReportDrawer';
+import { CategoryAuditDrawer } from '../../components/CategoryAuditDrawer';
+import { isPeerTransferTransaction } from '../../lib/categorizationRules';
+import { CostOfLivingBuilderDrawer } from '../../components/CostOfLivingBuilderDrawer';
+import { SpendingHabitsDrawer } from '../../components/SpendingHabitsDrawer';
+import { BudgetTrackingDrawer } from '../../components/BudgetTrackingDrawer';
+
 import { useTransactions } from '../../context/TransactionsContext';
 import { 
   calculateReconciliation, 
@@ -39,7 +55,18 @@ import {
   type BankReconciliationResult 
 } from '../../lib/kpiUtils';
 import { getActiveAccountId } from '../../lib/userUtils';
-import { auditAndEnrichTransactionsWithGemini, getGeminiApiKey } from '../../lib/geminiService';
+import { 
+  auditAndEnrichTransactionsWithGemini, 
+  getGeminiApiKey, 
+  batchAuditStatementWithGemini,
+  generateDeepAuditReport,
+  AVAILABLE_FREE_GEMINI_MODELS,
+  getGeminiModelName,
+  setGeminiModelName,
+  testGeminiModelConnection,
+  extractBankStatementDirectly,
+  type DeepAuditReport
+} from '../../lib/geminiService';
 
 export const SUBSCRIPTION_CATEGORIES = new Set([
   'Abonnements',
@@ -55,6 +82,7 @@ import {
   calculateBankMetrics, 
   calculateAccountSummaries,
   checkDuplicateTransactions, 
+  findDuplicateStoredTransactionIds,
   detectAccountFromFilename,
   parseCSVBankStatement,
   smartCategorizeTransaction,
@@ -63,6 +91,8 @@ import {
   formatMonthLabel,
   formatDateFR,
   formatCurrency,
+  extractCleanBankStatementRows,
+  type CleanBankStatementRow,
   type FlowType, 
   type BankTransaction,
   type SubscriptionSummary
@@ -107,11 +137,17 @@ export const BankStatements: React.FC = () => {
     setTransactions: setRawTransactions,
     selectedMonth,
     setSelectedMonth,
-    availableMonths
+    availableMonths,
+    currency,
+    setCurrency,
+    customBalances,
+    setCustomBalances,
+    isRealtimeSynced
   } = useTransactions();
 
   // Local state for interactive features
   const [searchTerm, setSearchTerm] = useState('');
+  const [isToolsSheetOpen, setIsToolsSheetOpen] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
   const [selectedAccount, setSelectedAccount] = useState<string>('ALL');
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
@@ -137,24 +173,7 @@ export const BankStatements: React.FC = () => {
     account: 'Compte Principal'
   });
 
-  // Accounting Reconciliation & Bank Mirror States
-  const [currency, setCurrency] = useState<'EUR' | 'CHF'>(() => {
-    const saved = localStorage.getItem('cashpilot_statement_currency') || '';
-    const detectedCurrency = detectStatementCurrency(saved);
-    const currency = detectedCurrency || 'EUR';
-    return currency;
-  });
   const [transferFilter, setTransferFilter] = useState<'ALL' | 'EXPENSES_INCOME' | 'INTERNAL'>('ALL');
-  
-  // Custom or statement initial/closing balances per month
-  const [customBalances, setCustomBalances] = useState<Record<string, { initial: number; closing: number }>>(() => {
-    try {
-      const saved = localStorage.getItem('cashpilot_monthly_balances');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
 
   const [isEditBalanceModalOpen, setIsEditBalanceModalOpen] = useState(false);
   const [editBalanceForm, setEditBalanceForm] = useState({
@@ -172,14 +191,202 @@ export const BankStatements: React.FC = () => {
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // AI Batch Analysis & Chronomètre states (Gemini 3.8 Flash Free Tier)
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [aiAnalysisSeconds, setAiAnalysisSeconds] = useState(0);
+  const [aiAnalysisStats, setAiAnalysisStats] = useState<{
+    totalCount: number;
+    executionTimeSeconds: string;
+    timestamp: Date;
+  } | null>(null);
+  const aiTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (aiTimerRef.current) clearInterval(aiTimerRef.current);
+    };
+  }, []);
+
   // Gemini Generative AI states
   const [isEnhancingWithGemini, setIsEnhancingWithGemini] = useState(false);
   const [isGeminiKeyModalOpen, setIsGeminiKeyModalOpen] = useState(false);
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState(() => getGeminiApiKey());
+  const [selectedAiModel, setSelectedAiModel] = useState<string>(() => getGeminiModelName());
+  const [isTestingAiConnection, setIsTestingAiConnection] = useState(false);
+  const [aiConnectionTestResult, setAiConnectionTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Audit Drawer States
+  const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
+  const [isCostOfLivingDrawerOpen, setIsCostOfLivingDrawerOpen] = useState(false);
+  const [isSpendingHabitsDrawerOpen, setIsSpendingHabitsDrawerOpen] = useState(false);
+  const [isBudgetTrackingDrawerOpen, setIsBudgetTrackingDrawerOpen] = useState(false);
+  const [auditType, setAuditType] = useState<'category' | 'inter-accounts' | 'peer-transfers' | 'kpi-income' | 'kpi-expenses' | 'kpi-savings' | 'kpi-essential' | 'kpi-comfort' | 'subscriptions'>('category');
+  const [selectedCategoryData, setSelectedCategoryData] = useState<any>(null);
+  const [auditCustomTransactions, setAuditCustomTransactions] = useState<BankTransaction[]>([]);
+  const [auditCustomTitle, setAuditCustomTitle] = useState('');
+  const [auditCustomSubtitle, setAuditCustomSubtitle] = useState('');
+  const [auditCustomTotal, setAuditCustomTotal] = useState(0);
+
+  const handleOpenEssentialAudit = () => {
+    setIsCostOfLivingDrawerOpen(true);
+  };
+
+  const handleOpenInterAccountsAudit = () => {
+    setAuditType('inter-accounts');
+    setAuditCustomTitle('Mouvements Inter-Comptes (Flux Propres)');
+    setAuditCustomSubtitle('Virements entre vos comptes propres');
+    const interTxs = monthScopedTransactions.filter(t => Boolean(
+      t.isInternalTransfer ||
+      t.category === 'Virements Internes' ||
+      t.category === 'Virements internes' ||
+      t.category === 'Épargne & Investissement' ||
+      t.category === 'Épargne' ||
+      t.category === 'Remboursement Carte (Amex)' ||
+      t.category?.includes('Fortuneo') ||
+      t.category?.includes('Revolut')
+    ));
+    setAuditCustomTransactions(interTxs);
+    setAuditCustomTotal(0);
+    setIsAuditDrawerOpen(true);
+  };
+
+  const handleOpenPeerTransfersAudit = () => {
+    setAuditType('peer-transfers');
+    setAuditCustomTitle('Échanges Famille & Amis');
+    setAuditCustomSubtitle('Remboursements et envois à vos proches');
+    const peerTxs = monthScopedTransactions.filter(t => isPeerTransferTransaction(t));
+    setAuditCustomTransactions(peerTxs);
+    setAuditCustomTotal(0);
+    setIsAuditDrawerOpen(true);
+  };
 
   // AI Subscription Optimizer Drawer State
-  const [selectedSubscriptionTx, setSelectedSubscriptionTx] = useState<BankTransaction | null>(null);
-  const [isOptimizerDrawerOpen, setIsOptimizerDrawerOpen] = useState(false);
+  const handleOpenSubscriptionsAudit = () => {
+    let subTxs = subscriptionSummary.items;
+    let total = subscriptionSummary.totalMonthly;
+    if (subTxs.length === 0) {
+      subTxs = monthScopedTransactions.filter(t => Boolean(t.isSubscription || t.category === 'Abonnements & Télécom' || t.category === 'Abonnements'));
+      total = subTxs.reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0);
+    }
+    if (subTxs.length === 0) {
+      subTxs = bankTransactions.filter(t => Boolean(t.isSubscription || t.category === 'Abonnements & Télécom' || t.category === 'Abonnements'));
+      total = subTxs.reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0);
+    }
+    setAuditType('subscriptions');
+    setAuditCustomTitle('Abonnements & Prélèvements');
+    setAuditCustomSubtitle('Tous vos abonnements et prélèvements récurrents');
+    setAuditCustomTransactions(subTxs);
+    setAuditCustomTotal(total);
+    setIsAuditDrawerOpen(true);
+  };
+
+  // Deep Financial Audit State (DeepSeek-style comprehensive report)
+  const [deepAuditReport, setDeepAuditReport] = useState<DeepAuditReport | null>(null);
+  const [isDeepAuditDrawerOpen, setIsDeepAuditDrawerOpen] = useState(false);
+  const [isGeneratingDeepAudit, setIsGeneratingDeepAudit] = useState(false);
+
+  // Retour vers le menu global Analyses & Outils
+  const handleBackToTools = () => {
+    setIsAuditDrawerOpen(false);
+    setIsCostOfLivingDrawerOpen(false);
+    setIsSpendingHabitsDrawerOpen(false);
+    setIsBudgetTrackingDrawerOpen(false);
+    setIsDeepAuditDrawerOpen(false);
+    setIsToolsSheetOpen(true);
+  };
+
+  const handleOpenDeepAudit = async (customTxs?: BankTransaction[]) => {
+    // Audit dynamique lié au sélecteur de mois :
+    // - Si un mois est sélectionné, audite UNIQUEMENT ce mois
+    // - Si "Tous les mois" est sélectionné, audite l'ensemble du relevé
+    const txsToAudit = customTxs && customTxs.length > 0
+      ? customTxs
+      : (selectedMonth === 'all'
+          ? (bankTransactions.length > 0 ? bankTransactions : monthScopedTransactions)
+          : (monthScopedTransactions.length > 0 ? monthScopedTransactions : bankTransactions.filter(t => t.monthKey === selectedMonth || t.date?.startsWith(selectedMonth)))
+        );
+
+    if (txsToAudit.length === 0) {
+      setNotification({
+        type: 'info',
+        message: selectedMonth !== 'all'
+          ? `Aucune transaction trouvée pour le mois de ${formatMonthLabel(selectedMonth)}.`
+          : "Veuillez d'abord importer un relevé bancaire pour générer l'audit approfondi."
+      });
+      return;
+    }
+
+    const monthLabel = selectedMonth !== 'all' ? formatMonthLabel(selectedMonth) : "Tous les mois";
+
+    setIsGeneratingDeepAudit(true);
+    try {
+      const rep = await generateDeepAuditReport(txsToAudit, currency, monthLabel);
+      setDeepAuditReport(rep);
+      setIsDeepAuditDrawerOpen(true);
+    } catch (err: any) {
+      console.error("Erreur génération audit approfondi:", err);
+      setNotification({
+        type: 'error',
+        message: "Erreur lors de la génération de l'audit : " + (err?.message || '')
+      });
+    } finally {
+      setIsGeneratingDeepAudit(false);
+    }
+  };
+
+  // Suppression des doublons en base (Deduplication)
+  const handlePurgeDuplicates = async () => {
+    const duplicateIds = findDuplicateStoredTransactionIds(bankTransactions);
+    if (duplicateIds.length === 0) {
+      setNotification({
+        type: 'success',
+        message: "Aucun doublon détecté ! Vos opérations sont 100% saines et propres."
+      });
+      return;
+    }
+
+    if (!window.confirm(`Supprimer définitivement les ${duplicateIds.length} doublons identifiés dans vos opérations ?`)) {
+      return;
+    }
+
+    try {
+      const accountId = getActiveAccountId();
+      for (let i = 0; i < duplicateIds.length; i += 400) {
+        const chunk = duplicateIds.slice(i, i + 400);
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          const docRef = doc(db, `users/${accountId}/transactions`, id);
+          batch.delete(docRef);
+        });
+        await batch.commit();
+      }
+
+      setRawTransactions(prev => prev.filter(t => !duplicateIds.includes(t.id)));
+
+      // Nettoyer cache local
+      try {
+        const raw = localStorage.getItem('cashpilot_tx_cache');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const filtered = parsed.filter((t: any) => !duplicateIds.includes(t.id));
+          localStorage.setItem('cashpilot_tx_cache', JSON.stringify(filtered));
+          localStorage.setItem('cashpilot_transactions', JSON.stringify(filtered));
+        }
+      } catch (e) {}
+
+      setNotification({
+        type: 'success',
+        message: `Nettoyage réussi : ${duplicateIds.length} doublon${duplicateIds.length > 1 ? 's' : ''} supprimé${duplicateIds.length > 1 ? 's' : ''} avec succès !`
+      });
+    } catch (err: any) {
+      console.error("Erreur suppression doublons:", err);
+      setNotification({
+        type: 'error',
+        message: "Erreur lors de la suppression des doublons."
+      });
+    }
+  };
+
 
   // Transfer Heuristics & Rules State (Family vs Self internal transfer)
   const [virementRules, setVirementRules] = useState<{
@@ -219,6 +426,20 @@ export const BankStatements: React.FC = () => {
   const [newFamilyKeyword, setNewFamilyKeyword] = useState('');
   const [newOwnAccountKeyword, setNewOwnAccountKeyword] = useState('');
 
+  // Interactive inline category dropdown state
+  const [openCategoryDropdownTxId, setOpenCategoryDropdownTxId] = useState<string | null>(null);
+
+  // Close category dropdown on click outside
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setOpenCategoryDropdownTxId(null);
+    };
+    if (openCategoryDropdownTxId) {
+      window.addEventListener('click', handleGlobalClick);
+      return () => window.removeEventListener('click', handleGlobalClick);
+    }
+  }, [openCategoryDropdownTxId]);
+
   // Online / Offline connectivity listener
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
 
@@ -233,23 +454,7 @@ export const BankStatements: React.FC = () => {
     };
   }, []);
 
-  // Sync customBalances when updated or deleted in Settings or another component
-  useEffect(() => {
-    const handleBalanceSync = () => {
-      try {
-        const saved = localStorage.getItem('cashpilot_monthly_balances');
-        setCustomBalances(saved ? JSON.parse(saved) : {});
-      } catch {
-        setCustomBalances({});
-      }
-    };
-    window.addEventListener('storage', handleBalanceSync);
-    window.addEventListener('cashpilot_balances_updated', handleBalanceSync);
-    return () => {
-      window.removeEventListener('storage', handleBalanceSync);
-      window.removeEventListener('cashpilot_balances_updated', handleBalanceSync);
-    };
-  }, []);
+
 
   // Form state for manual transaction
   const [manualTx, setManualTx] = useState({
@@ -285,9 +490,15 @@ export const BankStatements: React.FC = () => {
         : (t.flowType || (category === smart.category ? smart.flowType : classifyFlowType(category, amount, rawDesc)));
       const account = t.accountName || t.account || 'Compte Principal';
       const bankName = t.bankName || (account.includes(' - ') ? account.split(' - ')[0] : account);
-      const isSubscription = t.isSubscription !== undefined 
+            let isSubscription = t.isSubscription !== undefined 
         ? Boolean(t.isSubscription) 
         : (category === 'Abonnements & Télécom' || smart.isSubscription);
+
+      // Sécurité anti-faux-positifs : Les encaissements et virements ponctuels ne sont JAMAIS des abonnements
+      const rawTextUpperCheck = `${rawDesc} ${cleanDesc}`.toUpperCase();
+      if (amount > 0 || ((rawTextUpperCheck.includes('VIR ') || rawTextUpperCheck.includes('VIREMENT')) && !rawTextUpperCheck.includes('PERMANENT'))) {
+        isSubscription = false;
+      }
       const subscriptionDay = t.subscriptionDay !== undefined && t.subscriptionDay !== null
         ? Number(t.subscriptionDay)
         : (smart.subscriptionDay || (t.date ? parseInt(t.date.split('-')[2], 10) : undefined));
@@ -321,19 +532,26 @@ export const BankStatements: React.FC = () => {
         ? rawText.includes(virementRules.userFirstName.trim().toLowerCase())
         : false);
 
-      // Les virements internes restent limités aux mouvements de comptes propres ("Fortuneo", "SG", "Société Générale", "Virement Interne", ou son 2nd compte perso)
-      const matchesOwnAccount = 
-        /\bSG\b/i.test(rawText) ||
-        rawText.includes('société générale') ||
-        rawText.includes('societe generale') ||
-        rawText.includes('fortuneo') ||
+      // Un virement interne ne peut être qu'un véritable VIREMENT (jamais un paiement carte, prélèvement ou frais)
+      const isTransferOperation = 
+        rawTextUpper.includes('VIR ') || 
+        rawTextUpper.includes('VIREMENT') || 
+        rawTextUpper.includes('COMPTE A COMPTE') ||
+        category === 'Virements Internes';
+
+      // Les virements internes restent limités aux mouvements de comptes propres ("Fortuneo", "Virement Interne", ou son 2nd compte perso)
+      // Les mots-clés génériques de la banque ("SG", "Société Générale", "Compte Courant") ne doivent JAMAIS convertir une dépense courante en virement interne
+      const matchesOwnAccount = isTransferOperation && (
         rawText.includes('virement interne') ||
+        rawText.includes('compte a compte') ||
+        rawText.includes('fortuneo') ||
+        (rawTextUpper.includes('KOUROUFIA') && !matchesFamily) ||
         virementRules.ownAccountsKeywords.some(kw => {
           const k = kw.trim().toLowerCase();
-          if (!k) return false;
-          if (k === 'sg') return /\bsg\b/i.test(rawText);
+          if (!k || k === 'sg' || k === 'société générale' || k === 'societe generale' || k === 'compte courant') return false;
           return rawText.includes(k);
-        });
+        })
+      );
 
       let isInternalTransfer = false;
       let isFamilyTransfer = false;
@@ -346,8 +564,8 @@ export const BankStatements: React.FC = () => {
         // Priorité absolue : Si le nom d'un proche est présent, ce n'est JAMAIS un virement interne
         isInternalTransfer = false;
         isFamilyTransfer = true;
-      } else if (matchesUserFirstName || matchesOwnAccount) {
-        // Uniquement les comptes propres de l'utilisateur
+      } else if (isTransferOperation && (matchesUserFirstName || matchesOwnAccount)) {
+        // Uniquement les virements entre comptes propres de l'utilisateur
         isInternalTransfer = true;
         isFamilyTransfer = false;
       }
@@ -479,13 +697,23 @@ export const BankStatements: React.FC = () => {
       if (transferFilter === 'EXPENSES_INCOME' && t.isInternalTransfer) return false;
       if (transferFilter === 'INTERNAL' && !t.isInternalTransfer) return false;
 
-      // Flow type & Subscription filter
+      // Détermination rigoureuse du sens du flux (Débit = Dépense, Crédit = Entrée)
+      const isDebit = 
+        t.type === 'debit' || 
+        t.direction === 'debit' || 
+        (typeof t.rawAmount === 'number' && t.rawAmount < 0) ||
+        (t.rawAmount === undefined && typeof t.amount === 'number' && t.amount < 0) ||
+        t.flowType === 'FIXED_EXPENSE' || 
+        t.flowType === 'VARIABLE_EXPENSE';
+
+      const isCredit = !isDebit;
+
       if (selectedFilter === 'ALL') return true;
-      if (selectedFilter === 'INCOME') return t.flowType === 'INCOME';
-      if (selectedFilter === 'FIXED') return t.flowType === 'FIXED_EXPENSE';
-      if (selectedFilter === 'VARIABLE') return t.flowType === 'VARIABLE_EXPENSE';
+      if (selectedFilter === 'INCOME') return isCredit;
+      if (selectedFilter === 'FIXED') return isDebit && t.flowType === 'FIXED_EXPENSE';
+      if (selectedFilter === 'VARIABLE') return isDebit && (t.flowType === 'VARIABLE_EXPENSE' || t.flowType !== 'FIXED_EXPENSE');
       if (selectedFilter === 'SUBSCRIPTION') return Boolean(t.isSubscription || t.category === 'Abonnements & Télécom');
-      if (selectedFilter === 'EXPENSE') return t.flowType === 'FIXED_EXPENSE' || t.flowType === 'VARIABLE_EXPENSE';
+      if (selectedFilter === 'EXPENSE') return isDebit && !t.isInternalTransfer && t.flowType !== 'SAVINGS_TRANSFER';
       if (selectedFilter === 'SAVINGS') return t.flowType === 'SAVINGS_TRANSFER';
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -504,13 +732,15 @@ export const BankStatements: React.FC = () => {
   useEffect(() => {
     if (autoGeminiRunRef.current || !rawTransactions || rawTransactions.length === 0) return;
 
-    // Repérer les opérations en base ayant 'Autre' ou les rentrées d'argent indûment classées en épargne
+    // Repérer les opérations en base ayant 'Autre', ou les encaissements (>0) classés à tort en dépenses/Virements Famille
     const unclassifiedInDb = rawTransactions.filter(t => {
       if (t.category === 'Autre') return true;
       const amt = Number(t.amount) || 0;
-      if (amt > 0 && (t.flowType === 'SAVINGS_TRANSFER' || t.category === 'Épargne & Investissement')) {
-        const raw = (t.rawLabel || t.description || '').toLowerCase();
-        return raw.includes('nayssa') || raw.includes('el hani') || raw.includes('naistaba') || raw.includes('generation') || raw.includes('cpam') || raw.includes('wero');
+      // Détection des encaissements positifs (>0) qui ont fuité dans les dépenses ou l'épargne
+      if (amt > 0) {
+        if (t.flowType !== 'INCOME' || t.category === 'Virements Famille & Proches' || t.direction === 'debit') {
+          return true;
+        }
       }
       return false;
     });
@@ -665,46 +895,109 @@ export const BankStatements: React.FC = () => {
     handleSaveVirementRules(updated);
   };
 
-  // 1. Inline Category Change with Firestore sync
-  const handleCategoryChange = async (id: string, newCategory: string) => {
-    const tx = bankTransactions.find(t => t.id === id);
-    if (!tx) return;
+  // 1. Inline Category Change with Firestore sync & Rule Memorization for Past & Future Imports
+  const handleQuickCategoryRemap = async (tx: BankTransaction, newCategory: string) => {
+    setOpenCategoryDropdownTxId(null);
+    if (!tx || tx.category === newCategory) return;
 
-    const newFlowType = classifyFlowType(newCategory, tx.amount, tx.description);
-    const isSub = newCategory === 'Abonnements & Télécom' || (tx.isSubscription && newFlowType === 'FIXED_EXPENSE');
+    const rawMerchant = tx.cleanLabel || tx.description || tx.rawLabel || '';
+    const cleanKey = cleanMerchantDescription(rawMerchant).toLowerCase().trim();
+    const newFlow = classifyFlowType(newCategory, tx.amount, tx.description);
+    const isSub = newCategory === 'Abonnements & Télécom' || (tx.isSubscription && newFlow === 'FIXED_EXPENSE');
 
-    // Optimistic local update for 0ms latency
-    setRawTransactions(prev => prev.map(t => t.id === id ? {
-      ...t,
-      category: newCategory,
-      flowType: newFlowType,
-      isSubscription: isSub,
-      nature: newFlowType === 'FIXED_EXPENSE' ? 'fixe' : newFlowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre'
-    } : t));
+    // 1. Sauvegarde et mémorisation de la règle de remappage dans le localStorage
+    try {
+      const savedRulesRaw = localStorage.getItem('cashpilot_custom_rules');
+      let rules: any[] = [];
+      if (savedRulesRaw) {
+        try { rules = JSON.parse(savedRulesRaw) || []; } catch {}
+      }
+      const existingRuleIdx = rules.findIndex((r: any) => r.keyword && (r.keyword.toLowerCase() === cleanKey || cleanKey.includes(r.keyword.toLowerCase())));
+      const newRuleObj = {
+        id: `rule_${Date.now()}`,
+        keyword: cleanKey,
+        category: newCategory,
+        flowType: newFlow,
+        isSubscription: isSub,
+        createdAt: new Date().toISOString()
+      };
+      if (existingRuleIdx >= 0) {
+        rules[existingRuleIdx] = { ...rules[existingRuleIdx], ...newRuleObj };
+      } else {
+        rules.push(newRuleObj);
+      }
+      localStorage.setItem('cashpilot_custom_rules', JSON.stringify(rules));
 
+      // Dictionnaire direct de remappage pour accès instantané
+      const remapRulesRaw = localStorage.getItem('cashpilot_category_remap_rules');
+      let remapDict: Record<string, string> = {};
+      if (remapRulesRaw) {
+        try { remapDict = JSON.parse(remapRulesRaw) || {}; } catch {}
+      }
+      remapDict[cleanKey] = newCategory;
+      localStorage.setItem('cashpilot_category_remap_rules', JSON.stringify(remapDict));
+    } catch (e) {
+      console.error("Erreur sauvegarde règle:", e);
+    }
+
+    // 2. Détection immédiate de toutes les transactions passées ayant le même libellé / commerçant
+    const matchingTxs = bankTransactions.filter(t => {
+      if (t.id === tx.id) return true;
+      const tDesc = cleanMerchantDescription(t.cleanLabel || t.description || t.rawLabel || '').toLowerCase().trim();
+      return tDesc === cleanKey || (cleanKey.length > 3 && tDesc.includes(cleanKey));
+    });
+
+    const matchingIds = new Set(matchingTxs.map(t => t.id));
+
+    // 3. Mise à jour optimiste locale immédiate (0ms de latence perçue)
+    setRawTransactions(prev => prev.map(t => {
+      if (matchingIds.has(t.id)) {
+        const txFlow = classifyFlowType(newCategory, t.amount, t.description);
+        return {
+          ...t,
+          category: newCategory,
+          flowType: txFlow,
+          isSubscription: newCategory === 'Abonnements & Télécom' || (t.isSubscription && txFlow === 'FIXED_EXPENSE'),
+          nature: txFlow === 'FIXED_EXPENSE' ? 'fixe' : txFlow === 'VARIABLE_EXPENSE' ? 'variable' : 'autre'
+        };
+      }
+      return t;
+    }));
+
+    // 4. Synchronisation par lot (writeBatch) dans Firestore pour persistance cloud
     try {
       const accountId = getActiveAccountId();
-      const docRef = doc(db, `users/${accountId}/transactions`, id);
-      
-      await updateDoc(docRef, {
-        category: newCategory,
-        flowType: newFlowType,
-        isSubscription: isSub,
-        nature: newFlowType === 'FIXED_EXPENSE' ? 'fixe' : newFlowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
-        updatedAt: new Date().toISOString()
+      const batch = writeBatch(db);
+      matchingTxs.forEach(t => {
+        const docRef = doc(db, `users/${accountId}/transactions`, t.id);
+        const txFlow = classifyFlowType(newCategory, t.amount, t.description);
+        batch.update(docRef, {
+          category: newCategory,
+          flowType: txFlow,
+          nature: txFlow === 'FIXED_EXPENSE' ? 'fixe' : txFlow === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+          isSubscription: newCategory === 'Abonnements & Télécom' || (t.isSubscription && txFlow === 'FIXED_EXPENSE'),
+          updatedAt: new Date().toISOString()
+        });
       });
+      await batch.commit();
 
       setNotification({
         type: 'success',
-        message: `Catégorie mise à jour : ${newCategory}`
+        message: `${matchingTxs.length} opération${matchingTxs.length > 1 ? 's' : ''} reclassée${matchingTxs.length > 1 ? 's' : ''} en "${newCategory}". Règle mémorisée pour les futurs imports.`
       });
     } catch (err) {
-      console.error("Erreur lors de la mise à jour de la catégorie:", err);
+      console.error("Erreur réassignation Firestore:", err);
       setNotification({
         type: 'error',
         message: "Échec de la synchronisation Firestore."
       });
     }
+  };
+
+  const handleCategoryChange = async (id: string, newCategory: string) => {
+    const tx = bankTransactions.find(t => t.id === id);
+    if (!tx) return;
+    await handleQuickCategoryRemap(tx, newCategory);
   };
 
   // Open Edit Modal for Single Transaction (Manual Override)
@@ -1192,10 +1485,10 @@ export const BankStatements: React.FC = () => {
     }
   };
 
-  // 8. File Upload & Extraction with Multi-Account AI Detection
+  // 8. File Upload & Extraction avec refonte stricte CSV (3 colonnes) & Audit IA Gemini 3.8 Flash
   const handleFileUpload = async (file: File) => {
     setIsProcessingFile(true);
-    setFileStatusMessage(`Analyse de ${file.name}...`);
+    setFileStatusMessage(`Lecture de ${file.name}...`);
 
     try {
       const accountId = getActiveAccountId();
@@ -1204,68 +1497,255 @@ export const BankStatements: React.FC = () => {
       let detectedAccountName = '';
 
       if (file.name.endsWith('.csv') || file.type.includes('csv') || file.type.includes('text')) {
-        // Direct Client CSV Parsing with intelligent bank signature & merchant extraction
-        setFileStatusMessage("Lecture et détection intelligente du relevé...");
+        // --- 1. REFONTE IMPORT CSV : FILTRAGE STRICT DES 3 COLONNES (Date, Libellé brut, Montant) ---
+        setFileStatusMessage("Filtrage des colonnes bancaires (Date, Libellé brut, Montant)...");
         const text = await readBankStatementFileText(file);
-        const { bankName: detectedBank, transactions: parsedTxs } = parseCSVBankStatement(text);
+        
+        // Détection automatique de la devise et du nom de banque/compte
+        const detectedBank = detectBankName(text);
         const fileDetection = detectAccountFromFilename(file.name);
-
-        const detectedCurrency = detectStatementCurrency(text);
-        const fileCurrency = detectedCurrency || 'EUR';
-        setCurrency(fileCurrency);
-        localStorage.setItem('cashpilot_statement_currency', fileCurrency);
+        const detectedCurrency = detectStatementCurrency(text) || 'EUR';
+        if (detectedCurrency && detectedCurrency !== currency) {
+          setCurrency(detectedCurrency);
+        }
 
         detectedBankName = detectedBank !== 'Compte Courant' ? detectedBank : fileDetection.bankName;
         detectedAccountName = detectedBankName ? `${detectedBankName} - Compte Courant` : fileDetection.accountName;
 
-        extractedTxs = parsedTxs.map((t, idx) => ({
-          ...t,
-          id: `csv_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
-          account: detectedAccountName,
-          bankName: detectedBankName
-        }));
+        // Extraction stricte : TOUTES les colonnes inutiles de la banque sont supprimées
+        const cleanRows = extractCleanBankStatementRows(text);
+
+        if (cleanRows.length === 0) {
+          setNotification({
+            type: 'info',
+            message: "Aucune transaction exploitable n'a été détectée dans ce fichier CSV."
+          });
+          setIsProcessingFile(false);
+          setFileStatusMessage(null);
+          return;
+        }
+
+        // --- 2. NOUVELLE FONCTIONNALITÉ UI : INDICATEUR DE CHARGEMENT & CHRONOMÈTRE ---
+        setIsAiAnalyzing(true);
+        setAiAnalysisSeconds(0);
+        setFileStatusMessage(`L'IA Gemini 3.8 Flash analyse vos ${cleanRows.length} opérations en lot...`);
+
+        // Démarrage du chronomètre
+        const startTime = performance.now();
+        if (aiTimerRef.current) clearInterval(aiTimerRef.current);
+        aiTimerRef.current = setInterval(() => {
+          setAiAnalysisSeconds(prev => parseFloat((prev + 0.1).toFixed(1)));
+        }, 100);
+
+        try {
+          let aiResults: any[] = [];
+          try {
+            // --- 3. APPEL CLOUD FUNCTION SÉCURISÉE (analyzeBankStatement) ---
+            const analyzeBankStatementFn = httpsCallable(functions, 'analyzeBankStatement');
+            const aiResponse = await analyzeBankStatementFn({
+              transactions: cleanRows.map(r => ({
+                index: r.index,
+                date: r.date,
+                rawLabel: r.rawLabel,
+                amount: r.amount
+              }))
+            });
+            const aiData = aiResponse.data as any;
+            aiResults = Array.isArray(aiData?.results) ? aiData.results : [];
+          } catch (cloudFnErr: any) {
+            console.warn("Cloud function analyzeBankStatement non disponible, audit direct Gemini 3.8 Flash :", cloudFnErr);
+            aiResults = await batchAuditStatementWithGemini(
+              cleanRows.map(r => ({
+                index: r.index,
+                date: r.date,
+                rawLabel: r.rawLabel,
+                amount: r.amount
+              })),
+              (processed, total) => {
+                setFileStatusMessage(`Audit IA intégral en cours : ${processed}/${total} opérations analysées par Gemini 3.8 Flash...`);
+              }
+            );
+          }
+
+          // Arrêt du chronomètre
+          if (aiTimerRef.current) {
+            clearInterval(aiTimerRef.current);
+            aiTimerRef.current = null;
+          }
+          const totalDurationSec = ((performance.now() - startTime) / 1000).toFixed(2);
+
+          const resultMap = new Map<number, any>();
+          aiResults.forEach(item => {
+            if (typeof item.index === 'number') {
+              resultMap.set(item.index, item);
+            }
+          });
+
+          // Enregistrement des statistiques pour affichage permanent du chronomètre UI
+          setAiAnalysisStats({
+            totalCount: cleanRows.length,
+            executionTimeSeconds: totalDurationSec,
+            timestamp: new Date()
+          });
+
+          // Reconstitution des opérations avec les données d'audit de Gemini 3.8 Flash
+          extractedTxs = cleanRows.map((row, idx) => {
+            const ai = resultMap.get(row.index) || resultMap.get(idx);
+            const merchantName = ai?.merchantName || cleanMerchantDescription(row.rawLabel);
+            const rawCat = ai?.category || (row.amount > 0 ? 'Revenus' : 'Charges variables courantes');
+            const isSub = Boolean(ai?.isSubscription);
+            
+            const isPositive = Number(row.amount) > 0;
+            // RÈGLE COMPTABLE ABSOLUE : Un montant positif est TOUJOURS un flux INCOME (Revenu/Encaissement)
+            const flow: FlowType = isPositive ? 'INCOME' : (rawCat === 'Charges fixes' ? 'FIXED_EXPENSE' : 'VARIABLE_EXPENSE');
+
+            let category = rawCat;
+            if (isPositive) {
+              const rawUp = (row.rawLabel || '').toUpperCase();
+              if (
+                rawUp.includes('VIR') && (
+                  rawUp.includes('NAYSSA') || rawUp.includes('NAISTABA') || rawUp.includes('DRAME') ||
+                  rawUp.includes('EL HANI') || rawUp.includes('WERO') || rawUp.includes('PAYLIB') ||
+                  rawUp.includes('LE BEAUF') || rawUp.includes('REVOLUT') || rawUp.includes('PROCHE')
+                )
+              ) {
+                category = 'Virement Reçu (Proches)';
+              } else if (category === 'Virements Famille & Proches' || category === 'Charges variables courantes' || category === 'Charges fixes' || category === 'Dépenses de confort') {
+                category = 'Virement Reçu (Proches)';
+              }
+            } else {
+              const rawUp = (row.rawLabel || '').toUpperCase();
+              if (
+                rawUp.includes('VIR') && (
+                  rawUp.includes('NAYSSA') || rawUp.includes('NAISTABA') || rawUp.includes('DRAME') ||
+                  rawUp.includes('EL HANI') || rawUp.includes('WERO') || rawUp.includes('PAYLIB') ||
+                  rawUp.includes('LE BEAUF') || rawUp.includes('REVOLUT') || rawUp.includes('M. KOUROUFIA')
+                ) && !rawUp.includes('LOYER')
+              ) {
+                category = 'Virements Famille & Proches';
+              }
+            }
+
+            const dayOfMonth = row.date ? parseInt(row.date.split('-')[2], 10) : undefined;
+
+            return {
+              id: `csv_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+              date: row.date,
+              description: merchantName,
+              rawLabel: row.rawLabel,
+              cleanLabel: merchantName,
+              amount: row.amount,
+              flowType: flow,
+              category,
+              isSubscription: isSub,
+              subscriptionDay: isSub ? dayOfMonth : undefined,
+              confidence: 'high' as const,
+              account: detectedAccountName,
+              bankName: detectedBankName,
+              status: flow === 'SAVINGS_TRANSFER' ? ('Internal Transfer' as const) : ('Reconciled' as const)
+            };
+          });
+
+        } catch (aiErr: any) {
+          if (aiTimerRef.current) {
+            clearInterval(aiTimerRef.current);
+            aiTimerRef.current = null;
+          }
+          console.error("Erreur Cloud Function analyzeBankStatement:", aiErr);
+          throw new Error("Erreur Cloud Function Gemini : " + (aiErr.message || 'Échec de l\'analyse IA.'));
+        } finally {
+          setIsAiAnalyzing(false);
+        }
+
       } else {
-        // PDF or Image Upload to Firebase Cloud Function (Gemini Multi-Account extraction)
-        setFileStatusMessage("Téléversement sécurisé vers Firebase Storage...");
-        const storageRef = ref(storage, `users/${accountId}/uploads/statements/${Date.now()}_${file.name}`);
-        await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(storageRef);
+        // Fast direct multimodal analysis with Gemini 3.8 Flash (100% Free, zero server lag)
+        setFileStatusMessage("Analyse directe et intelligente par Gemini 3.8 Flash (ultra-rapide)...");
+        let directSuccess = false;
 
-        setFileStatusMessage("Analyse OCR et détection intelligente du compte par l'IA...");
-        const analyzeDocument = httpsCallable(functions, 'analyzeDocument');
-        const response = await analyzeDocument({ fileUrl: url, fileType: 'bank_statement', mimeType: file.type });
-        const result = response.data as any;
+        try {
+          const directResult = await extractBankStatementDirectly(file);
+          if (directResult && directResult.transactions && directResult.transactions.length > 0) {
+            detectedBankName = directResult.bankName || 'Banque';
+            detectedAccountName = directResult.accountName || `${detectedBankName} - ${directResult.accountType || 'Compte'}`;
+            const fileCurrency = directResult.currency || 'EUR';
+            if (fileCurrency && fileCurrency !== currency) {
+              setCurrency(fileCurrency);
+            }
 
-        if (result.success && result.data) {
-          detectedBankName = result.data.bankName || 'Banque';
-          detectedAccountName = result.data.accountName || `${detectedBankName} - ${result.data.accountType || 'Compte'}`;
-
-          const detectedCurrency = detectStatementCurrency(result.data.currency || result.data.rawText || file.name);
-          const fileCurrency = detectedCurrency || 'EUR';
-          setCurrency(fileCurrency);
-          localStorage.setItem('cashpilot_statement_currency', fileCurrency);
-
-          if (result.data.transactions) {
-            extractedTxs = result.data.transactions.map((t: any, i: number) => {
+            extractedTxs = directResult.transactions.map((t: any, i: number) => {
               const amt = Number(t.amount) || 0;
-              const desc = t.description || t.label || 'Opération';
+              const desc = t.cleanLabel || t.rawLabel || 'Opération';
               const smart = smartCategorizeTransaction(desc, amt, t.date);
               const cat = (t.category && t.category !== 'Autre') ? t.category : smart.category;
               const flow = t.flowType || (cat === smart.category ? smart.flowType : classifyFlowType(cat, amt, desc));
               return {
-                id: `pdf_${Date.now()}_${i}`,
+                id: `direct_${Date.now()}_${i}`,
                 date: t.date || new Date().toISOString().substring(0, 10),
                 description: desc,
+                rawLabel: t.rawLabel || desc,
+                cleanLabel: desc,
                 amount: amt,
                 flowType: flow,
                 category: cat,
-                isSubscription: smart.isSubscription,
+                isSubscription: t.isSubscription !== undefined ? t.isSubscription : smart.isSubscription,
                 subscriptionDay: smart.subscriptionDay,
-                confidence: smart.confidence,
+                confidence: 'high' as const,
                 account: detectedAccountName,
                 bankName: detectedBankName
               };
             });
+            directSuccess = true;
+          }
+        } catch (directErr: any) {
+          console.warn("Échec extraction directe Gemini, bascule vers Cloud Function :", directErr);
+        }
+
+        if (!directSuccess) {
+          // Fallback to Cloud Function if direct Gemini extraction is unavailable
+          setFileStatusMessage("Téléversement sécurisé vers Firebase Storage...");
+          const storageRef = ref(storage, `users/${accountId}/uploads/statements/${Date.now()}_${file.name}`);
+          await uploadBytes(storageRef, file);
+          const url = await getDownloadURL(storageRef);
+
+          setFileStatusMessage("Analyse OCR et détection intelligente du compte par l'IA...");
+          const analyzeDocument = httpsCallable(functions, 'analyzeDocument');
+          const response = await analyzeDocument({ fileUrl: url, fileType: 'bank_statement', mimeType: file.type });
+          const result = response.data as any;
+
+          if (result.success && result.data) {
+            detectedBankName = result.data.bankName || 'Banque';
+            detectedAccountName = result.data.accountName || `${detectedBankName} - ${result.data.accountType || 'Compte'}`;
+
+            const detectedCurrency = detectStatementCurrency(result.data.currency || result.data.rawText || file.name);
+            const fileCurrency = detectedCurrency || 'EUR';
+            if (fileCurrency && fileCurrency !== currency) {
+              setCurrency(fileCurrency);
+            }
+
+            if (result.data.transactions) {
+              extractedTxs = result.data.transactions.map((t: any, i: number) => {
+                const amt = Number(t.amount) || 0;
+                const desc = t.description || t.label || 'Opération';
+                const smart = smartCategorizeTransaction(desc, amt, t.date);
+                const cat = (t.category && t.category !== 'Autre') ? t.category : smart.category;
+                const flow = t.flowType || (cat === smart.category ? smart.flowType : classifyFlowType(cat, amt, desc));
+                return {
+                  id: `pdf_${Date.now()}_${i}`,
+                  date: t.date || new Date().toISOString().substring(0, 10),
+                  description: desc,
+                  rawLabel: t.rawLabel || desc,
+                  cleanLabel: desc,
+                  amount: amt,
+                  flowType: flow,
+                  category: cat,
+                  isSubscription: smart.isSubscription,
+                  subscriptionDay: smart.subscriptionDay,
+                  confidence: smart.confidence,
+                  account: detectedAccountName,
+                  bankName: detectedBankName
+                };
+              });
+            }
           }
         }
       }
@@ -1280,7 +1760,7 @@ export const BankStatements: React.FC = () => {
         return;
       }
 
-      // Check Duplicates against existing transactions (en ignorant les anciennes transactions corrompues dont le libellé était une date)
+      // Check Duplicates against existing transactions
       setFileStatusMessage("Vérification des doublons...");
       const validExistingTxs = bankTransactions.filter(t => 
         !/^\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?$/.test(t.description)
@@ -1298,49 +1778,10 @@ export const BankStatements: React.FC = () => {
         return;
       }
 
-      // 8b. Catégorisation et audit automatique par IA Générative Google Gemini
-      const txsNeedingAi = uniqueTxs.filter(t => t.category === 'Autre' || (t.amount > 0 && t.flowType === 'SAVINGS_TRANSFER'));
-      if (txsNeedingAi.length > 0) {
-        setFileStatusMessage(`Analyse & Catégorisation IA par Google Gemini (${txsNeedingAi.length} opérations)...`);
-        try {
-          const aiResults = await auditAndEnrichTransactionsWithGemini(txsNeedingAi);
-          const aiResultMap = new Map(aiResults.map(r => [r.id, r]));
-          
-          let aiCount = 0;
-          uniqueTxs.forEach(tx => {
-            const ai = aiResultMap.get(tx.id);
-            if (ai && CATEGORIES.includes(ai.category)) {
-              tx.category = ai.category;
-              tx.flowType = ai.flowType;
-              if (ai.cleanDesc) tx.description = ai.cleanDesc;
-              tx.confidence = 'high';
-              tx.aiStatus = 'gemini_enhanced';
-              aiCount++;
-            }
-          });
-          if (aiCount > 0) {
-            console.log(`Gemini a automatiquement audité et catégorisé ${aiCount} opérations lors de l'import.`);
-          }
-        } catch (geminiErr) {
-          console.warn("Analyse Gemini automatique ignorée ou indisponible lors de l'import:", geminiErr);
-        }
-      }
-
-      // Save Unique Transactions in Firestore batch
+      // Sauvegarde des transactions uniques dans Firestore batch
       setFileStatusMessage(`Sauvegarde de ${uniqueTxs.length} opérations pour "${detectedAccountName}"...`);
       const batch = writeBatch(db);
       const txRef = collection(db, `users/${accountId}/transactions`);
-
-      // Nettoyage automatique des anciennes opérations corrompues (où la date avait été prise pour libellé)
-      const corruptedOldDocs = bankTransactions.filter(t => 
-        (t.account === detectedAccountName || t.bankName === detectedBankName) && 
-        /^\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?$/.test(t.description)
-      );
-      if (corruptedOldDocs.length > 0) {
-        corruptedOldDocs.forEach(oldTx => {
-          batch.delete(doc(db, `users/${accountId}/transactions`, oldTx.id));
-        });
-      }
 
       uniqueTxs.forEach(tx => {
         const newDoc = doc(txRef);
@@ -1357,12 +1798,12 @@ export const BankStatements: React.FC = () => {
           direction: tx.amount > 0 ? 'credit' : 'debit',
           category: tx.category,
           flowType: tx.flowType,
-          nature: tx.flowType === 'FIXED_EXPENSE' ? 'fixe' : tx.flowType === 'VARIABLE_EXPENSE' ? 'variable' : 'autre',
+          nature: tx.flowType === 'FIXED_EXPENSE' ? 'fixe' : (tx.flowType === 'INCOME' ? 'revenu' : 'variable'),
           isSubscription: Boolean(tx.isSubscription),
           subscriptionDay: tx.subscriptionDay || null,
           accountName: tx.account || detectedAccountName || 'Compte Principal',
           bankName: tx.bankName || detectedBankName || 'Banque',
-          aiStatus: 'completed',
+          aiStatus: 'gemini_analyzed',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -1370,9 +1811,17 @@ export const BankStatements: React.FC = () => {
 
       await batch.commit();
 
+      // Génération automatique du rapport d'audit approfondi IA
+      try {
+        const fullAudit = await generateDeepAuditReport(uniqueTxs, detectedCurrency);
+        setDeepAuditReport(fullAudit);
+      } catch (auditErr) {
+        console.warn("Génération automatique de l'audit approfondi ignorée :", auditErr);
+      }
+
       setNotification({
         type: 'success',
-        message: `Import réussi : ${uniqueTxs.length} opérations rattachées à "${detectedAccountName}" (${duplicatesCount} doublons ignorés).`
+        message: `Import réussi : ${uniqueTxs.length} opérations auditées et enregistrées (${duplicatesCount} doublons ignorés).`
       });
       setIsUploading(false);
     } catch (err: any) {
@@ -1383,1834 +1832,726 @@ export const BankStatements: React.FC = () => {
       });
     } finally {
       setIsProcessingFile(false);
+      setIsAiAnalyzing(false);
       setFileStatusMessage(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-28 md:pb-12 max-w-7xl mx-auto p-4 md:p-8">
+  const categoryStats = useMemo(() => {
+    const totals: Record<string, number> = {};
+    const scopedTxs = selectedAccount === 'ALL'
+      ? monthScopedTransactions
+      : monthScopedTransactions.filter(t => t.account === selectedAccount);
       
-      {/* Toast Notification Banner */}
-      {notification && (
-        <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-lg transition-all animate-in slide-in-from-top-2 ${
-          notification.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' :
-          notification.type === 'error' ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' :
-          'bg-primary/10 border-primary/30 text-primary'
-        }`}>
-          <div className="flex items-center gap-3">
-            <Sparkles className="w-5 h-5 flex-shrink-0" />
-            <span className="text-sm font-medium">{notification.message}</span>
-          </div>
-          <button onClick={() => setNotification(null)} className="p-1 hover:opacity-75">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+    scopedTxs.forEach(t => {
+      const isDebit = 
+        t.type === 'debit' ||
+        t.direction === 'debit' ||
+        (typeof t.rawAmount === 'number' && t.rawAmount < 0) ||
+        (t.rawAmount === undefined && typeof t.amount === 'number' && t.amount < 0) ||
+        t.flowType === 'FIXED_EXPENSE' ||
+        t.flowType === 'VARIABLE_EXPENSE';
 
-      {/* Offline Alert Banner */}
-      {!isOnline && (
-        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs flex items-center justify-between shadow-sm animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
-            <span>
-              <strong>Connexion Internet interrompue.</strong> Votre navigateur est hors-ligne (ce qui provoque l'écran du dinosaure Chrome). Dès que la connexion est rétablie, la page se synchronise automatiquement.
-            </span>
-          </div>
-          <Button size="sm" variant="ghost" onClick={() => window.location.reload()} className="text-xs h-7 text-amber-500 hover:bg-amber-500/20">
-            Actualiser
-          </Button>
-        </div>
-      )}
+      // Seules les dépenses effectives (débits réels, hors virements internes et épargne) entrent dans les dépenses par catégorie
+      if (!isDebit) return;
+      if (t.isInternalTransfer || t.flowType === 'SAVINGS_TRANSFER') return;
 
-      {/* Header Title & Top Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse" />
-            <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-              Gestion de Trésorerie Multi-Comptes & Audit
-            </span>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap mt-1">
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-foreground">
-              Relevés Bancaires
-            </h1>
-            {reconciliation.isReconciled && (
-              <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 bg-emerald-500/10 font-bold px-2.5 py-0.5 text-xs">
-                ✓ Relevé équilibré
-              </Badge>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gérez vos différents comptes bancaires au sein d'un même mois avec classification et neutralisation de l'épargne.
-          </p>
-        </div>
+      const amt = Math.abs(Number(t.amount) || 0);
+      const cat = t.category || 'Autres';
+      totals[cat] = (totals[cat] || 0) + amt;
+    });
+    const categories = Object.entries(totals)
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total);
+      
+    return { categories };
+  }, [monthScopedTransactions, selectedAccount]);
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Currency Pill Toggle */}
-          <div className="flex items-center bg-secondary/60 dark:bg-white/[0.04] p-1 rounded-xl border border-border/60">
-            <button
-              type="button"
-              onClick={() => {
-                setCurrency('EUR');
-                localStorage.setItem('cashpilot_statement_currency', 'EUR');
-              }}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
-                currency === 'EUR'
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
+  return (
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans pb-20 relative">
+      {/* 1. En-tête et Filtre Global Épuré */}
+      <header className="flex justify-between items-center p-4 bg-white dark:bg-gray-800 shadow-sm z-10 sticky top-0">
+        <div className="flex items-center space-x-2">
+          {/* Sélecteur de mois à fort contraste CSS (accessible et lisible sur PC et mobile) */}
+          <div className="relative flex items-center">
+            <select 
+              value={selectedMonth} 
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="appearance-none bg-gray-100 hover:bg-gray-200/80 dark:bg-gray-700 dark:hover:bg-gray-650 text-gray-900 dark:text-gray-100 font-bold text-base sm:text-lg pl-3.5 pr-8 py-2 rounded-2xl border border-gray-200 dark:border-gray-600 shadow-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-colors"
             >
-              EUR (€)
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setCurrency('CHF');
-                localStorage.setItem('cashpilot_statement_currency', 'CHF');
-              }}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
-                currency === 'CHF'
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              CHF (CHF)
-            </button>
-          </div>
-
-          {/* Adjust balances button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setEditBalanceForm({
-                initialBalance: currentMonthBalances.initial ? String(currentMonthBalances.initial) : '',
-                closingBalance: currentMonthBalances.closing ? String(currentMonthBalances.closing) : ''
-              });
-              setIsEditBalanceModalOpen(true);
-            }}
-            className="text-xs border-border/80 flex items-center gap-1.5 shadow-sm"
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Ajuster soldes</span>
-          </Button>
-
-          {/* Virement & Family Rules button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsVirementRulesModalOpen(true)}
-            className="text-xs border-border/80 flex items-center gap-1.5 shadow-sm hover:border-primary/50 text-foreground"
-            title="Configurer les règles de reconnaissance pour vos comptes et vos proches"
-          >
-            <Users className="w-3.5 h-3.5 text-primary" />
-            <span>Règles Virements & Famille</span>
-          </Button>
-
-          {/* Delete statement button */}
-          {monthScopedTransactions.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePurgeScope}
-              className="text-xs border-rose-500/30 text-rose-400 hover:bg-rose-500/10 flex items-center gap-1.5 shadow-sm"
-              title="Supprimer définitivement les relevés et opérations de cette période"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-              <span>Supprimer le relevé</span>
-            </Button>
-          )}
-
-          {/* Month Selector */}
-          {availableMonths.length > 0 && (
-            <div className="flex items-center gap-2 bg-card/80 dark:bg-[#10141e]/80 border border-border/80 dark:border-white/[0.08] rounded-xl px-3 py-1.5 shadow-sm">
-              <Calendar className="w-4 h-4 text-primary" />
-              <select
-                className="bg-transparent text-xs md:text-sm font-semibold outline-none text-foreground cursor-pointer"
-                value={selectedMonth}
-                onChange={e => setSelectedMonth(e.target.value)}
-              >
-                <option value="all">Toutes périodes</option>
-                {availableMonths.map(m => (
-                  <option key={m} value={m} className="dark:bg-[#10141e]">{formatMonthLabel(m)}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <Button 
-            variant="secondary"
-            onClick={() => setIsUploading(!isUploading)}
-            className="flex items-center gap-2 border border-border/40 shadow-sm"
-          >
-            <Upload className="w-4 h-4 text-primary" />
-            Importer un relevé
-          </Button>
-
-          <Button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-          >
-            <Plus className="w-4 h-4" />
-            Ajouter une opération
-          </Button>
-        </div>
-      </div>
-
-      {/* MULTI-ACCOUNTS BREAKDOWN & SELECTOR BAR */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Landmark className="w-4 h-4 text-primary" />
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Comptes Bancaires Actifs
-            </span>
-          </div>
-          {selectedAccount !== 'ALL' && (
-            <button
-              onClick={() => setSelectedAccount('ALL')}
-              className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
-            >
-              Afficher tous les comptes (Consolidé)
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-none">
-          {/* Consolidated button */}
-          <button
-            onClick={() => setSelectedAccount('ALL')}
-            className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 flex-shrink-0 border ${
-              selectedAccount === 'ALL'
-                ? 'bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/20'
-                : 'bg-card/80 dark:bg-white/[0.03] text-muted-foreground hover:text-foreground border-border/60'
-            }`}
-          >
-            <Wallet className="w-3.5 h-3.5" />
-            <span>Tous les comptes (Consolidé)</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-              selectedAccount === 'ALL' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
-            }`}>
-              {monthScopedTransactions.length}
-            </span>
-          </button>
-
-          {/* Account Pills */}
-          {accountSummaries.map(acc => {
-            const isSelected = selectedAccount === acc.accountName;
-            const isPos = acc.netCashFlow >= 0;
-
-            return (
-              <button
-                key={acc.accountName}
-                onClick={() => setSelectedAccount(acc.accountName)}
-                className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 flex-shrink-0 border ${
-                  isSelected
-                    ? 'bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/20'
-                    : 'bg-card/80 dark:bg-white/[0.03] text-foreground hover:border-primary/40 border-border/60'
-                }`}
-              >
-                <Landmark className="w-3.5 h-3.5 opacity-75" />
-                <span className="max-w-[150px] truncate">{acc.accountName}</span>
-                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-lg ${
-                  isSelected
-                    ? 'bg-primary-foreground/20 text-primary-foreground'
-                    : isPos ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
-                }`}>
-                  {formatCurrency(acc.netCashFlow, { showSign: true, decimals: 0 })}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Clean Minimalist Upload Dropzone */}
-      {isUploading && (
-        <Card 
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDragging(false);
-            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-              handleFileUpload(e.dataTransfer.files[0]);
-            }
-          }}
-          className={`p-8 border-dashed border-2 transition-all duration-300 rounded-2xl relative shadow-sm text-center ${
-            isDragging 
-              ? 'border-primary bg-primary/10 ring-2 ring-primary/30 scale-[1.01]' 
-              : 'border-primary/40 hover:border-primary/60 bg-card/60 backdrop-blur-md'
-          }`}
-        >
-          <button 
-            onClick={() => {
-              setIsUploading(false);
-              setIsDragging(false);
-            }}
-            className="absolute top-4 right-4 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-            title="Fermer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-
-          <div 
-            className="flex flex-col items-center justify-center gap-3 py-4 cursor-pointer group"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <div className={`p-4 rounded-2xl transition-all duration-300 shadow-inner ${
-              isDragging
-                ? 'bg-primary/20 text-primary scale-110 ring-2 ring-primary/40'
-                : 'bg-primary/10 text-primary ring-1 ring-primary/20 group-hover:scale-105 group-hover:bg-primary/15'
-            }`}>
-              {isProcessingFile ? (
-                <Loader2 className="w-8 h-8 animate-spin" />
-              ) : (
-                <Upload className="w-8 h-8 animate-bounce" />
-              )}
-            </div>
-
-            <div>
-              <p className="text-base font-bold text-foreground">
-                {isProcessingFile ? fileStatusMessage : "Glissez-déposez votre relevé bancaire (PDF, CSV, image)"}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                L'IA analyse le document, identifie l'établissement bancaire et déduplique automatiquement
-              </p>
-            </div>
-
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              accept=".csv,.pdf,text/csv,application/pdf,image/*"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  handleFileUpload(e.target.files[0]);
-                }
-              }} 
-            />
-
-            <Button 
-              size="sm" 
-              variant="outline" 
-              disabled={isProcessingFile}
-              className="mt-2 pointer-events-none font-semibold text-xs border-primary/30 group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300"
-            >
-              {isProcessingFile ? "Extraction en cours..." : "Sélectionner un fichier"}
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* Top Metrics Strip (Dynamic: Consolidated or Scoped to Selected Account) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Inflows */}
-        <Card className="glass-card p-5 border border-border/60 hover:border-emerald-500/40 transition-all">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Revenus {selectedAccount !== 'ALL' ? `(${selectedAccount})` : 'Réels'}
-              </span>
-              <KpiInfoTooltip type="income" amount={metrics.income} accountName={selectedAccount} />
-            </div>
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500">
-              <ArrowDownLeft className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-black font-mono tracking-normal text-foreground">
-              {formatCurrency(metrics.income, { showSign: true })}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {selectedAccount === 'ALL' ? 'Total des encaissements consolidés' : `Encaissements sur ${selectedAccount}`}
-            </p>
-          </div>
-        </Card>
-
-        {/* Real Outflows */}
-        <Card className="glass-card p-5 border border-border/60 hover:border-rose-500/40 transition-all">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Dépenses Réelles
-              </span>
-              <KpiInfoTooltip
-                type="expenses"
-                amount={metrics.realExpenses}
-                fixedAmount={metrics.fixed}
-                variableAmount={metrics.variable}
-              />
-            </div>
-            <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-500">
-              <ArrowUpRight className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-black font-mono tracking-normal text-rose-500">
-              {formatCurrency(-metrics.realExpenses, { showSign: true })}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Fixes ({formatCurrency(metrics.fixed, { decimals: 0 })}) + Variables ({formatCurrency(metrics.variable, { decimals: 0 })})
-            </p>
-          </div>
-        </Card>
-
-        {/* Savings & Investments (Option 1: Real Savings Placements) */}
-        <Card className="glass-card p-5 border border-border/60 hover:border-purple-500/40 transition-all">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Épargne & Placements
-              </span>
-              <KpiInfoTooltip type="savings" amount={metrics.savings} />
-            </div>
-            <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500">
-              <ArrowLeftRight className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-black font-mono tracking-normal text-purple-500">
-              {formatCurrency(metrics.savings, { showSign: false })}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {metrics.savings > 0
-                ? 'Placé sur livrets & investissements'
-                : 'Aucun versement sur livret dédié'}
-            </p>
-          </div>
-        </Card>
-
-        {/* Net Cash Flow / Reste à Vivre Réel */}
-        <Card className="glass-card p-5 border border-border/60 hover:border-primary/40 transition-all">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {monthScopedTransactions.length > 0 && (currentMonthBalances.initial !== 0 || currentMonthBalances.closing !== 0)
-                  ? `Solde Disponible ${selectedAccount !== 'ALL' ? `(${selectedAccount})` : '(Relevé)'}`
-                  : `Reste à Vivre ${selectedAccount !== 'ALL' ? selectedAccount : 'Global'}`}
-              </span>
-              <KpiInfoTooltip
-                type="resteAVivre"
-                amount={
-                  monthScopedTransactions.length === 0
-                    ? 0
-                    : (currentMonthBalances.initial !== 0 || currentMonthBalances.closing !== 0)
-                      ? (currentMonthBalances.closing || reconciliation.calculatedBalance)
-                      : metrics.resteAVivre
-                }
-              />
-            </div>
-            <div className={`p-2.5 rounded-xl ${
-              monthScopedTransactions.length === 0
-                ? 'bg-muted/30 text-muted-foreground'
-                : (currentMonthBalances.initial !== 0 || currentMonthBalances.closing !== 0
-                    ? (currentMonthBalances.closing || reconciliation.calculatedBalance) >= 0
-                    : metrics.resteAVivre >= 0)
-                  ? 'bg-emerald-500/10 text-emerald-500'
-                  : 'bg-rose-500/10 text-rose-500'
-            }`}>
-              <Sparkles className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className={`text-2xl font-black font-mono tracking-normal ${
-              monthScopedTransactions.length === 0
-                ? 'text-foreground'
-                : (currentMonthBalances.initial !== 0 || currentMonthBalances.closing !== 0
-                    ? (currentMonthBalances.closing || reconciliation.calculatedBalance) >= 0
-                    : metrics.resteAVivre >= 0)
-                  ? 'text-emerald-500'
-                  : 'text-rose-500'
-            }`}>
-              {monthScopedTransactions.length === 0
-                ? '0,00 €'
-                : (currentMonthBalances.initial !== 0 || currentMonthBalances.closing !== 0)
-                  ? formatCurrency(currentMonthBalances.closing || reconciliation.calculatedBalance, { showSign: true })
-                  : formatCurrency(metrics.resteAVivre, { showSign: true })}
-            </div>
-            <div className="mt-1.5 flex flex-col gap-0.5">
-              {monthScopedTransactions.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Aucune opération enregistrée sur cette période
-                </p>
-              ) : (currentMonthBalances.initial !== 0 || currentMonthBalances.closing !== 0) ? (
-                <>
-                  <div className="text-xs font-medium text-muted-foreground flex items-center justify-between">
-                    <span>Flux net de la période :</span>
-                    <span className={`font-mono font-bold ${reconciliation.calculatedBalance - currentMonthBalances.initial >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {formatCurrency(reconciliation.calculatedBalance - currentMonthBalances.initial, { showSign: true })}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground/75">
-                    Solde initial ({formatCurrency(currentMonthBalances.initial)}) + Flux net ({formatCurrency(reconciliation.calculatedBalance - currentMonthBalances.initial, { showSign: true })}) = {formatCurrency(reconciliation.calculatedBalance)}
-                  </p>
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Solde net disponible : {formatCurrency(metrics.netCashFlow, { showSign: true, decimals: 0 })}
-                </p>
-              )}
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Fortuneo / Inter-compte Summary Banner */}
-      {(metrics.fortuneoSent > 0 || metrics.fortuneoReceived > 0) && (
-        <Card className="glass-card p-4 md:p-5 border border-cyan-500/30 bg-gradient-to-r from-cyan-950/20 via-background to-blue-950/20 rounded-2xl shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3.5">
-              <div className="p-2.5 rounded-2xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex-shrink-0 mt-0.5">
-                <ArrowLeftRight className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-foreground">
-                    Trésorerie & Virements Fortuneo
-                  </h3>
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                    Fidélité Relevé
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  L'argent transféré vers Fortuneo est décompté en dépense/sortie réelle sur votre compte. Lors de l'import futur de votre relevé Fortuneo, l'application effectuera le croisement automatique de patrimoine.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-              <div className="px-3.5 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-right">
-                <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Envoyé vers Fortuneo</div>
-                <div className="text-sm md:text-base font-bold font-mono text-rose-400">
-                  {formatCurrency(-metrics.fortuneoSent, { showSign: true })}
-                </div>
-              </div>
-
-              {metrics.fortuneoReceived > 0 && (
-                <div className="px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-right">
-                  <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Reçu de Fortuneo</div>
-                  <div className="text-sm md:text-base font-bold font-mono text-emerald-400">
-                    {formatCurrency(metrics.fortuneoReceived, { showSign: true })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Abonnements & Charges Récurrentes Détectés Banner */}
-      <Card className="glass-card p-5 border border-cyan-500/20 bg-gradient-to-r from-cyan-950/20 via-background to-blue-950/20 rounded-2xl shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div className="p-2.5 rounded-2xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex-shrink-0 mt-0.5">
-              <RotateCcw className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-foreground">
-                  Abonnements & Prélèvements Récurrents Détectés
-                </h3>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                  {subscriptionSummary.count} actif{subscriptionSummary.count > 1 ? 's' : ''}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                L'IA analyse vos libellés et extrait automatiquement vos services récurrents avec leur jour de prélèvement.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground font-medium">Coût Mensuel</div>
-              <div className="text-lg font-extrabold text-cyan-400 font-mono">
-                {formatCurrency(subscriptionSummary.totalMonthly, { showSign: false })}
-              </div>
-            </div>
-
-            <div className="h-8 w-px bg-border/60 hidden sm:block" />
-
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground font-medium">Projection Annuelle</div>
-              <div className="text-lg font-extrabold text-foreground font-mono">
-                {formatCurrency(subscriptionSummary.totalAnnual, { showSign: false })}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                size="sm"
-                onClick={() => {
-                  setSelectedSubscriptionTx(subscriptionSummary.items[0] || null);
-                  setIsOptimizerDrawerOpen(true);
-                }}
-                className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 shadow-md shadow-indigo-500/25 transition-all"
-                title="Trouver les forfaits et abonnements concurrents les moins chers"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Optimiser avec l'IA (Tarifs moins chers)</span>
-              </Button>
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setSelectedFilter(selectedFilter === 'SUBSCRIPTION' ? 'ALL' : 'SUBSCRIPTION')}
-                className={`text-xs border-cyan-500/30 hover:bg-cyan-500/10 transition-colors ${
-                  selectedFilter === 'SUBSCRIPTION' ? 'bg-cyan-500/20 text-cyan-300' : 'text-foreground'
-                }`}
-              >
-                {selectedFilter === 'SUBSCRIPTION' ? 'Afficher tout' : 'Filtrer ces abonnements'}
-              </Button>
-
-              {subscriptionSummary.count > 0 && (
-                <button
-                  onClick={() => setShowSubscriptionDetails(!showSubscriptionDetails)}
-                  className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-                  title={showSubscriptionDetails ? "Masquer la liste" : "Afficher la liste"}
+              <option value="all" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 py-1 font-semibold">
+                Tous les mois
+              </option>
+              {availableMonths.map(m => (
+                <option 
+                  key={m} 
+                  value={m}
+                  className="bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 py-1 font-semibold"
                 >
-                  {showSubscriptionDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </button>
-              )}
-            </div>
+                  {formatMonthLabel(m)}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500 dark:text-gray-400" />
           </div>
         </div>
+        <div className="flex items-center space-x-2">
+           <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="h-10 w-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg hover:bg-blue-700 transition active:scale-95 flex-shrink-0 cursor-pointer"
+              title="Importer un relevé bancaire (CSV ou PDF)"
+           >
+             <Plus size={18} strokeWidth={2.5}/>
+             <span className="sr-only">RB</span>
+           </button>
+        </div>
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          className="hidden" 
+          accept=".csv,.txt"
+          onChange={(e) => { if (e.target.files && e.target.files.length > 0) handleFileUpload(e.target.files[0]) }} 
+        />
+      </header>
 
-        {/* Subscription Chips Row when expanded */}
-        {showSubscriptionDetails && subscriptionSummary.count > 0 && (
-          <div className="mt-4 pt-4 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 animate-in fade-in">
-            {subscriptionSummary.items.map(sub => (
-              <div
-                key={sub.id}
-                onClick={() => handleOpenEditModal(sub)}
-                className="p-3 rounded-xl bg-card/60 dark:bg-white/[0.03] border border-border/60 hover:border-cyan-500/40 cursor-pointer transition-all flex flex-col justify-between group"
-                title="Cliquer pour modifier l'affectation"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 pr-2">
-                    <div className="text-xs font-bold text-foreground truncate group-hover:text-cyan-400 transition-colors">
-                      {sub.description}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5 font-medium">
-                      <Calendar className="w-3 h-3 text-cyan-400" />
-                      <span>
-                        {sub.subscriptionDay ? `Prélevé le ${sub.subscriptionDay}` : 'Date variable'}
-                      </span>
-                      <span className="opacity-40">•</span>
-                      <span className="truncate">{sub.account || 'Compte Principal'}</span>
-                    </div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <span className="text-xs font-bold font-mono text-cyan-400">
-                      {formatCurrency(Math.abs(sub.amount), { showSign: false })}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* Indicateur de chargement visuel avec chronomètre en direct lors de l'analyse IA */}
+        {isAiAnalyzing && (
+          <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-950/40 dark:via-indigo-950/40 dark:to-purple-950/40 border-2 border-indigo-500/40 dark:border-indigo-500/50 rounded-[1.8rem] p-5 shadow-lg shadow-indigo-500/10 transition-all animate-pulse">
+            <div className="flex items-center space-x-4">
+              <div className="relative flex items-center justify-center w-12 h-12 rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-500/30 flex-shrink-0">
+                <Loader2 className="w-6 h-6 animate-spin text-white" />
+                <Sparkles className="w-4 h-4 absolute -top-1 -right-1 text-amber-300 animate-bounce" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h4 className="font-bold text-gray-900 dark:text-white text-base flex items-center gap-2">
+                    <span>Audit & Catégorisation IA en cours</span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 font-mono font-semibold">
+                      Gemini 3.8 Flash
                     </span>
+                  </h4>
+                  <div className="flex items-center space-x-1.5 font-mono text-base font-extrabold text-indigo-600 dark:text-indigo-400 bg-white/80 dark:bg-gray-800/80 px-2.5 py-0.5 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                    <Clock size={14} className="animate-spin text-indigo-500" />
+                    <span>{aiAnalysisSeconds.toFixed(1)}s</span>
                   </div>
                 </div>
-
-                <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedSubscriptionTx(sub);
-                      setIsOptimizerDrawerOpen(true);
-                    }}
-                    className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 hover:underline"
-                  >
-                    <Sparkles className="w-3 h-3 text-indigo-400" />
-                    Trouver un meilleur prix
-                  </button>
-                  <span className="text-[10px] text-muted-foreground group-hover:text-foreground">Modifier ✎</span>
+                <p className="text-xs text-gray-600 dark:text-gray-300 mt-1.5">
+                  {fileStatusMessage || "Filtrage des 3 colonnes (Date, Libellé brut, Montant) et audit en lot par l'IA..."}
+                </p>
+                {/* Barre de progression visuelle */}
+                <div className="w-full bg-indigo-100 dark:bg-indigo-900/50 rounded-full h-2 mt-3 overflow-hidden">
+                  <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 h-2 rounded-full w-full animate-pulse"></div>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         )}
-      </Card>
 
-      {/* 2 Graphiques Synchronisés : Diagramme Sankey des Flux & Diagramme Circulaire des Dépenses */}
-      <BankFlowCharts
-        transactions={selectedAccount === 'ALL' ? monthScopedTransactions : monthScopedTransactions.filter(t => t.account === selectedAccount)}
-        selectedAccountName={selectedAccount === 'ALL' ? 'Tous les comptes (Consolidé)' : selectedAccount}
-        selectedMonthName={selectedMonth === 'all' ? 'Toutes périodes' : formatMonthLabel(selectedMonth)}
+        {/* Chronomètre & Résultat d'analyse IA une fois terminée */}
+        {aiAnalysisStats && !isAiAnalyzing && (
+          <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-green-50 dark:from-emerald-950/30 dark:via-teal-950/30 dark:to-green-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-[1.8rem] p-4 sm:p-5 shadow-sm flex items-start justify-between gap-3 transition-all">
+            <div className="flex items-start space-x-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-emerald-950 dark:text-emerald-200">
+                    ⏱️ Analyse IA terminée en <span className="font-mono text-emerald-600 dark:text-emerald-400 font-extrabold text-base">{aiAnalysisStats.executionTimeSeconds} secondes</span> !
+                  </span>
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 font-semibold font-mono">
+                    {aiAnalysisStats.totalCount} opérations
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium">
+                    Gemini 3.8 Flash
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80 mt-1 leading-relaxed">
+                  Colonnes inutiles éliminées (Date, Libellé brut et Montant conservés). Vrais noms nettoyés, 4 catégories comptables standardisées et abonnements isolés.
+                </p>
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                  <button 
+                    onClick={() => handleOpenDeepAudit()}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:opacity-95 text-white text-xs font-bold shadow-md shadow-emerald-600/20 active:scale-95 transition cursor-pointer"
+                  >
+                    <Sparkles size={14} className="text-amber-300" />
+                    <span>Consulter le Rapport d'Audit Approfondi IA</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button 
+              onClick={() => setAiAnalysisStats(null)}
+              className="text-emerald-700/60 dark:text-emerald-400/60 hover:text-emerald-900 dark:hover:text-emerald-200 p-1.5 rounded-lg hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30 transition flex-shrink-0"
+              title="Masquer"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* 2. Bloc 1 : Les KPI (Cartes cliquables) */}
+        <div className="flex space-x-3 overflow-x-auto pb-2 snap-x hide-scrollbar">
+           {/* Revenus */}
+           <div 
+             onClick={() => setSelectedFilter(selectedFilter === 'INCOME' ? 'ALL' : 'INCOME')}
+             className={`snap-start min-w-[120px] flex-1 p-3 rounded-3xl border transition-all cursor-pointer ${selectedFilter === 'INCOME' ? 'border-green-500 bg-green-50 dark:bg-green-900/20 shadow-md scale-[1.02]' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800'}`}
+           >
+             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center"><ArrowDownLeft size={12} className="mr-1 text-green-500"/> Revenus</div>
+             <div className="font-bold text-lg text-green-600 dark:text-green-400">{formatBankAmount(metrics.income, currency)}</div>
+           </div>
+           
+           {/* Dépenses */}
+           <div 
+             onClick={() => setSelectedFilter(selectedFilter === 'EXPENSE' ? 'ALL' : 'EXPENSE')}
+             className={`snap-start min-w-[120px] flex-1 p-3 rounded-3xl border transition-all cursor-pointer ${selectedFilter === 'EXPENSE' ? 'border-red-500 bg-red-50 dark:bg-red-900/20 shadow-md scale-[1.02]' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800'}`}
+           >
+             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center"><ArrowUpRight size={12} className="mr-1 text-red-500"/> Dépenses</div>
+             <div className="font-bold text-lg text-red-600 dark:text-red-400">{formatBankAmount(metrics.realExpenses, currency)}</div>
+           </div>
+
+           {/* Solde Disponible */}
+           <div 
+             onClick={() => setSelectedFilter(selectedFilter === 'ALL' ? 'SAVINGS' : 'ALL')}
+             className={`snap-start min-w-[120px] flex-1 p-3 rounded-3xl border transition-all cursor-pointer ${selectedFilter === 'ALL' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md scale-[1.02]' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800'}`}
+           >
+             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center"><Wallet size={12} className="mr-1 text-blue-500"/> Dispo</div>
+             <div className="font-bold text-lg text-gray-900 dark:text-white">{formatBankAmount(metrics.netCashFlow || 0, currency)}</div>
+           </div>
+        </div>
+
+        {/* Actions Rapides Épurées */}
+        <div className="flex space-x-2.5 overflow-x-auto pb-4 hide-scrollbar">
+          <button 
+            onClick={() => fileInputRef.current?.click()} 
+            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer"
+          >
+             <Upload size={16} className="text-blue-500" />
+             <span className="text-xs font-semibold">Importer RB</span>
+          </button>
+
+          <button 
+            onClick={() => setIsToolsSheetOpen(true)} 
+            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer"
+          >
+             <Layers size={16} className="text-orange-500" />
+             <span className="text-xs font-semibold">Outils</span>
+          </button>
+        </div>
+
+          {/* 3. Bloc 2 : Les Graphiques (Sélecteur de vue) */}
+          <div className="bg-white dark:bg-gray-800 rounded-[2rem] p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+           <MobileCharts 
+             metrics={metrics} 
+             categoryStats={categoryStats} 
+             onCategoryClick={(cat) => {
+               setSearchTerm(cat);
+               setTimeout(() => {
+                 document.getElementById('tx-list')?.scrollIntoView({ behavior: 'smooth' });
+               }, 50);
+             }}
+           />
+        </div>
+
+        {/* 4. Bloc 3 : Historique des Transactions */}
+        <div id="tx-list" className="space-y-4 pb-12">
+           {/* Filtres Rapides */}
+           <div className="flex space-x-2 overflow-x-auto pb-1 hide-scrollbar">
+             <button onClick={() => setSelectedFilter(selectedFilter === 'FIXED' ? 'ALL' : 'FIXED')} className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedFilter === 'FIXED' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-100 dark:border-gray-700'}`}>Fixes</button>
+             <button onClick={() => setSelectedFilter(selectedFilter === 'VARIABLE' ? 'ALL' : 'VARIABLE')} className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedFilter === 'VARIABLE' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-100 dark:border-gray-700'}`}>Variables</button>
+             
+             {/* Simple select dropdown for Category */}
+             <div className="relative">
+               <select 
+                 className="appearance-none px-4 py-2 pr-8 rounded-full text-sm font-medium whitespace-nowrap bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-100 dark:border-gray-700 outline-none cursor-pointer"
+                 onChange={(e) => {
+                   setSearchTerm(e.target.value === 'all' ? '' : e.target.value);
+                 }}
+                 value={CATEGORIES.includes(searchTerm) ? searchTerm : (searchTerm === '' ? 'all' : 'custom')}
+               >
+                 <option value="all">Catégories</option>
+                 {CATEGORIES.map(cat => (
+                   <option key={cat} value={cat}>{cat}</option>
+                 ))}
+               </select>
+               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+             </div>
+
+             {(searchTerm || selectedFilter !== 'ALL') && (
+               <button onClick={() => {setSearchTerm(''); setSelectedFilter('ALL');}} className="px-4 py-2 rounded-full text-sm font-medium bg-rose-50 text-rose-600 dark:bg-rose-900/20 whitespace-nowrap">Effacer</button>
+             )}
+           </div>
+
+           {/* Liste Verticale Epurée */}
+           <div className="bg-white dark:bg-gray-800 rounded-[2rem] shadow-sm border border-gray-100 dark:border-gray-800 divide-y divide-gray-50 dark:divide-gray-800/50">
+             {filteredTransactions.length === 0 ? (
+               <div className="p-10 text-center text-gray-400 font-medium">Aucune transaction trouvée</div>
+             ) : (
+               filteredTransactions.slice(0, 100).map(tx => (
+                 <div key={tx.id} onClick={() => handleOpenEditModal(tx)} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 active:scale-[0.98] transition-all cursor-pointer">
+                   <div className="flex items-center space-x-4 overflow-hidden">
+                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                        tx.flowType === 'INCOME' || tx.type === 'credit' 
+                          ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 border border-green-500/20' 
+                          : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 border border-red-500/20'
+                      }`}>
+                        {tx.flowType === 'INCOME' || tx.type === 'credit' 
+                          ? <ArrowDownLeft size={18} /> 
+                          : <ArrowUpRight size={18} />}
+                      </div>
+                     <div className="truncate">
+                       <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{formatDateFR(tx.date)}</span>
+                         
+                         {/* Badge de catégorie interactif (Tailwind) avec menu déroulant */}
+                         <div className="relative inline-block" onClick={e => e.stopPropagation()}>
+                           <button
+                             type="button"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               setOpenCategoryDropdownTxId(openCategoryDropdownTxId === tx.id ? null : tx.id);
+                             }}
+                             className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 dark:bg-gray-700/80 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-400 hover:bg-blue-50/70 dark:hover:bg-blue-900/30 transition-all cursor-pointer group/badge"
+                             title="Cliquer pour changer de catégorie et mémoriser la règle"
+                           >
+                             <Tag size={10} className="text-gray-400 group-hover/badge:text-blue-500" />
+                             <span className="truncate max-w-[120px] sm:max-w-[180px] font-medium">{tx.category || 'Autre'}</span>
+                             <ChevronDown size={10} className="text-gray-400 group-hover/badge:text-blue-500 transition-transform" />
+                           </button>
+
+                           {openCategoryDropdownTxId === tx.id && (
+                             <div 
+                               className="absolute left-0 top-full mt-1.5 w-64 max-h-60 overflow-y-auto bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-150"
+                               onClick={e => e.stopPropagation()}
+                             >
+                               <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-gray-400 border-b border-gray-100 dark:border-gray-700/50 mb-1 flex items-center justify-between">
+                                 <span>Modifier la catégorie</span>
+                                 <span className="text-[9px] text-blue-500 font-semibold">Règle mémorisée</span>
+                               </div>
+                               {CATEGORIES.map(cat => (
+                                 <button
+                                   key={cat}
+                                   type="button"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleQuickCategoryRemap(tx, cat);
+                                   }}
+                                   className={`w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors ${
+                                     tx.category === cat ? 'font-bold text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/15' : 'text-gray-700 dark:text-gray-200'
+                                   }`}
+                                 >
+                                   <span className="truncate">{cat}</span>
+                                   {tx.category === cat && <Check size={12} className="text-blue-500 shrink-0 ml-1" />}
+                                 </button>
+                               ))}
+                             </div>
+                           )}
+                         </div>
+                          {/* Badge Abonnement détecté avec tag Payé */}
+                          {Boolean(tx.isSubscription) && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              <span>🔁 Abonnement</span>
+                              <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-[9px]">Payé</span>
+                            </span>
+                          )}
+
+                          {/* Badge Échanges Proches / Famille */}
+                          {Boolean(tx.isFamilyTransfer || isPeerTransferTransaction(tx)) && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-pink-50 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300 border border-pink-200 dark:border-pink-800">
+                              👥 Proches
+                            </span>
+                          )}
+                       </div>
+                       <div className="font-semibold text-gray-900 dark:text-gray-100 truncate text-sm">{tx.description}</div>
+                        {/* Affichage du libellé brut bancaire si différent du marchand nettoyé */}
+                        {tx.rawLabel && tx.rawLabel.trim().toLowerCase() !== tx.description.trim().toLowerCase() && (
+                          <div className="text-[11px] text-gray-400 dark:text-gray-500 truncate font-mono mt-0.5" title={tx.rawLabel}>
+                            {tx.rawLabel}
+                          </div>
+                        )}
+                     </div>
+                   </div>
+                   <div className={`font-bold flex-shrink-0 ml-3 text-[15px] ${tx.flowType === 'INCOME' || tx.type === 'credit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                     {tx.flowType === 'INCOME' || tx.type === 'credit' ? '+' : '-'}{formatBankAmount(Math.abs(tx.amount), currency, {showSign: false})}
+                   </div>
+                 </div>
+               ))
+             )}
+             {filteredTransactions.length > 100 && (
+               <div className="p-4 text-center text-xs font-semibold text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-b-[2rem]">Affichage limité aux 100 dernières opérations</div>
+             )}
+           </div>
+        </div>
+      </div>
+
+      {/* Tools Bottom Sheet */}
+      {isToolsSheetOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-200">
+           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsToolsSheetOpen(false)}></div>
+           <div className="bg-white dark:bg-gray-900 w-full rounded-t-[2rem] shadow-2xl relative animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto">
+             <div className="sticky top-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md z-10 px-6 py-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+               <h3 className="font-bold text-xl">Analyses & Outils</h3>
+               <button onClick={() => setIsToolsSheetOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full active:scale-90 transition-transform"><X size={18}/></button>
+             </div>
+             <div className="p-4 space-y-3 pb-8">
+                {/* 1. Rapport d'Audit Approfondi IA */}
+                <button 
+                  onClick={() => {
+                    setIsToolsSheetOpen(false); 
+                    handleOpenDeepAudit();
+                  }} 
+                  className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border-2 border-indigo-500/30 dark:border-indigo-500/40 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform group cursor-pointer"
+                >
+                  <div className="flex items-center space-x-4 text-left">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
+                      {isGeneratingDeepAudit ? <Loader2 size={22} className="animate-spin" /> : <Sparkles size={22} className="text-amber-300" />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                        <span>Rapport d'Audit Approfondi IA</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 font-semibold font-mono">Gemini 3.8</span>
+                      </div>
+                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        {isGeneratingDeepAudit ? "Génération en cours..." : "Synthèse 6 sections (Biais banque, Flux réels, 7 alertes, Stratégie)"}
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronDown className="rotate-[-90deg] text-indigo-400" size={20}/>
+                </button>
+
+                {/* 2. Abonnements & Prélèvements */}
+                <button onClick={() => {
+                   setIsToolsSheetOpen(false); 
+                   handleOpenSubscriptionsAudit();
+                }} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform cursor-pointer">
+                   <div className="flex items-center space-x-4 text-left">
+                     <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center justify-center"><Calendar size={22}/></div>
+                     <div>
+                       <div className="font-bold text-gray-900 dark:text-white">Abonnements & Prélèvements</div>
+                       <div className="text-xs font-medium text-gray-400">Liste des abonnements & prélèvements récurrents</div>
+                     </div>
+                   </div>
+                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
+                </button>
+                
+                <button onClick={() => {setIsToolsSheetOpen(false); handleOpenEssentialAudit();}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
+                   <div className="flex items-center space-x-4 text-left">
+                     <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 flex items-center justify-center"><Layers size={22}/></div>
+                     <div>
+                       <div className="font-bold text-gray-900 dark:text-white">Coût de la vie</div>
+                       <div className="text-xs font-medium text-gray-400">Check-list des charges incompressibles</div>
+                     </div>
+                   </div>
+                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
+                </button>\n
+                <button onClick={() => {setIsToolsSheetOpen(false); setIsSpendingHabitsDrawerOpen(true);}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
+                   <div className="flex items-center space-x-4 text-left">
+                     <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 flex items-center justify-center"><Calendar size={22}/></div>
+                     <div>
+                       <div className="font-bold text-gray-900 dark:text-white">Habitudes de Dépenses</div>
+                       <div className="text-xs font-medium text-gray-400">Analyse des jours les plus dépensiers</div>
+                     </div>
+                   </div>
+                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
+                </button>
+\n
+                <button onClick={() => {setIsToolsSheetOpen(false); setIsBudgetTrackingDrawerOpen(true);}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
+                   <div className="flex items-center space-x-4 text-left">
+                     <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center justify-center"><PiggyBank size={22}/></div>
+                     <div>
+                       <div className="font-bold text-gray-900 dark:text-white">Fixation de Budget</div>
+                       <div className="text-xs font-medium text-gray-400">Suivi pour maximiser l'épargne</div>
+                     </div>
+                   </div>
+                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
+                </button>
+
+
+                <button onClick={() => {setIsToolsSheetOpen(false); handleOpenInterAccountsAudit();}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
+                   <div className="flex items-center space-x-4 text-left">
+                     <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 flex items-center justify-center"><ArrowLeftRight size={22}/></div>
+                     <div>
+                       <div className="font-bold text-gray-900 dark:text-white">Mouvements Inter-comptes</div>
+                       <div className="text-xs font-medium text-gray-400">Flux et solde entre vos comptes</div>
+                     </div>
+                   </div>
+                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
+                </button>
+
+                <button onClick={() => {setIsToolsSheetOpen(false); handleOpenPeerTransfersAudit();}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
+                   <div className="flex items-center space-x-4 text-left">
+                     <div className="w-12 h-12 rounded-2xl bg-pink-50 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400 flex items-center justify-center"><Users size={22}/></div>
+                     <div>
+                       <div className="font-bold text-gray-900 dark:text-white">Échanges Famille & Amis</div>
+                       <div className="text-xs font-medium text-gray-400">Position créditrice/débitrice</div>
+                     </div>
+                   </div>
+                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
+                </button>
+
+                <div className="my-6 border-t border-gray-100 dark:border-gray-800"></div>
+
+                <div className="text-[10px] font-bold text-gray-400 px-4 uppercase tracking-widest mb-3">Paramètres Avancés</div>
+                <div className="bg-white dark:bg-gray-800 rounded-[1.5rem] border border-gray-100 dark:border-gray-800 overflow-hidden">
+                  <button onClick={() => {setIsToolsSheetOpen(false); handlePurgeScope();}} className="w-full flex items-center space-x-3 p-4 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-sm font-bold text-rose-600 transition-colors cursor-pointer">
+                     <Trash2 size={18}/> <span>Supprimer ce relevé</span>
+                  </button>
+                </div>
+             </div>
+           </div>
+        </div>
+      )}
+
+      {/* Legacy & New Drawer Modals with Retour */}
+      {isAuditDrawerOpen && (
+        <CategoryAuditDrawer 
+          isOpen={isAuditDrawerOpen} 
+          onClose={() => setIsAuditDrawerOpen(false)} 
+          onBack={handleBackToTools}
+          categoryData={selectedCategoryData} 
+          auditType={auditType} 
+          customTransactions={auditCustomTransactions} 
+          customTitle={auditCustomTitle} 
+          customSubtitle={auditCustomSubtitle} 
+          customTotalAmount={auditCustomTotal} 
+        />
+      )}
+      {isCostOfLivingDrawerOpen && (
+        <CostOfLivingBuilderDrawer 
+          isOpen={isCostOfLivingDrawerOpen} 
+          onClose={() => setIsCostOfLivingDrawerOpen(false)} 
+          onBack={handleBackToTools}
+          bankTransactions={bankTransactions} 
+        />
+      )}
+      {isSpendingHabitsDrawerOpen && (
+        <SpendingHabitsDrawer 
+          isOpen={isSpendingHabitsDrawerOpen} 
+          onClose={() => setIsSpendingHabitsDrawerOpen(false)} 
+          onBack={handleBackToTools}
+          bankTransactions={monthScopedTransactions} 
+        />
+      )}
+      {isBudgetTrackingDrawerOpen && (
+        <BudgetTrackingDrawer 
+          isOpen={isBudgetTrackingDrawerOpen} 
+          onClose={() => setIsBudgetTrackingDrawerOpen(false)} 
+          onBack={handleBackToTools}
+          monthTransactions={monthScopedTransactions} 
+          allTransactions={bankTransactions} 
+        />
+      )}
+      
+      {/* Deep Financial Audit Drawer (DeepSeek caliber) */}
+      <BankAuditReportDrawer
+        isOpen={isDeepAuditDrawerOpen}
+        onClose={() => setIsDeepAuditDrawerOpen(false)}
+        onBack={handleBackToTools}
+        report={deepAuditReport}
         currency={currency}
       />
-
-      {/* Interactive Control Bar & Segmented Transfer Filter */}
-      <Card className="glass-card p-4 border border-border/60 space-y-3">
-        {/* Top line: Search, Filter pills, Bulk actions */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          
-          {/* Search Input */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Rechercher libellé, compte, commerçant, montant..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-xs md:text-sm rounded-xl bg-background/80 border border-border/60 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground transition-all"
-            />
-          </div>
-
-          {/* Quick Flow Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
-            {[
-              { id: 'ALL', label: 'Toutes', icon: null },
-              { id: 'INCOME', label: 'Revenus', icon: null },
-              { id: 'FIXED', label: 'Charges Fixes', icon: null },
-              { id: 'VARIABLE', label: 'Dépenses Courantes', icon: null },
-              { id: 'SUBSCRIPTION', label: `Abonnements (${subscriptionSummary.count})`, icon: RotateCcw },
-              { id: 'SAVINGS', label: 'Épargne / Neutre', icon: null },
-            ].map(tab => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setSelectedFilter(tab.id)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                    selectedFilter === tab.id
-                      ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
-                      : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
-                  }`}
-                >
-                  {Icon && <Icon className="w-3.5 h-3.5" />}
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* AI Auto-Categorize & Bulk Actions */}
-          <div className="flex items-center gap-2 animate-in fade-in flex-wrap">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAutoCategorizeSelected}
-              className="flex items-center gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/10"
-              title="L'IA heuristique analyse tous les libellés sans catégorie ou les lignes sélectionnées"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{selectedTxIds.size > 0 ? `Auto-catégoriser (${selectedTxIds.size})` : "Heuristique"}</span>
-            </Button>
-
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleGeminiCategorization}
-              disabled={isEnhancingWithGemini}
-              className="flex items-center gap-1.5 text-xs text-violet-400 border-violet-500/40 hover:bg-violet-500/10 transition-colors"
-              title="Catégorisation sémantique par IA générative Google Gemini"
-            >
-              {isEnhancingWithGemini ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="w-3.5 h-3.5" />
-              )}
-              <span>Gemini IA</span>
-            </Button>
-
-            {selectedTxIds.size > 0 && (
-              <>
-                <Button 
-                  size="sm" 
-                  variant="outline"
-                  onClick={() => setIsBulkAccountModalOpen(true)}
-                  className="flex items-center gap-1.5 text-xs"
-                >
-                  <Landmark className="w-3.5 h-3.5" />
-                  Changer de compte ({selectedTxIds.size})
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline"
-                  onClick={() => setIsBulkCategoryModalOpen(true)}
-                  className="flex items-center gap-1.5 text-xs"
-                >
-                  <Layers className="w-3.5 h-3.5" />
-                  Reclasser ({selectedTxIds.size})
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="destructive"
-                  onClick={handleDeleteSelected}
-                  className="flex items-center gap-1.5 text-xs"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Supprimer ({selectedTxIds.size})
-                </Button>
-              </>
-            )}
-          </div>
+      
+      {/* Toast Notification */}
+      {notification && (
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-full shadow-2xl font-medium text-sm z-50 flex items-center space-x-3 animate-in fade-in slide-in-from-top-4 ${notification.type === 'success' ? 'bg-green-600 text-white' : notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'}`}>
+          {notification.type === 'success' ? <Check size={18}/> : notification.type === 'error' ? <AlertTriangle size={18}/> : <Info size={18}/>}
+          <span>{notification.message}</span>
         </div>
-
-        {/* Segmented Transfer Filter (Option B: Internal Transfer Filtering) */}
-        <div className="pt-2 border-t border-border/40 flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">Vue Opérations :</span>
-            <div className="inline-flex p-1 bg-secondary/60 dark:bg-white/[0.04] rounded-xl border border-border/60">
-              <button
-                type="button"
-                onClick={() => setTransferFilter('ALL')}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  transferFilter === 'ALL'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Toutes les opérations ({monthScopedTransactions.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setTransferFilter('EXPENSES_INCOME')}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  transferFilter === 'EXPENSES_INCOME'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Dépenses & Revenus
-              </button>
-              <button
-                type="button"
-                onClick={() => setTransferFilter('INTERNAL')}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1 ${
-                  transferFilter === 'INTERNAL'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <ArrowLeftRight className="w-3 h-3 text-cyan-400" />
-                <span>Virements internes & Épargne</span>
-              </button>
+      )}
+      
+      {/* Edit Tx Modal */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-end justify-center backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-t-[2rem] w-full max-w-md animate-in slide-in-from-bottom duration-300">
+            <div className="flex justify-between items-center mb-6">
+               <h3 className="font-bold text-xl">Modifier l'opération</h3>
+               <button onClick={() => setIsEditModalOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={18}/></button>
             </div>
-          </div>
-
-          <div className="text-xs text-muted-foreground font-mono tabular-nums">
-            {filteredTransactions.length} écriture{filteredTransactions.length > 1 ? 's' : ''} affichée{filteredTransactions.length > 1 ? 's' : ''}
-          </div>
-        </div>
-      </Card>
-
-      {/* Bank Mirror Table (Option B: Swiss Bank Statement Mirror) */}
-      <Card className="glass-card overflow-hidden border border-border/70 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs md:text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-border/70 bg-secondary/40 dark:bg-white/[0.03] text-muted-foreground font-semibold text-[11px] uppercase tracking-wider">
-                <th className="py-3 px-3 w-10 text-center">
-                  <input
-                    type="checkbox"
-                    checked={filteredTransactions.length > 0 && selectedTxIds.size === filteredTransactions.length}
-                    onChange={handleSelectAll}
-                    className="rounded border-border cursor-pointer"
-                  />
-                </th>
-                <th className="py-3 px-3.5 whitespace-nowrap">Date valeur</th>
-                <th className="py-3 px-3.5">Opération</th>
-                <th className="py-3 px-3.5 text-right font-mono text-rose-500 whitespace-nowrap">Débit (-)</th>
-                <th className="py-3 px-3.5 text-right font-mono text-emerald-500 whitespace-nowrap">Crédit (+)</th>
-                <th className="py-3 px-3 text-center w-16">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/40">
-              {filteredTransactions.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-16 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <FileSpreadsheet className="w-8 h-8 opacity-40 text-muted-foreground" />
-                      <p className="text-sm font-medium">Aucune opération trouvée pour ces critères.</p>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedAccount !== 'ALL' 
-                          ? `Aucune opération enregistrée pour le compte "${selectedAccount}".`
-                          : "Importez un relevé bancaire ou modifiez les filtres de recherche."}
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredTransactions.map(tx => {
-                  const isSelected = selectedTxIds.has(tx.id);
-                  const isDebit = tx.type === 'debit';
-                  const isCredit = tx.type === 'credit';
-                  // Strict category match: only allowed subscription categories, never regular expenses (groceries, restaurants, shopping, etc.)
-                  const isSubscriptionCategory = SUBSCRIPTION_CATEGORIES.has(tx.category);
-
-                  return (
-                    <tr
-                      key={tx.id}
-                      className={`transition-colors hover:bg-secondary/40 dark:hover:bg-white/[0.03] ${
-                        isSelected ? 'bg-primary/5' : ''
-                      }`}
-                    >
-                      <td className="py-3 px-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSelect(tx.id)}
-                          className="rounded border-border cursor-pointer"
-                        />
-                      </td>
-
-                      {/* Date Valeur */}
-                      <td className="py-3 px-3.5 whitespace-nowrap font-mono text-xs text-muted-foreground tabular-nums">
-                        {formatDateFR(tx.date)}
-                      </td>
-
-                      {/* Description + Category Pill + Transfer Pill */}
-                      <td className="py-3 px-3.5">
-                        <div className="flex flex-col gap-1 max-w-xl">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-foreground tracking-tight text-xs md:text-sm">
-                              {tx.description}
-                            </span>
-                            {tx.isInternalTransfer ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleVirementType(tx);
-                                }}
-                                className="inline-flex items-center gap-1 text-[10px] font-bold py-0.5 px-2 rounded-lg border border-cyan-500/40 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 hover:border-cyan-500 transition-all cursor-pointer shadow-sm group"
-                                title="Virement entre vos comptes propres (neutralisé en trésorerie). Cliquez pour reclasser en Famille & Proches."
-                              >
-                                <ArrowLeftRight className="w-2.5 h-2.5 group-hover:rotate-180 transition-transform duration-300" />
-                                <span>Virement Interne (Mes comptes)</span>
-                              </button>
-                            ) : (tx.isFamilyTransfer || tx.category === 'Virements Famille & Proches') ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleVirementType(tx);
-                                }}
-                                className="inline-flex items-center gap-1 text-[10px] font-bold py-0.5 px-2 rounded-lg border border-purple-500/40 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 hover:border-purple-500 transition-all cursor-pointer shadow-sm group"
-                                title="Virement familial / proche (comptabilisé en dépense ou revenu réel). Cliquez pour reclasser en Virement Interne."
-                              >
-                                <Users className="w-2.5 h-2.5 text-purple-400" />
-                                <span>Famille & Proches</span>
-                              </button>
-                            ) : null}
-                            {(tx.isSubscription || tx.category === 'Abonnements & Télécom') && (
-                              <Badge variant="subscription" className="text-[10px] py-0 px-1.5 flex items-center gap-1">
-                                <RotateCcw className="w-2.5 h-2.5" />
-                                <span>Abonnement {tx.subscriptionDay ? `(le ${tx.subscriptionDay})` : ''}</span>
-                              </Badge>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
-                            {/* Inline Account Selector Button */}
-                            <button
-                              onClick={() => setSelectedAccount(tx.account || 'Compte Principal')}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-secondary/50 dark:bg-white/[0.04] border border-border/50 hover:border-primary/50 text-foreground transition-all"
-                              title="Filtrer ce compte"
-                            >
-                              <Landmark className="w-2.5 h-2.5 text-primary opacity-80" />
-                              <span className="max-w-[120px] truncate">{tx.account || 'Compte Principal'}</span>
-                            </button>
-
-                            {/* Category Selector */}
-                            <select
-                              value={tx.category}
-                              onChange={e => handleCategoryChange(tx.id, e.target.value)}
-                              className="bg-transparent text-[11px] font-medium text-muted-foreground hover:text-foreground border border-border/40 hover:border-border/80 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer dark:bg-[#10141e]"
-                            >
-                              {CATEGORIES.map(cat => (
-                                <option key={cat} value={cat} className="dark:bg-[#10141e] text-foreground">
-                                  {cat}
-                                </option>
-                              ))}
-                            </select>
-
-                            {tx.rawLabel && tx.rawLabel !== tx.description && (
-                              <span className="text-[10px] opacity-60 truncate max-w-xs font-mono" title={tx.rawLabel}>
-                                {tx.rawLabel}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* AI Subscription Optimizer Button - Rendered ONLY if transaction.category matches subscription categories */}
-                          {isSubscriptionCategory && (
-                            <div className="pt-0.5">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedSubscriptionTx(tx);
-                                  setIsOptimizerDrawerOpen(true);
-                                }}
-                                className="text-xs text-indigo-500 hover:text-indigo-600 mt-1 h-auto py-1 px-2 flex items-center w-fit border border-indigo-500/20 hover:bg-indigo-500/10 rounded-lg transition-colors"
-                              >
-                                <Sparkles className="w-3 h-3 mr-1 text-indigo-400" />
-                                Trouver un meilleur prix
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Débit (-) Column */}
-                      <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono tabular-nums text-xs md:text-sm font-semibold">
-                        {isDebit ? (
-                          <span className="text-rose-600 dark:text-rose-400">
-                            {formatBankAmount(tx.amount, currency)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground/30">—</span>
-                        )}
-                      </td>
-
-                      {/* Crédit (+) Column */}
-                      <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono tabular-nums text-xs md:text-sm font-semibold">
-                        {isCredit ? (
-                          <span className="text-emerald-600 dark:text-emerald-400">
-                            {formatBankAmount(tx.amount, currency)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground/30">—</span>
-                        )}
-                      </td>
-
-                      {/* Minimal Action Icons */}
-                      <td className="py-3 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => handleOpenEditModal(tx)}
-                            className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                            title="Modifier l'opération"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(tx.id)}
-                            className="p-1 rounded-lg text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-                            title="Supprimer l'opération"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {/* Modal: Add Manual Transaction */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <Card className="w-full max-w-md p-6 bg-card border border-border/80 shadow-2xl rounded-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-border/60">
-              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-                <Plus className="w-5 h-5 text-primary" /> Nouvelle Opération
-              </h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="p-1 rounded-lg text-muted-foreground hover:text-foreground">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateManualTx} className="space-y-4 mt-4">
+            <form onSubmit={handleSaveEditModal} className="space-y-5">
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Compte Bancaire</label>
-                <select
-                  value={manualTx.account}
-                  onChange={e => setManualTx({ ...manualTx, account: e.target.value })}
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
-                >
-                  {availableAccounts.map(acc => (
-                    <option key={acc} value={acc}>{acc}</option>
-                  ))}
-                  <option value="CUSTOM">+ Nouveau compte personnalisé...</option>
-                </select>
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Libellé</label>
+                <input type="text" value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none outline-none font-medium text-gray-900 dark:text-white" />
               </div>
-
-              {manualTx.account === 'CUSTOM' && (
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Nom du nouveau compte</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: BoursoBank - Compte Pro, Revolut..."
-                    value={manualTx.customAccount}
-                    onChange={e => setManualTx({ ...manualTx, customAccount: e.target.value })}
-                    className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
-                  />
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Catégorie</label>
+                <div className="relative">
+                  <select value={editForm.category} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none outline-none font-medium text-gray-900 dark:text-white appearance-none pr-10">
+                    {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
                 </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Date</label>
-                <input
-                  type="date"
-                  required
-                  value={manualTx.date}
-                  onChange={e => setManualTx({ ...manualTx, date: e.target.value })}
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
-                />
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Libellé / Description</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: Salaire, Loyer, Carrefour..."
-                  value={manualTx.description}
-                  onChange={e => setManualTx({ ...manualTx, description: e.target.value })}
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Montant (€)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="Ex: 45.50"
-                  value={manualTx.amount}
-                  onChange={e => setManualTx({ ...manualTx, amount: e.target.value })}
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Type de Flux</label>
-                <select
-                  value={manualTx.flowType}
-                  onChange={e => setManualTx({ ...manualTx, flowType: e.target.value as FlowType })}
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
-                >
-                  <option value="VARIABLE_EXPENSE">Dépense Courante (Variable)</option>
-                  <option value="FIXED_EXPENSE">Charge Fixe (Loyer, Abonnements)</option>
-                  <option value="INCOME">Revenu (Salaire, Entrée d'argent)</option>
-                  <option value="SAVINGS_TRANSFER">Épargne & Virement Neutre</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Catégorie</label>
-                <select
-                  value={manualTx.category}
-                  onChange={e => setManualTx({ ...manualTx, category: e.target.value })}
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
-                >
-                  {CATEGORIES.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Manual Subscription Toggle & Day */}
-              <div className="p-3 rounded-xl bg-secondary/40 dark:bg-white/[0.02] border border-border/60 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
-                    <label htmlFor="manualSubToggle" className="text-xs font-bold text-foreground cursor-pointer">
-                      Abonnement récurrent
-                    </label>
-                  </div>
-                  <input
-                    type="checkbox"
-                    id="manualSubToggle"
-                    checked={manualTx.isSubscription}
-                    onChange={e => setManualTx({ ...manualTx, isSubscription: e.target.checked })}
-                    className="rounded border-border text-primary cursor-pointer w-4 h-4"
-                  />
-                </div>
-
-                {manualTx.isSubscription && (
-                  <div className="pt-2 border-t border-border/40 flex items-center justify-between gap-3 animate-in fade-in">
-                    <label className="text-xs text-muted-foreground font-medium">
-                      Jour habituel de prélèvement :
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-semibold text-muted-foreground">Le</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="31"
-                        value={manualTx.subscriptionDay}
-                        onChange={e => setManualTx({ ...manualTx, subscriptionDay: parseInt(e.target.value, 10) || 1 })}
-                        className="w-16 p-1.5 text-xs text-center rounded-lg bg-background border border-border/80 text-foreground font-bold font-mono focus:ring-1 focus:ring-primary outline-none"
-                      />
-                      <span className="text-xs font-semibold text-muted-foreground">du mois</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4 border-t border-border/60">
-                <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
-                  Annuler
-                </Button>
-                <Button type="submit" className="bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-                  Enregistrer
-                </Button>
+              <div className="pt-2">
+                <button type="submit" className="w-full p-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-600/30 active:scale-95 transition-transform">Enregistrer les modifs</button>
+                <button type="button" onClick={() => editingTx && handleDelete(editingTx.id)} className="w-full p-4 font-bold mt-3 text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-2xl active:scale-95 transition-transform">Supprimer l'opération</button>
               </div>
             </form>
-          </Card>
+          </div>
         </div>
       )}
 
-      {/* Modal: Bulk Account Reassignment */}
-      {isBulkAccountModalOpen && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <Card className="w-full max-w-sm p-6 bg-card border border-border/80 shadow-2xl rounded-2xl">
-            <h3 className="text-base font-bold text-foreground mb-2 flex items-center gap-2">
-              <Landmark className="w-4 h-4 text-primary" /> Changer de compte bancaire
-            </h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              Rattacher les {selectedTxIds.size} opérations sélectionnées à un autre compte.
-            </p>
-
-            <select
-              value={bulkTargetAccount}
-              onChange={e => setBulkTargetAccount(e.target.value)}
-              className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground mb-4"
-            >
-              <option value="">Sélectionnez un compte...</option>
-              {availableAccounts.map(acc => (
-                <option key={acc} value={acc}>{acc}</option>
-              ))}
-              <option value="CUSTOM">+ Nouveau compte personnalisé...</option>
-            </select>
-
-            {bulkTargetAccount === 'CUSTOM' && (
-              <input
-                type="text"
-                placeholder="Ex: BoursoBank - Compte Pro"
-                onChange={e => setBulkTargetAccount(e.target.value)}
-                className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground mb-4"
-              />
-            )}
-
-            <div className="flex justify-end gap-2">
-              <Button size="sm" variant="outline" onClick={() => setIsBulkAccountModalOpen(false)}>
-                Annuler
-              </Button>
-              <Button size="sm" onClick={handleBulkAccountApply} disabled={!bulkTargetAccount || bulkTargetAccount === 'CUSTOM'}>
-                Appliquer
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Modal: Bulk Category Update */}
-      {isBulkCategoryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <Card className="w-full max-w-sm p-6 bg-card border border-border/80 shadow-2xl rounded-2xl">
-            <h3 className="text-base font-bold text-foreground mb-2">Reclasser les opérations sélectionnées</h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              Attribuer une nouvelle catégorie à {selectedTxIds.size} transactions.
-            </p>
-
-            <select
-              value={bulkTargetCategory}
-              onChange={e => setBulkTargetCategory(e.target.value)}
-              className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground mb-6"
-            >
-              {CATEGORIES.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-
-            <div className="flex justify-end gap-2">
-              <Button size="sm" variant="outline" onClick={() => setIsBulkCategoryModalOpen(false)}>
-                Annuler
-              </Button>
-              <Button size="sm" onClick={handleBulkCategoryApply}>
-                Appliquer
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Modal: Edit / Manual Override Transaction */}
-      {isEditModalOpen && editingTx && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <Card className="w-full max-w-md p-6 bg-card border border-border/80 shadow-2xl rounded-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-border/60">
-              <div>
-                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <Pencil className="w-4 h-4 text-primary" />
-                  Modifier l'affectation
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Corrigez manuellement la catégorie, le type de flux et l'abonnement
-                </p>
+      {/* Modal Configuration & Montée en Gamme IA (100% Gratuit) */}
+      {isGeminiKeyModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[110] flex items-end sm:items-center justify-center backdrop-blur-sm animate-in fade-in p-0 sm:p-4">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-t-[2.2rem] sm:rounded-[2rem] w-full max-w-lg shadow-2xl border border-gray-100 dark:border-gray-800 animate-in slide-in-from-bottom duration-300 max-h-[92vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-5 pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
+                  <Sparkles size={20} className="text-amber-300" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-gray-900 dark:text-white">Configuration IA & Montée en Gamme</h3>
+                  <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <span>✓ 100% Gratuit (Free Tier Google AI Studio)</span>
+                  </div>
+                </div>
               </div>
               <button 
-                onClick={() => { setIsEditModalOpen(false); setEditingTx(null); }} 
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setIsGeminiKeyModalOpen(false);
+                  setAiConnectionTestResult(null);
+                }} 
+                className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full active:scale-90 transition-transform"
               >
-                <X className="w-5 h-5" />
+                <X size={18}/>
               </button>
             </div>
 
-            <form onSubmit={handleSaveEditModal} className="space-y-4 mt-4">
+            <div className="space-y-5">
+              {/* Sélecteur de Modèle IA (Montée en gamme) */}
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                  Libellé de l'opération
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5 block flex items-center justify-between">
+                  <span>Modèle IA Google (Free Tier)</span>
+                  <span className="text-[10px] text-indigo-500 font-semibold lowercase">sélection instantanée</span>
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={editForm.description}
-                  onChange={e => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-medium"
+                <div className="space-y-2.5">
+                  {AVAILABLE_FREE_GEMINI_MODELS.map(m => {
+                    const isSelected = selectedAiModel === m.id;
+                    return (
+                      <div
+                        key={m.id}
+                        onClick={() => {
+                          setSelectedAiModel(m.id);
+                          setGeminiModelName(m.id);
+                          setAiConnectionTestResult(null);
+                        }}
+                        className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 shadow-sm'
+                            : 'border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 bg-gray-50/50 dark:bg-gray-800/40'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-sm text-gray-900 dark:text-white">{m.name}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
+                              {m.badge}
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                            {m.quota}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                          {m.description}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Champ Clé API Google */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Clé API Google Gemini</label>
+                  <a 
+                    href="https://aistudio.google.com/app/apikey" 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold hover:underline"
+                  >
+                    Obtenir une clé gratuite →
+                  </a>
+                </div>
+                <input 
+                  type="password" 
+                  value={geminiApiKeyInput} 
+                  onChange={e => setGeminiApiKeyInput(e.target.value)} 
+                  placeholder="AIzaSy... ou AQ.Ab8..." 
+                  className="w-full p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none font-mono text-sm text-gray-900 dark:text-white focus:border-indigo-500 transition-colors"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                    Montant (€)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={editForm.amount}
-                    onChange={e => setEditForm({ ...editForm, amount: e.target.value })}
-                    className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                    Compte Bancaire
-                  </label>
-                  <select
-                    value={editForm.account}
-                    onChange={e => setEditForm({ ...editForm, account: e.target.value })}
-                    className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
-                  >
-                    {availableAccounts.map(acc => (
-                      <option key={acc} value={acc}>{acc}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
+              {/* Bouton Test de Connexion Directe */}
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                  Catégorie
-                </label>
-                <select
-                  value={editForm.category}
-                  onChange={e => {
-                    const newCat = e.target.value;
-                    const autoFlow = classifyFlowType(newCat, parseFloat(editForm.amount) || -10, editForm.description);
-                    setEditForm({ 
-                      ...editForm, 
-                      category: newCat,
-                      flowType: autoFlow,
-                      isSubscription: newCat === 'Abonnements & Télécom' ? true : editForm.isSubscription
-                    });
+                <button
+                  type="button"
+                  disabled={isTestingAiConnection}
+                  onClick={async () => {
+                    setIsTestingAiConnection(true);
+                    setAiConnectionTestResult(null);
+                    if (geminiApiKeyInput.trim()) {
+                      localStorage.setItem('cashpilot_gemini_api_key', geminiApiKeyInput.trim());
+                    }
+                    const res = await testGeminiModelConnection(selectedAiModel);
+                    setAiConnectionTestResult(res);
+                    setIsTestingAiConnection(false);
                   }}
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-semibold"
+                  className="w-full py-3 px-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center space-x-2 active:scale-95 transition-transform cursor-pointer"
                 >
-                  {CATEGORIES.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
+                  {isTestingAiConnection ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin text-indigo-600" />
+                      <span>Test en cours avec {selectedAiModel}...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={16} className="text-amber-500" />
+                      <span>Tester la connexion en direct ({selectedAiModel})</span>
+                    </>
+                  )}
+                </button>
 
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                  Type de Flux Financier
-                </label>
-                <select
-                  value={editForm.flowType}
-                  onChange={e => setEditForm({ ...editForm, flowType: e.target.value as FlowType })}
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-semibold"
-                >
-                  <option value="VARIABLE_EXPENSE">Dépense Courante (Alimentation, Loisirs, Shopping)</option>
-                  <option value="FIXED_EXPENSE">Charge Fixe (Loyer, Abonnements, Énergie, Assurances)</option>
-                  <option value="INCOME">Revenu (Salaire, Primes, Aides, Dividendes)</option>
-                  <option value="SAVINGS_TRANSFER">Épargne / Virement Interne (Neutralisé)</option>
-                </select>
-              </div>
-
-              {/* Subscription Toggle & Day selector */}
-              <div className="p-3 rounded-xl bg-secondary/40 dark:bg-white/[0.02] border border-border/60 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <RotateCcw className="w-4 h-4 text-cyan-400" />
-                    <label htmlFor="editSubToggle" className="text-xs font-bold text-foreground cursor-pointer">
-                      Abonnement ou Prélèvement Récurrent
-                    </label>
-                  </div>
-                  <input
-                    type="checkbox"
-                    id="editSubToggle"
-                    checked={editForm.isSubscription}
-                    onChange={e => setEditForm({ ...editForm, isSubscription: e.target.checked })}
-                    className="rounded border-border text-primary cursor-pointer w-4 h-4"
-                  />
-                </div>
-
-                {editForm.isSubscription && (
-                  <div className="pt-2 border-t border-border/40 flex items-center justify-between gap-3 animate-in fade-in">
-                    <label className="text-xs text-muted-foreground font-medium">
-                      Jour habituel de prélèvement :
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-semibold text-muted-foreground">Le</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="31"
-                        value={editForm.subscriptionDay}
-                        onChange={e => setEditForm({ ...editForm, subscriptionDay: parseInt(e.target.value, 10) || 1 })}
-                        className="w-16 p-1.5 text-xs text-center rounded-lg bg-background border border-border/80 text-foreground font-bold font-mono focus:ring-1 focus:ring-primary outline-none"
-                      />
-                      <span className="text-xs font-semibold text-muted-foreground">du mois</span>
-                    </div>
+                {aiConnectionTestResult && (
+                  <div className={`mt-2.5 p-3 rounded-xl text-xs font-semibold flex items-center space-x-2 animate-in fade-in ${
+                    aiConnectionTestResult.success 
+                      ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' 
+                      : 'bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                  }`}>
+                    {aiConnectionTestResult.success ? <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" /> : <AlertTriangle size={16} className="text-rose-600 flex-shrink-0" />}
+                    <span>{aiConnectionTestResult.message}</span>
                   </div>
                 )}
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-border/60">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => { setIsEditModalOpen(false); setEditingTx(null); }}
-                >
-                  Annuler
-                </Button>
-                <Button 
-                  type="submit" 
-                  className="bg-primary text-primary-foreground shadow-lg shadow-primary/20 flex items-center gap-1.5"
-                >
-                  <Check className="w-4 h-4" />
-                  Enregistrer
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Gemini API Key Configuration Modal */}
-      {isGeminiKeyModalOpen && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <Card className="glass-card w-full max-w-md p-6 border border-border/80 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-violet-500/15 text-violet-400 border border-violet-500/30">
-                  <Key className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-foreground">Clé API Google Gemini</h3>
-                  <p className="text-xs text-muted-foreground">Catégorisation sémantique générative</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsGeminiKeyModalOpen(false)}
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 pt-2">
-              <div className="text-xs text-muted-foreground leading-relaxed">
-                Obtenez gratuitement une clé API en quelques secondes sur{' '}
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-violet-400 underline hover:text-violet-300 font-semibold inline-flex items-center gap-1"
-                >
-                  Google AI Studio ↗
-                </a>
-                . Elle sera sauvegardée localement dans votre navigateur pour vos futures analyses.
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">Clé API (VITE_GEMINI_API_KEY)</label>
-                <input
-                  type="password"
-                  value={geminiApiKeyInput}
-                  onChange={e => setGeminiApiKeyInput(e.target.value)}
-                  placeholder="AIzaSy..."
-                  className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-violet-500/40 text-foreground font-mono"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setIsGeminiKeyModalOpen(false)}
-                  className="text-xs"
-                >
-                  Annuler
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    const trimmed = geminiApiKeyInput.trim();
-                    if (trimmed) {
-                      localStorage.setItem('cashpilot_gemini_api_key', trimmed);
-                      setIsGeminiKeyModalOpen(false);
-                      setNotification({
-                        type: 'success',
-                        message: 'Clé API Gemini enregistrée avec succès !'
-                      });
-                      handleGeminiCategorization();
-                    } else {
-                      localStorage.removeItem('cashpilot_gemini_api_key');
-                      setIsGeminiKeyModalOpen(false);
-                    }
-                  }}
-                  className="bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold"
-                >
-                  Enregistrer & Lancer
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Modal: Adjust Statement Initial & Closing Balances */}
-      {isEditBalanceModalOpen && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <Card className="glass-card w-full max-w-md p-6 border border-border/80 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-border/60">
-              <div className="flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-primary" />
-                <h3 className="text-base font-bold text-foreground">
-                  Ajuster les soldes du relevé
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsEditBalanceModalOpen(false)}
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Définissez le solde initial de début de relevé et le solde de clôture officiel pour valider la réconciliation au centime près.
-            </p>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const initVal = parseFloat(editBalanceForm.initialBalance.replace(',', '.'));
-                const closeVal = parseFloat(editBalanceForm.closingBalance.replace(',', '.'));
-                if (isNaN(initVal) || isNaN(closeVal)) return;
-
-                const monthKey = selectedMonth === 'all' ? (availableMonths[0] || (selectedMonth !== 'all' ? selectedMonth : '')) : selectedMonth;
-                if (!monthKey) return;
-                const updated = {
-                  ...customBalances,
-                  [monthKey]: { initial: initVal, closing: closeVal }
-                };
-                setCustomBalances(updated);
-                localStorage.setItem('cashpilot_monthly_balances', JSON.stringify(updated));
-                window.dispatchEvent(new CustomEvent('cashpilot_balances_updated'));
-                setIsEditBalanceModalOpen(false);
-                setNotification({
-                  type: 'success',
-                  message: `Soldes du relevé mis à jour pour ${formatMonthLabel(monthKey)}.`
-                });
-              }}
-              className="space-y-4 pt-1"
-            >
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  Solde Initial (au début de période)
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={editBalanceForm.initialBalance}
-                    onChange={(e) => setEditBalanceForm({ ...editBalanceForm, initialBalance: e.target.value })}
-                    placeholder="0.00"
-                    className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-mono font-bold"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
-                    {currency}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  Solde Final / Clôture (affiché sur votre relevé bancaire)
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={editBalanceForm.closingBalance}
-                    onChange={(e) => setEditBalanceForm({ ...editBalanceForm, closingBalance: e.target.value })}
-                    placeholder="0.00"
-                    className="w-full p-2.5 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground font-mono font-bold"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
-                    {currency}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/60">
-                <Button
+              {/* Enregistrer et Fermer */}
+              <div className="pt-2">
+                <button
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setIsEditBalanceModalOpen(false)}
-                  className="text-xs"
+                  onClick={() => {
+                    if (geminiApiKeyInput.trim()) {
+                      localStorage.setItem('cashpilot_gemini_api_key', geminiApiKeyInput.trim());
+                    }
+                    setGeminiModelName(selectedAiModel);
+                    setIsGeminiKeyModalOpen(false);
+                    setNotification({
+                      type: 'success',
+                      message: `Configuration IA enregistrée : Modèle ${selectedAiModel} activé (100% Gratuit) !`
+                    });
+                  }}
+                  className="w-full p-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/30 active:scale-95 transition-transform"
                 >
-                  Annuler
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="bg-primary text-primary-foreground text-xs font-semibold"
-                >
-                  Valider la réconciliation
-                </Button>
+                  Enregistrer & Utiliser {selectedAiModel}
+                </button>
               </div>
-            </form>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
-
-      {/* Modal: Règles des Virements & Proches */}
-      {isVirementRulesModalOpen && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <Card className="w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 bg-card border border-border/80 shadow-2xl rounded-2xl space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-border/60">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-foreground">
-                    Règles des Virements & Proches
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Distinguez automatiquement vos comptes personnels de votre famille et de vos proches
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsVirementRulesModalOpen(false)}
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              {/* Section 1: Identité du Titulaire (Mes Comptes Propres) */}
-              <div className="p-4 rounded-2xl bg-secondary/30 dark:bg-white/[0.02] border border-border/60 space-y-3">
-                <div className="flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-cyan-400" />
-                  <h4 className="text-sm font-bold text-foreground">
-                    Votre Identité & Vos Comptes Propres (Virements Internes)
-                  </h4>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Tout virement mentionnant votre prénom <strong>{virementRules.userFirstName}</strong> (ex: <em>"DRAME Kouroufia"</em>) ou vos banques propres est automatiquement <strong>neutralisé en trésorerie (épargne)</strong> et n'impacte pas vos dépenses réelles.
-                </p>
-
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div>
-                    <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
-                      Votre Prénom
-                    </label>
-                    <input
-                      type="text"
-                      value={virementRules.userFirstName}
-                      onChange={(e) => handleSaveVirementRules({ ...virementRules, userFirstName: e.target.value })}
-                      placeholder="Kouroufia"
-                      className="w-full p-2 text-xs rounded-xl bg-background border border-border/80 text-foreground font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
-                      Votre Nom
-                    </label>
-                    <input
-                      type="text"
-                      value={virementRules.userLastName}
-                      onChange={(e) => handleSaveVirementRules({ ...virementRules, userLastName: e.target.value })}
-                      placeholder="Dramé"
-                      className="w-full p-2 text-xs rounded-xl bg-background border border-border/80 text-foreground font-semibold"
-                    />
-                  </div>
-                </div>
-
-                {/* Own Accounts Keyword Tags */}
-                <div className="pt-2">
-                  <label className="text-[11px] font-semibold text-muted-foreground block mb-1.5">
-                    Mots-clés de vos comptes propres (Fortuneo, SG, Livret...)
-                  </label>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {virementRules.ownAccountsKeywords.map(kw => (
-                      <span
-                        key={kw}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30"
-                      >
-                        <span>{kw}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveOwnAccountKeyword(kw)}
-                          className="hover:text-rose-400 transition-colors ml-0.5"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={newOwnAccountKeyword}
-                      onChange={(e) => setNewOwnAccountKeyword(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddOwnAccountKeyword())}
-                      placeholder="Ajouter un compte (ex: BoursoBank, Revolut, etc.)"
-                      className="flex-1 p-2 text-xs rounded-xl bg-background border border-border/80 text-foreground"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleAddOwnAccountKeyword}
-                      className="text-xs shrink-0"
-                    >
-                      <Plus className="w-3.5 h-3.5 mr-1" /> Ajouter
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Membres de la Famille & Proches */}
-              <div className="p-4 rounded-2xl bg-purple-500/5 dark:bg-purple-500/[0.03] border border-purple-500/20 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-purple-400" />
-                  <h4 className="text-sm font-bold text-foreground">
-                    Membres de votre Famille & Proches (Virements Tiers / Dépenses réelles)
-                  </h4>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Même s'ils portent le nom de famille <strong>{virementRules.userLastName}</strong> (ex: <em>"Naistaba Dramé"</em>), tout virement contenant l'un de ces prénoms sera reconnu comme <strong>Virement Famille & Proches</strong> (comptabilisé fidèlement en dépense ou rentrée réelle, sans être faussement neutralisé).
-                </p>
-
-                {/* Family Keywords Tags */}
-                <div>
-                  <div className="flex flex-wrap gap-1.5 mb-2.5">
-                    {virementRules.familyKeywords.map(kw => (
-                      <span
-                        key={kw}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/30"
-                      >
-                        <span>{kw}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFamilyKeyword(kw)}
-                          className="hover:text-rose-400 transition-colors ml-0.5"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={newFamilyKeyword}
-                      onChange={(e) => setNewFamilyKeyword(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddFamilyKeyword())}
-                      placeholder="Ajouter un prénom (ex: Naistaba, Nayssa, Mamadou, etc.)"
-                      className="flex-1 p-2 text-xs rounded-xl bg-background border border-border/80 text-foreground"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleAddFamilyKeyword}
-                      className="text-xs bg-purple-600 hover:bg-purple-700 text-white shrink-0"
-                    >
-                      <Plus className="w-3.5 h-3.5 mr-1" /> Ajouter un proche
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Buttons */}
-            <div className="flex items-center justify-between pt-4 border-t border-border/60">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  const defaultRules = {
-                    userFirstName: 'Kouroufia',
-                    userLastName: 'Dramé',
-                    familyKeywords: ['Naistaba', 'Nayssa', 'El Hani'],
-                    ownAccountsKeywords: ['Fortuneo', 'SG', 'Société Générale', 'Kouroufia', 'Compte Courant', 'Livret A', 'LDDS', 'Virement Interne']
-                  };
-                  handleSaveVirementRules(defaultRules);
-                }}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Rétablir par défaut
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setIsVirementRulesModalOpen(false)}
-                className="bg-primary text-primary-foreground text-xs font-semibold"
-              >
-                Fermer & Appliquer
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* AI Subscription Optimizer Slide-Over Drawer */}
-      <SubscriptionOptimizerDrawer
-        isOpen={isOptimizerDrawerOpen}
-        onClose={() => setIsOptimizerDrawerOpen(false)}
-        transaction={selectedSubscriptionTx ? {
-          id: selectedSubscriptionTx.id,
-          description: selectedSubscriptionTx.description,
-          amount: selectedSubscriptionTx.amount,
-          category: selectedSubscriptionTx.category,
-          account: selectedSubscriptionTx.account,
-          currency: currency
-        } : null}
-        countryContext={currency === 'CHF' ? 'Switzerland' : 'France'}
-      />
-
-
     </div>
   );
 };
-
 export default BankStatements;

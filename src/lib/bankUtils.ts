@@ -1,6 +1,6 @@
-import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, formatDateFR, classifyTransaction, detectBankName, cleanMerchantDescription, CATEGORIES } from './bankParser';
+import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, formatDateFR, classifyTransaction, detectBankName, cleanMerchantDescription, sanitizeRawBankLabel, CATEGORIES, extractCleanBankStatementRows, type CleanBankStatementRow } from './bankParser';
 
-export { formatMonthLabel, formatDateFR, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName, cleanMerchantDescription, CATEGORIES };
+export { formatMonthLabel, formatDateFR, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName, cleanMerchantDescription, sanitizeRawBankLabel, CATEGORIES, extractCleanBankStatementRows, type CleanBankStatementRow };
 export type FlowType = 'INCOME' | 'FIXED_EXPENSE' | 'VARIABLE_EXPENSE' | 'SAVINGS_TRANSFER';
 
 export interface BankTransaction {
@@ -74,6 +74,12 @@ export function classifyFlowType(category: string, amount: number, label: string
   const normCat = (category || '').toLowerCase();
   const normLabel = (label || '').toLowerCase();
 
+  // 0. Catégories standardisées prioritaires
+  if (normCat === 'charges fixes' || normCat.includes('charges fixes')) return 'FIXED_EXPENSE';
+  if (normCat === 'charges variables courantes' || normCat.includes('charges variables')) return 'VARIABLE_EXPENSE';
+  if (normCat === 'dépenses de confort' || normCat.includes('confort')) return 'VARIABLE_EXPENSE';
+  if (normCat === 'revenus' || normCat === 'revenu') return 'INCOME';
+
   // 1. Virements Famille & Proches
   if (normCat.includes('proche') || normCat.includes('famille')) {
     return amount > 0 ? 'INCOME' : 'VARIABLE_EXPENSE';
@@ -85,21 +91,21 @@ export function classifyFlowType(category: string, amount: number, label: string
   }
 
   // 3. Virements Fortuneo & Revolut (Considérés comme entrées/sorties réelles sur le relevé)
-  if (normCat.includes('fortuneo') || normLabel.includes('fortuneo') || normLabel.includes('drame kouroufia')) {
+  if (normCat.includes('fortuneo') || normLabel.includes('fortuneo')) {
     return amount > 0 ? 'INCOME' : 'VARIABLE_EXPENSE';
   }
-  if (normCat.includes('revolut') || normLabel.includes('revolut**0060*')) {
+  if (normCat.includes('revolut') || normLabel.includes('revolut')) {
     return amount > 0 ? 'INCOME' : 'VARIABLE_EXPENSE';
   }
 
   // 4. Vraie Épargne & Placements (Livrets A, LDDS, PEA, Assurance-Vie)
   const isThirdPartyInflow = amount > 0 && (
-    normLabel.includes('nayssa') ||
-    normLabel.includes('el hani') ||
-    normLabel.includes('naistaba') ||
     normLabel.includes('generation') ||
     normLabel.includes('cpam') ||
-    normLabel.includes('mutuelle')
+    normLabel.includes('ameli') ||
+    normLabel.includes('mutuelle') ||
+    normLabel.includes('caf') ||
+    normLabel.includes('salaire')
   );
 
   if (!isThirdPartyInflow && (
@@ -182,22 +188,38 @@ export function calculateBankMetrics(transactions: BankTransaction[]) {
 
   transactions.forEach(t => {
     const amt = Math.abs(Number(t.amount) || 0);
-    const signedAmt = Number(t.amount) || 0;
     const cat = (t.category || '').toLowerCase();
     const raw = (t.rawLabel || t.description || '').toLowerCase();
     const isFortuneo = cat.includes('fortuneo') || raw.includes('fortuneo');
 
+    // Détermination précise du signe réel :
+    // Dans BankTransaction, t.rawAmount contient le montant signé original (- pour débit, + pour crédit).
+    // Si t.rawAmount n'est pas fourni, on se base sur t.type, t.direction et t.flowType.
+    const isDebit = 
+      t.type === 'debit' ||
+      t.direction === 'debit' ||
+      (typeof t.rawAmount === 'number' && t.rawAmount < 0) ||
+      (t.rawAmount === undefined && typeof t.amount === 'number' && t.amount < 0) ||
+      t.flowType === 'FIXED_EXPENSE' ||
+      t.flowType === 'VARIABLE_EXPENSE';
+
+    const isCredit = !isDebit && (
+      t.type === 'credit' ||
+      t.direction === 'credit' ||
+      t.flowType === 'INCOME' ||
+      (typeof t.rawAmount === 'number' && t.rawAmount > 0) ||
+      (t.rawAmount === undefined && typeof t.amount === 'number' && t.amount > 0)
+    );
+
     if (isFortuneo) {
-      if (signedAmt < 0) fortuneoSent += amt;
+      if (isDebit) fortuneoSent += amt;
       else fortuneoReceived += amt;
     }
 
-    if (t.flowType === 'INCOME') {
+    if (isCredit) {
       income += amt;
     } else if (t.flowType === 'FIXED_EXPENSE') {
       fixed += amt;
-    } else if (t.flowType === 'VARIABLE_EXPENSE') {
-      variable += amt;
     } else if (t.flowType === 'SAVINGS_TRANSFER') {
       // Option 1 : Rigueur absolue
       // Ne comptabiliser dans "savings" QUE la vraie épargne placée sur livrets ou investissements
@@ -213,6 +235,9 @@ export function calculateBankMetrics(transactions: BankTransaction[]) {
         // Mouvements de trésorerie internes entre comptes courants propres
         internalTransfers += amt;
       }
+    } else {
+      // Toutes les dépenses de la vie courante (VARIABLE_EXPENSE ou débits réels)
+      variable += amt;
     }
   });
 
@@ -262,56 +287,101 @@ export function checkDuplicateTransactions(newTxs: BankTransaction[], existingTx
     }
   };
 
+  // Create a pool of existing transactions that we can "consume" to allow identical legitimate transactions
   const existingPool = existingTxs.map(t => ({
     id: t.id,
     amt: Number(t.amount).toFixed(2),
-    norm: normalizeDesc(t.description || t.rawLabel || t.cleanLabel || ''),
+    // Prioritize rawLabel to avoid duplicate bugs when Gemini or the user edits the description
+    norm: normalizeDesc(t.rawLabel || t.cleanLabel || t.description || ''),
     raw: (t.rawLabel || t.description || '').toLowerCase(),
     day: getDayTimestamp(t.date),
-    date: t.date
+    date: t.date,
+    consumed: false
   }));
 
   for (const tx of newTxs) {
     const amt = Number(tx.amount).toFixed(2);
-    const norm = normalizeDesc(tx.description || tx.rawLabel || tx.cleanLabel || '');
+    const norm = normalizeDesc(tx.rawLabel || tx.cleanLabel || tx.description || '');
     const raw = (tx.rawLabel || tx.description || '').toLowerCase();
     const day = getDayTimestamp(tx.date);
 
-    // Vérifie correspondance exacte ou avec tolérance de date (+/- 3 jours) pour les décalages de comptabilisation carte
-    const isDup = existingPool.some(e => {
+    // Find the FIRST matching existing transaction that hasn't been consumed yet
+    const matchIndex = existingPool.findIndex(e => {
+      if (e.consumed) return false;
       if (e.amt !== amt) return false;
 
-      // 1. Même date et même description
+      // 1. Exact match on date and description
       if (e.date === tx.date && (e.norm === norm || (norm.length > 3 && e.norm.includes(norm)))) return true;
 
-      // 2. Tolérance de +/- 3 jours si même marchand/motif
+      // 2. Tolerance of +/- 3 days for card payment differences
       const dayDiff = Math.abs(e.day - day);
       if (dayDiff <= 3 && norm.length >= 4 && (e.norm === norm || e.norm.includes(norm) || norm.includes(e.norm))) {
         return true;
       }
 
-      // 3. Référence bancaire identique
+      // 3. Bank reference identical
       if (raw.includes('6594345599s') && e.raw.includes('6594345599s')) return true;
 
       return false;
     });
 
-    if (isDup) {
+    if (matchIndex !== -1) {
+      // It's a duplicate of an existing transaction
+      existingPool[matchIndex].consumed = true;
       duplicatesCount++;
     } else {
+      // It's a new unique transaction! 
+      // Add it to our pool so if the same new CSV has this identical transaction again, 
+      // it won't be imported twice unless it actually appeared twice in the new CSV.
       existingPool.push({
         id: tx.id,
         amt,
         norm,
         raw,
         day,
-        date: tx.date
+        date: tx.date,
+        consumed: true // Consume it immediately so subsequent identical txs in the SAME CSV don't match it (they should be imported too if they are genuinely multiple in the CSV)
       });
       uniqueTxs.push(tx);
     }
   }
 
   return { duplicatesCount, uniqueTxs };
+}
+
+/**
+ * Identifie les transactions en doublon déjà enregistrées en base (même date, montant identique et libellé similaire)
+ * Conserve la première occurrence et retourne la liste des IDs des doublons superflus à supprimer.
+ */
+export function findDuplicateStoredTransactionIds(transactions: BankTransaction[]): string[] {
+  const seenMap = new Map<string, string>();
+  const duplicateIds: string[] = [];
+
+  const normalize = (str: string) => {
+    return (str || '')
+      .toLowerCase()
+      .replace(/carte\s+x\d+/gi, '')
+      .replace(/\d{2}\/\d{2}/gi, '')
+      .replace(/prelevement\s+europeen/gi, '')
+      .replace(/vir(ement)?\s+(recu|emis|instantane)?/gi, '')
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 20);
+  };
+
+  transactions.forEach(tx => {
+    const amt = Number(tx.amount || 0).toFixed(2);
+    const date = tx.date || '';
+    const norm = normalize(tx.rawLabel || tx.cleanLabel || tx.description || '');
+    const key = `${date}_${amt}_${norm}`;
+
+    if (seenMap.has(key)) {
+      duplicateIds.push(tx.id);
+    } else {
+      seenMap.set(key, tx.id);
+    }
+  });
+
+  return duplicateIds;
 }
 
 /**

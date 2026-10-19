@@ -78,36 +78,47 @@ Standardise les noms de produits (ex: "COCA COLA 1L" devient "Coca-Cola â€”
       };
     } else {
       // Relevé bancaire
-      prompt = `Tu es un expert en analyse de finances personnelles. 
-Analyse ce relevé bancaire (PDF, image ou document). Extrais chaque transaction précisément.
-IMPORTANT: Identifie avec rigueur :
-1. Le nom de la banque (ex: BoursoBank, BNP Paribas, Revolut, Crédit Agricole, N26, CIC, Société Générale, etc.).
-2. Le type de compte (Courant, Épargne, Pro, Joint, etc.).
-3. Le numéro masqué ou identifiant s'il apparaît (ex: ...4819).
-4. Le nom synthétique du compte bancaire (ex: "BoursoBank - Compte Courant ...4819" ou "Revolut EUR").
-CashPilot n’est pas une application comptable : n'inclus AUCUNE information de TVA.
-Détecte les revenus, dépenses, remboursements, virements internes, épargne, abonnements, frais bancaires, crédits, paiements en plusieurs fois.
-Classe chaque opération en type fixe, variable ou virement/épargne.`;
+      prompt = `Tu es un expert-comptable et auditeur financier d'élite pour l'application CashPilot.
+Analyse rigoureusement ce relevé bancaire (PDF, image ou document). Extrais chaque transaction avec une fidélité mathématique absolue.
+CashPilot n’est pas une application de gestion d'entreprise : n'inclus AUCUNE information de TVA.
+
+RÈGLES COMPTABLES STRICTES ET PRIORITAIRES (NEUTRALISATION DES BIAIS & COÛT ZÉRO) :
+1. IGNORER TOTALEMENT LA BANQUE : Ignore catégoriquement toute catégorie ou classification d'origine fournie par la banque (qui est fréquemment trompeuse). Fais une analyse sémantique pure basée uniquement sur le libellé brut réel ("rawLabel" ou libellé complet).
+2. CORRECTION DU DOUBLE COMPTAGE (FLUX NEUTRES) :
+   - Cartes à débit différé : identifie formellement les prélèvements de cartes à débit différé (ex: "Remboursement American Express", "Amex", "CB Différé").
+   - Paiements fractionnés : identifie les mensualités de paiement en plusieurs fois (ex: "3x 4x Oney", "Alma", "Klarna", "Scalapay", "Floa Bank", "Paiement 3x", "Paiement 4x").
+   - OBLIGATION : Marque obligatoirement ces opérations avec isInternalTransfer: true, isInstallment: true et category: "Paiement fractionné" ou "Remboursement Carte (Amex)". Elles doivent impérativement être neutralisées afin de ne JAMAIS être déduites une seconde fois du Reste à vivre (les achats d'origine étant déjà comptabilisés).
+3. VIREMENTS INTERNES ET PROPRES COMPTES :
+   - Détecte les transferts entre les propres comptes de l'utilisateur (ex: mots-clés de banques/fintechs comme "Fortuneo", "Revolut", "BoursoBank", "Boursorama", "N26", ou livrets "Livret A", "LDDS", "PEL", "PEA", "Compte à compte", ou nom identique au titulaire déduit).
+   - Ces mouvements doivent être classés en "Virements Internes" ou "Épargne & Investissement" avec isInternalTransfer: true (flux neutre ne devant pas impacter les dépenses réelles).
+4. FLUX FAMILIAUX ET ENTRE PROCHES :
+   - Isole les transferts d'argent entre proches (reconnaissables par des prénoms/noms de personnes physiques sans nom d'enseigne commerciale ni raison sociale) dans une catégorie neutre "Remboursements/Avances" ou "Solidarité", afin de ne pas polluer les dépenses de consommation courante.
+5. TITULAIRE ET HEURISTIQUES GÉNÉRIQUES (AGNOSTIQUE GRAND PUBLIC) :
+   - Le système est universel : ne présuppose aucun nom codé en dur. Déduis le nom du titulaire principal en analysant la récurrence des libellés de rémunération ("VIR SALAIRE...", "PAYE...", "DE: [EMPLOYEUR] A: [TITULAIRE]") ou l'entête du relevé.
+6. VIREMENTS AMBIGUS (CATÉGORIE D'ATTENTE) :
+   - Si un virement émis ou reçu est ambigu (ex: "Virement émis vers [Nom Inconnu]" sans certitude absolue s'il s'agit d'un compte propre, d'un artisan ou d'un proche), classe-le impérativement dans la catégorie d'attente "À confirmer (Virement)" avec confidenceLevel: "low" et needsConfirmation: true, plutôt que d'extrapoler à tort.`;
 
       schema = {
         type: Type.OBJECT,
         properties: {
-          bankName: { type: Type.STRING, description: "Nom de la banque (ex: BoursoBank, BNP Paribas, Revolut, Crédit Agricole)" },
+          bankName: { type: Type.STRING, description: "Nom de la banque (ex: BoursoBank, BNP Paribas, Revolut, Crédit Agricole, Société Générale)" },
           accountType: { type: Type.STRING, description: "Type de compte (courant, épargne, pro, joint, etc.)" },
           accountNumber: { type: Type.STRING, description: "Numéro masqué du compte ou identifiant si présent (ex: ...4819)" },
           accountName: { type: Type.STRING, description: "Nom complet du compte bancaire (ex: BoursoBank - Compte Courant, Revolut EUR)" },
           statementPeriod: { type: Type.STRING, description: "Période couverte par le relevé (ex: Juin 2026)" },
+          inferredAccountOwner: { type: Type.STRING, description: "Nom et prénom du titulaire principal déduit via les récurrences" },
           transactions: {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
               properties: {
                 date: { type: Type.STRING, description: "Date au format YYYY-MM-DD" },
-                description: { type: Type.STRING, description: "Libellé de la transaction nettoyé" },
-                amount: { type: Type.NUMBER, description: "Montant (négatif pour une dépense, positif pour un revenu)" },
-                balance: { type: Type.NUMBER, description: "Solde après opération si disponible" },
+                description: { type: Type.STRING, description: "Libellé de la transaction nettoyé de ses préfixes techniques" },
+                rawLabel: { type: Type.STRING, description: "Libellé complet brut d'origine" },
+                amount: { type: Type.NUMBER, description: "Montant (négatif pour une dépense/débit, positif pour un revenu/crédit)" },
+                balance: { type: Type.NUMBER, description: "Solde après opération si disponible sur le relevé" },
                 operationType: { type: Type.STRING, description: "Type d'opération (CB, Prélèvement, Virement, etc.)" },
-                category: { type: Type.STRING, description: "Catégorie principale (Revenus, Logement, Alimentation, Transports, Santé, Loisirs, Shopping, Abonnements, Frais bancaires, Impôts, Assurance, Épargne, Remboursements, Autres)" },
+                category: { type: Type.STRING, description: "Catégorie CashPilot (Salaire & Revenus, Aides & Allocations, Logement & Énergie, Alimentation & Courses, Restaurants & Sorties, Shopping & Maison, Transports & Carburant, Santé, Abonnements & Télécom, Frais bancaires, Épargne & Investissement, Virements Internes, Remboursements/Avances, Solidarité, Paiement fractionné, Remboursement Carte (Amex), À confirmer (Virement), Autre)" },
                 subCategory: { type: Type.STRING, description: "Sous-catégorie intelligente" },
                 isIncomeOrExpense: { type: Type.STRING, description: "income, expense, ou transfer" },
                 isRefund: { type: Type.BOOLEAN, description: "Est-ce un remboursement ?" },
@@ -116,13 +127,17 @@ Classe chaque opération en type fixe, variable ou virement/épargne.`;
                 isSubscription: { type: Type.BOOLEAN, description: "Est-ce un abonnement récurrent ?" },
                 isBankFee: { type: Type.BOOLEAN, description: "Est-ce un frais bancaire ?" },
                 isCreditOrLoan: { type: Type.BOOLEAN, description: "Est-ce un remboursement de crédit/prêt ?" },
-                isInstallment: { type: Type.BOOLEAN, description: "Est-ce un paiement en plusieurs fois (Klarna, Alma, etc.) ?" },
-                isInternalTransfer: { type: Type.BOOLEAN, description: "Est-ce un virement interne entre comptes ?" },
+                isInstallment: { type: Type.BOOLEAN, description: "Est-ce un paiement fractionné ou différé (Klarna, Alma, Oney, Amex) ?" },
+                isInternalTransfer: { type: Type.BOOLEAN, description: "Flux neutre (virement compte à compte, épargne, débit différé ou fractionné neutralisé)" },
+                isFamilyTransfer: { type: Type.BOOLEAN, description: "Transfert familial ou entre proches physiques (Solidarité / Remboursements)" },
+                needsConfirmation: { type: Type.BOOLEAN, description: "Vrai si l'opération est ambiguë et requiert validation manuelle" },
                 confidenceLevel: { type: Type.STRING, description: "Confiance de l'IA (high, medium, low)" }
-              }
+              },
+              required: ["date", "description", "amount", "category"]
             }
           }
-        }
+        },
+        required: ["bankName", "transactions"]
       };
     }
 
@@ -250,39 +265,59 @@ export const categorizeTransactions = functions.region('europe-west1')
   }
 
   try {
-    const prompt = `Tu es un expert en analyse de finances personnelles.
-Analyse rigoureusement ces opérations bancaires en te basant EXCLUSIVEMENT sur leur libellé complet ("fullLabel" ou "description").
-RÈGLE CRITIQUE ET OBLIGATOIRE : IGNORE totalement toute éventuelle ancienne colonne "Catégorie" ou "Sous-Catégorie" d'origine de la banque.
+    const prompt = `Tu es un expert-comptable et auditeur financier d'élite pour l'application CashPilot.
+Analyse rigoureusement ces opérations bancaires en te basant EXCLUSIVEMENT sur leur libellé brut complet ("rawLabel" ou "description").
+
+RÈGLES COMPTABLES STRICTES ET PRIORITAIRES (NEUTRALISATION DES BIAIS & COÛT ZÉRO) :
+1. IGNORER TOTALEMENT LA BANQUE : Ignore catégoriquement toute catégorie ou classification d'origine de la banque. Analyse purement sémantique du libellé brut.
+2. CORRECTION DU DOUBLE COMPTAGE (FLUX NEUTRES) :
+   - Cartes à débit différé : identifie formellement les prélèvements de cartes à débit différé (ex: "Remboursement American Express", "Amex", "CB Différé").
+   - Paiements fractionnés : identifie les mensualités de paiement en plusieurs fois (ex: "3x 4x Oney", "Alma", "Klarna", "Scalapay", "Floa Bank", "Paiement 3x", "Paiement 4x").
+   - OBLIGATION : Marque ces opérations avec isInternalTransfer: true, flowType: "SAVINGS_TRANSFER" et category: "Paiement fractionné" ou "Remboursement Carte (Amex)". Elles ne doivent JAMAIS être déduites du Reste à vivre une seconde fois (les dépenses d'origine étant déjà comptabilisées).
+3. VIREMENTS INTERNES ET PROPRES COMPTES :
+   - Détecte les transferts entre propres comptes de l'utilisateur (mots-clés de banques/fintechs comme "Fortuneo", "Revolut", "BoursoBank", "Boursorama", "N26", livrets "Livret A", "LDDS", "PEL", "PEA", "Compte à compte", ou nom identique au titulaire).
+   - Classe-les en flowType: "SAVINGS_TRANSFER", category: "Virements Internes" ou "Épargne & Investissement", avec isInternalTransfer: true (neutre de trésorerie).
+4. FLUX FAMILIAUX ET ENTRE PROCHES :
+   - Isole les transferts d'argent entre personnes physiques proches (prénoms/noms de famille sans enseigne commerciale ni société) dans la catégorie "Remboursements/Avances" ou "Solidarité" afin de ne pas polluer les dépenses de consommation courante.
+5. TITULAIRE ET HEURISTIQUES GÉNÉRIQUES (AGNOSTIQUE GRAND PUBLIC) :
+   - Ne présuppose aucun nom codé en dur. Déduis le titulaire principal en analysant la récurrence des libellés de rémunération ("VIR SALAIRE...", "PAYE...", "DE: [EMPLOYEUR] A: [TITULAIRE]").
+6. VIREMENTS AMBIGUS (CATÉGORIE D'ATTENTE) :
+   - Si un virement émis ou reçu est ambigu (ex: "Virement émis vers [Nom Inconnu]" sans certitude absolue s'il s'agit d'un compte propre ou d'un artisan/tiers), classe-le en "À confirmer (Virement)" avec confidenceLevel: "low" et needsConfirmation: true.
 
 Pour chaque opération :
 1. Extrais le nom propre nettoyé du commerçant ou tiers (cleanDescription), sans préfixes techniques (CARTE X..., VIR EUROPEEN, COMMERCE ELECTRONIQUE, etc.).
-2. Attribue STRICTEMENT l'une des catégories CashPilot suivantes :
-   - "Salaire & Revenus" (salaires, rémunérations, virements reçus)
-   - "Aides & Allocations" (France Travail, CAF, Pôle Emploi, prestations)
-   - "Logement & Énergie" (loyer, charges, EDF, Engie, TotalEnergies, eau, électricité, gaz)
-   - "Assurances" (Sogessur, Groupama, Macif, Maif, Allianz, AXA, mutuelle)
-   - "Abonnements & Télécom" (Orange, SFR, Free, Bouygues, Swype, Sosh, Netflix, Spotify, Canal+, Apple, Google Play)
-   - "Alimentation & Courses" (Carrefour, Leclerc, Auchan, Lidl, Aldi, Monoprix, boulangeries, boucheries)
-   - "Restaurants & Sorties" (restaurants, fast food, kebab, McDonald's, Uber Eats, Deliveroo)
-   - "Shopping & Maison" (Amazon, Bricorama, Leroy Merlin, AliExpress, vêtements, meubles)
-   - "Transports & Carburant" (Total, Shell, carburant, autoroutes, péages, SNCF, RATP, Uber, transports)
-   - "Santé" (pharmacie, médecin, dentiste, optique, remboursements CPAM/mutuelle)
-   - "Épargne & Investissement" (virements vers livrets A/LDDS, PEL, PEA, assurance vie, investissements)
-   - "Virement Interne" (virements entre propres comptes, Fortuneo, virements compte à compte)
-   - "Frais bancaires" (cotisation carte, frais tenue de compte, agios)
+2. Attribue STRICTEMENT l'une des catégories CashPilot :
+   - "Salaire & Revenus"
+   - "Aides & Allocations"
+   - "Remboursements/Avances"
+   - "Solidarité"
+   - "Logement & Énergie"
+   - "Assurances"
+   - "Abonnements & Télécom"
+   - "Alimentation & Courses"
+   - "Restaurants & Sorties"
+   - "Shopping & Maison"
+   - "Transports & Carburant"
+   - "Santé"
+   - "Épargne & Investissement"
+   - "Virements Internes"
+   - "Frais bancaires"
+   - "Paiement fractionné"
+   - "Remboursement Carte (Amex)"
+   - "À confirmer (Virement)"
    - "Autre"
 3. Détermine flowType :
-   - "SAVINGS_TRANSFER" pour virements internes, épargne, virements compte à compte, Fortuneo (neutralisés du reste à vivre).
-   - "INCOME" pour salaires, aides, remboursements et entrées positives.
-   - "FIXED_EXPENSE" pour charges fixes, loyer, énergie, assurances et abonnements.
+   - "SAVINGS_TRANSFER" pour virements internes, épargne, débit différé et fractionné neutralisés (neutralisés du reste à vivre).
+   - "INCOME" pour salaires, aides, allocations et rentrées réelles.
+   - "FIXED_EXPENSE" pour charges fixes (loyer, énergie, assurances, abonnements).
    - "VARIABLE_EXPENSE" pour toutes les dépenses courantes de consommation.
-4. isSubscription : true si abonnement récurrent ou prélèvement périodique.
 
 Transactions à traiter : ${JSON.stringify(transactions)}`;
 
     const schema: Schema = {
       type: Type.OBJECT,
       properties: {
+        inferredAccountOwner: { type: Type.STRING, description: "Nom/prénom du titulaire principal déduit" },
         transactions: {
           type: Type.ARRAY,
           items: {
@@ -293,7 +328,9 @@ Transactions à traiter : ${JSON.stringify(transactions)}`;
               category: { type: Type.STRING, description: "Catégorie CashPilot stricte" },
               flowType: { type: Type.STRING, description: "INCOME, FIXED_EXPENSE, VARIABLE_EXPENSE, ou SAVINGS_TRANSFER" },
               isSubscription: { type: Type.BOOLEAN, description: "Abonnement récurrent ou prélèvement mensuel" },
-              isInternalTransfer: { type: Type.BOOLEAN, description: "Virement interne ou épargne" },
+              isInternalTransfer: { type: Type.BOOLEAN, description: "Virement interne, débit différé ou fractionné neutralisé" },
+              isFamilyTransfer: { type: Type.BOOLEAN, description: "Transfert familial ou entre proches" },
+              needsConfirmation: { type: Type.BOOLEAN, description: "Vrai si libellé ambigu nécessitant confirmation utilisateur" },
               confidenceLevel: { type: Type.STRING, description: "high, medium, low" }
             },
             required: ["category", "flowType"]
@@ -903,4 +940,220 @@ Be concise (2-4 sentences max), highly practical, mention consumer rights (e.g. 
       };
     }
   });
+
+/**
+ * HTTPS Callable: analyzeBankStatement
+ * 
+ * Reçoit un tableau filtré de transactions (Date, Libellé brut, Montant)
+ * Effectue un audit en lot (Batch) via l'API Google Gemini 1.5 Flash (Free Tier)
+ * Reconstruit :
+ * 1. Le nom du vrai marchand nettoyé (merchantName)
+ * 2. La catégorie comptable standardisée (category : 'Charges fixes', 'Charges variables courantes', 'Dépenses de confort', 'Revenus')
+ * 3. L'indicateur booléen isSubscription (vrai si abonnement mensuel renégociable)
+ */
+export const analyzeBankStatement = functions.region('europe-west1')
+  .runWith({ timeoutSeconds: 300, memory: '1GB' })
+  .https.onCall(async (data, context) => {
+    const serverStartTime = Date.now();
+    console.log("[analyzeBankStatement] Démarrage de l'analyse IA du relevé bancaire...");
+
+    const { transactions } = data || {};
+
+    if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Le tableau de transactions (Date, Libellé brut, Montant) est requis et ne peut pas être vide.'
+      );
+    }
+
+    console.log(`[analyzeBankStatement] ${transactions.length} opérations reçues pour audit par Gemini 1.5 Flash.`);
+
+    const systemPrompt = `Tu es un auditeur financier et expert-comptable d'élite pour l'application de finances personnelles CashPilot.
+
+MISSION :
+Tu reçois un lot de transactions bancaires brutes sous forme d'un tableau JSON contenant UNIQUEMENT :
+- index (nombre entier)
+- date (YYYY-MM-DD)
+- rawLabel (libellé brut d'origine fourni par la banque)
+- amount (montant numérique : négatif pour un débit/dépense, positif pour un crédit/revenu)
+
+RÈGLES COMPTABLES STRICTES ET PRIORITAIRES :
+1. IGNORANCE TOTALE DU PASSÉ : Ignore catégoriquement toute catégorie ou classification antérieure de la banque. Fais une analyse sémantique pure basée UNIQUEMENT sur le libellé brut ("rawLabel") et le montant ("amount") pour reconstruire et enrichir la donnée.
+2. NETTOYAGE DU MARCHAND (merchantName) :
+   - Extrais le nom réel et standardisé du commerçant, organisme ou tiers (ex: "PRLV SEPA NETFLIX 12345" -> "Netflix", "CARTE 15/04 MONOPRIX 4567" -> "Monoprix", "VIR SEPA SALAIRE ACME INC" -> "Acme Inc", "TOTAL DIRECT ENERGIE 998" -> "TotalEnergies", "PRLV FREE TELECOM 883" -> "Free", "CB SNCF CONNECT" -> "SNCF").
+   - Élimine tout bruit technique : codes bancaires (CARTE, CB, VIR, PRLV, SEPA, FACTURE, RETRAIT DAB, COMMERCE ELECTRONIQUE, etc.), dates intégrées, numéros de mandat ou de carte.
+3. CATÉGORIES COMPTABLES STANDARDISÉES (category) :
+   Attribue STRICTEMENT l'une des 4 catégories suivantes pour CHAQUE transaction :
+   - "Charges fixes" : Dépenses récurrentes incompressibles ou contractuelles (Loyer, charges de copropriété, électricité, gaz, eau, internet/box, forfaits mobiles, assurances santé/auto/habitation, abonnements récurrents, remboursements de crédit/prêt, cotisations bancaires).
+   - "Charges variables courantes" : Dépenses indispensables de vie courante dont le montant varie (Courses en supermarché, alimentation générale, boucherie, boulangerie, transports, carburant, frais de santé/pharmacie).
+   - "Dépenses de confort" : Dépenses non essentielles de plaisir, loisirs ou bien-être (Restaurants, cafés, bars, fast-foods, livraisons de repas Deliveroo/Uber Eats, shopping vêtements, décoration, high-tech, cinéma, jeux vidéo, vacances, sorties).
+   - "Revenus" : Tout flux financier positif entrant (Salaires, primes, allocations familiales CAF, indemnités France Travail / chômage, remboursements de mutuelle / sécurité sociale, rentrées d'argent réelles).
+4. DÉTECTION DES ABONNEMENTS (isSubscription) :
+   - Assigne "isSubscription: true" EXCLUSIVEMENT aux abonnements et prélèvements mensuels/récurrents (charges fixes) qui constituent des contrats reconductibles et potentiellement renégociables ou résiliables (ex: Netflix, Spotify, Disney+, salle de sport Basic-Fit, box internet Orange/Free/SFR, forfait mobile, Amazon Prime, abonnements SaaS/logiciels, assurances).
+   - Pour tout achat ponctuel, plein d'essence, course en supermarché, restaurant, virement ponctuel ou salaire : assigne "isSubscription: false".
+5. EXHAUSTIVITÉ ET ORDRE :
+   Tu DOIS traiter et renvoyer TOUTES les transactions fournies dans le tableau. Chaque transaction doit avoir son index correspondant exact.`;
+
+    const responseSchema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        results: {
+          type: Type.ARRAY,
+          description: "Liste des transactions analysées et enrichies",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              index: { 
+                type: Type.INTEGER, 
+                description: "Index de la transaction dans le lot envoyé" 
+              },
+              merchantName: { 
+                type: Type.STRING, 
+                description: "Nom propre et nettoyé du commerçant ou tiers" 
+              },
+              category: { 
+                type: Type.STRING, 
+                description: "Catégorie standardisée: 'Charges fixes', 'Charges variables courantes', 'Dépenses de confort', ou 'Revenus'" 
+              },
+              isSubscription: { 
+                type: Type.BOOLEAN, 
+                description: "Vrai s'il s'agit d'un abonnement mensuel (charge fixe) renégociable" 
+              }
+            },
+            required: ["index", "merchantName", "category", "isSubscription"]
+          }
+        }
+      },
+      required: ["results"]
+    };
+
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === "MOCK_KEY") {
+        console.warn("[analyzeBankStatement] GEMINI_API_KEY non définie ou MOCK, activation du fallback local.");
+        const fallbackResults = transactions.map((t: any, idx: number) => {
+          const raw = String(t.rawLabel || '').trim();
+          const amt = Number(t.amount) || 0;
+          const isIncome = amt > 0;
+          let cat = isIncome ? 'Revenus' : 'Charges variables courantes';
+          let isSub = false;
+          const lower = raw.toLowerCase();
+
+          if (lower.includes('netflix') || lower.includes('spotify') || lower.includes('freebox') || lower.includes('orange') || lower.includes('sfr') || lower.includes('bouygues') || lower.includes('basic fit') || lower.includes('assurance') || lower.includes('edf') || lower.includes('totalenergies') || lower.includes('loyer')) {
+            cat = 'Charges fixes';
+            isSub = true;
+          } else if (lower.includes('restaurant') || lower.includes('mcdo') || lower.includes('burger') || lower.includes('uber eats') || lower.includes('deliveroo') || lower.includes('zara') || lower.includes('fnac') || lower.includes('cinema')) {
+            cat = 'Dépenses de confort';
+          } else if (isIncome) {
+            cat = 'Revenus';
+          }
+
+          const cleanedMerchant = raw.replace(/^(CARTE\s+\d{2}\/\d{2}|VIR\s+SEPA|PRLV\s+SEPA|PAIEMENT\s+CB)\s*/i, '').trim() || raw;
+
+          return {
+            index: typeof t.index === 'number' ? t.index : idx,
+            merchantName: cleanedMerchant,
+            category: cat,
+            isSubscription: isSub
+          };
+        });
+
+        const elapsedMs = Date.now() - serverStartTime;
+        return {
+          success: true,
+          count: fallbackResults.length,
+          executionTimeSeconds: (elapsedMs / 1000).toFixed(2),
+          results: fallbackResults
+        };
+      }
+
+      // Envoi du lot (Batch) à Gemini 1.5 Flash (Free Tier)
+      const BATCH_SIZE = 120;
+      const allResults: any[] = [];
+
+      for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
+        const batch = transactions.slice(i, i + BATCH_SIZE);
+        const payload = batch.map((tx: any, bIdx: number) => ({
+          index: typeof tx.index === 'number' ? tx.index : (i + bIdx),
+          date: tx.date || '',
+          rawLabel: String(tx.rawLabel || '').slice(0, 150),
+          amount: Number(tx.amount) || 0
+        }));
+
+        const userPrompt = `Voici les transactions bancaires à analyser en lot (${batch.length} opérations) :\n${JSON.stringify(payload)}`;
+
+        const candidateModels = [
+          (data.model || 'gemini-3.8-flash').trim(),
+          'gemini-3.8-flash',
+          'gemini-flash-latest',
+          'gemini-3.5-flash'
+        ];
+        const uniqueModels = Array.from(new Set(candidateModels));
+
+        let result: any = null;
+        let lastErr: any = null;
+
+        for (const candidateModel of uniqueModels) {
+          try {
+            result = await getAI().models.generateContent({
+              model: candidateModel,
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    { text: systemPrompt },
+                    { text: userPrompt }
+                  ]
+                }
+              ],
+              config: {
+                responseMimeType: "application/json",
+                responseSchema,
+                temperature: 0.1
+              }
+            });
+            break;
+          } catch (err: any) {
+            lastErr = err;
+            console.warn(`[analyzeBankStatement] Tentative avec ${candidateModel} a échoué:`, err?.message || err);
+          }
+        }
+
+        if (!result) {
+          throw lastErr || new Error("Échec de l'appel au modèle Gemini.");
+        }
+
+        const rawText = result.text || "{}";
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(rawText);
+        } catch (pe) {
+          const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+          parsed = JSON.parse(cleaned);
+        }
+
+        const items = Array.isArray(parsed?.results) ? parsed.results : (Array.isArray(parsed) ? parsed : []);
+        allResults.push(...items);
+      }
+
+      const elapsedMs = Date.now() - serverStartTime;
+      const durationSeconds = (elapsedMs / 1000).toFixed(2);
+      console.log(`[analyzeBankStatement] Fin d'analyse en ${durationSeconds}s (${allResults.length} résultats enrichis).`);
+
+      return {
+        success: true,
+        count: allResults.length,
+        executionTimeSeconds: durationSeconds,
+        results: allResults
+      };
+
+    } catch (error: any) {
+      console.error("[analyzeBankStatement] Erreur Gemini 1.5 Flash:", error);
+      throw new functions.https.HttpsError(
+        'internal',
+        `Erreur Gemini 1.5 Flash : ${error.message || 'Erreur inconnue lors du traitement du relevé.'}`
+      );
+    }
+  });
+
 
