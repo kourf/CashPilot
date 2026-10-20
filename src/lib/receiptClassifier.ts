@@ -544,12 +544,14 @@ export function normalizeStoreName(rawName?: string): string {
     return cityPart ? `Lidl ${capitalizeWords(cityPart)}` : 'Lidl';
   }
 
-  // Super U / Hyper U / U Express
-  if (lower.startsWith('super u') || lower.startsWith('hyper u') || lower.startsWith('u express')) {
+  // Super U / Hyper U / U Express / U
+  if (lower.startsWith('super u') || lower.startsWith('hyper u') || lower.startsWith('u express') || lower.startsWith('u ')) {
     let brand = 'Super U';
-    if (lower.startsWith('hyper u')) brand = 'Hyper U';
-    else if (lower.startsWith('u express')) brand = 'U Express';
-    const cityPart = stripBrandPrefix(cleaned, brand.length);
+    let len = 7;
+    if (lower.startsWith('hyper u')) { brand = 'Hyper U'; len = 7; }
+    else if (lower.startsWith('u express')) { brand = 'U Express'; len = 9; }
+    else if (lower.startsWith('u ')) { brand = 'Super U'; len = 2; }
+    const cityPart = stripBrandPrefix(cleaned, len);
     return cityPart ? `${brand} ${capitalizeWords(cityPart)}` : brand;
   }
 
