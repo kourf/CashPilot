@@ -26,7 +26,9 @@ import {
   Tag,
   FileText,
   Layers,
-  ArrowRight
+  ArrowRight,
+  BookOpen,
+  HeartPulse
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { 
@@ -61,6 +63,9 @@ const AISLE_ICONS: Record<SupermarketAisle, React.ComponentType<{ size?: number;
   'Hygiène, Beauté & Sanitaire': Sparkles,
   'Entretien & Maison': Home,
   'Boissons': CupSoda,
+  'Maison, Textile & Culture': BookOpen,
+  'Santé & Pharmacie': HeartPulse,
+  'Sacs & Consignes': ShoppingBag,
   'Autres / Divers': MoreHorizontal
 };
 
@@ -269,7 +274,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
             </span>
             <div className="mt-1.5 sm:mt-2">
               <span className="text-lg sm:text-2xl font-extrabold text-teal-500 font-mono">
-                {coveredAislesCount} / 8
+                {coveredAislesCount} / {SUPERMARKET_AISLES.length}
               </span>
               <span className="text-[9px] sm:text-[10px] text-muted-foreground block mt-0.5">
                 Rayons représentés
@@ -711,16 +716,16 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                             setSelectedProductForEvolution(product);
                                           }}
                                           className={cn(
-                                            "text-left inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-md mt-1.5 border transition-all hover:scale-[1.02]",
-                                            product.priceEvolution.status === 'UP' && "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/20",
-                                            product.priceEvolution.status === 'DOWN' && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20",
+                                            "text-left inline-flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-md mt-1.5 border transition-all hover:scale-[1.02] cursor-pointer shadow-xs",
+                                            (product.priceEvolution.status === 'HIKE' || product.priceEvolution.status === 'UP') && "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/25",
+                                            (product.priceEvolution.status === 'DROP' || product.priceEvolution.status === 'DOWN') && "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25",
                                             product.priceEvolution.status === 'STABLE' && "bg-secondary text-muted-foreground border-border/80 hover:bg-secondary/80"
                                           )}
-                                          title="Cliquer pour afficher la courbe d'évolution et l'historique"
+                                          title="Cliquer pour afficher la courbe d'évolution et l'historique de ce produit"
                                         >
-                                          <TrendingUp size={10} className={cn(
-                                            product.priceEvolution.status === 'DOWN' && "rotate-180 text-emerald-500",
-                                            product.priceEvolution.status === 'UP' && "text-red-500"
+                                          <TrendingUp size={11} className={cn(
+                                            (product.priceEvolution.status === 'DROP' || product.priceEvolution.status === 'DOWN') && "rotate-180 text-emerald-500",
+                                            (product.priceEvolution.status === 'HIKE' || product.priceEvolution.status === 'UP') && "text-red-500"
                                           )} />
                                           <span className="line-clamp-1">{product.priceEvolution.message}</span>
                                         </button>

@@ -12,7 +12,10 @@ import {
   Store,
   Check,
   ArrowRight,
-  TrendingDown
+  TrendingDown,
+  BookOpen,
+  HeartPulse,
+  ShoppingBag
 } from 'lucide-react';
 import { 
   type Receipt, 
@@ -56,6 +59,9 @@ const AISLE_ICONS: Record<SupermarketAisle, React.ComponentType<{ size?: number;
   'Boissons': CupSoda,
   'Entretien & Maison': Home,
   'Hygiène, Beauté & Sanitaire': Sparkles,
+  'Maison, Textile & Culture': BookOpen,
+  'Santé & Pharmacie': HeartPulse,
+  'Sacs & Consignes': ShoppingBag,
   'Autres / Divers': MoreHorizontal
 };
 
@@ -121,6 +127,27 @@ const AISLE_STYLES: Record<SupermarketAisle, {
     badgeBg: 'bg-purple-500/10',
     badgeText: 'text-purple-700 dark:text-purple-300',
     badgeBorder: 'border-purple-500/20'
+  },
+  'Maison, Textile & Culture': {
+    iconBg: 'bg-indigo-500/15 dark:bg-indigo-500/20',
+    iconColor: 'text-indigo-600 dark:text-indigo-400',
+    badgeBg: 'bg-indigo-500/10',
+    badgeText: 'text-indigo-700 dark:text-indigo-300',
+    badgeBorder: 'border-indigo-500/20'
+  },
+  'Santé & Pharmacie': {
+    iconBg: 'bg-red-500/15 dark:bg-red-500/20',
+    iconColor: 'text-red-600 dark:text-red-400',
+    badgeBg: 'bg-red-500/10',
+    badgeText: 'text-red-700 dark:text-red-300',
+    badgeBorder: 'border-red-500/20'
+  },
+  'Sacs & Consignes': {
+    iconBg: 'bg-amber-600/15 dark:bg-amber-600/20',
+    iconColor: 'text-amber-700 dark:text-amber-400',
+    badgeBg: 'bg-amber-600/10',
+    badgeText: 'text-amber-800 dark:text-amber-300',
+    badgeBorder: 'border-amber-600/20'
   },
   'Autres / Divers': {
     iconBg: 'bg-slate-500/15 dark:bg-slate-500/20',

@@ -12,6 +12,9 @@ export const SUPERMARKET_AISLE_KEYS = [
   'hygiene_beaute',
   'entretien_maison',
   'boissons',
+  'maison_textile_culture',
+  'sante_pharmacie',
+  'sacs_consignes',
   'autres_divers'
 ] as const;
 
@@ -26,6 +29,9 @@ export const SUPERMARKET_AISLES = [
   'Hygiène, Beauté & Sanitaire',
   'Entretien & Maison',
   'Boissons',
+  'Maison, Textile & Culture',
+  'Santé & Pharmacie',
+  'Sacs & Consignes',
   'Autres / Divers'
 ] as const;
 
@@ -96,6 +102,7 @@ export interface PriceEvolutionInfo {
   status: PriceEvolutionType;
   message: string;
   diffUnitPrice: number; // Différence positive ou négative en €/u
+  currentUnitPrice?: number;
   previousDate: string;
   previousUnitPrice: number;
   previousStore?: string;

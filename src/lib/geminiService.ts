@@ -1256,48 +1256,128 @@ export async function analyzeReceiptMultimodal(
   );
 
   const systemPrompt = `
-Tu es l'intelligence artificielle experte de CashPilot spécialisée dans la numérisation de tickets de caisse et l'arbitrage comparatif de prix au kilo/litre (Grande Distribution France).
+Tu es un auditeur financier et expert OCR d'élite pour l'application CashPilot, spécialisé dans l'audit et la numérisation des tickets de caisse de grande distribution (E.Leclerc, Carrefour, Lidl, Intermarché, Auchan, Aldi, Monoprix, Coop, Migros, etc.).
 
 OBJECTIF :
-L'utilisateur te fournit une ou plusieurs photos (ou pages PDF) d'un ticket de caisse.
-Si plusieurs photos sont fournies, elles correspondent aux fragments successifs d'un long ticket photographié en plusieurs parties (haut, milieu, bas).
+Extrais avec une rigueur comptable et mathématique absolue les données réelles du ticket photographié (ou pages PDF). Si plusieurs photos sont fournies, assemble les fragments sans doublonner les coupures.
 
-CONSIGNES STRICTES :
-1. RECONSTRUCTION DU TICKET FRAGMENTÉ :
-- Réassemble les fragments dans l'ordre chronologique de haut en bas.
-- Détecte et élimine scrupuleusement les doublons d'articles dans les zones de coupure ou de chevauchement visuel entre deux clichés.
+================================================================================
+RÈGLE 1 : LA RÈGLE DU TTC EXCLUSIF ET OMISSION TOTALE DE LA TVA
+================================================================================
+- 'pricePaid' : Doit OBLIGATOIREMENT être le montant final TTC (Toutes Taxes Comprises) payé pour la ligne d'article.
+- INTERDICTION ABSOLUE de capturer les codes de TVA (les petits "6" pour 5,5%, "8" ou "4" pour 20%, "1", "2", "3", "A", "B", "C" figurant en fin de ligne de caisse) comme des prix ou des montants.
+- OBLIGATION STRICTE D'IGNORER les tableaux récapitulatifs de TVA situés en bas de ticket (taux de TVA, base HT, montant TVA, récapitulatif fiscal). Ne crée JAMAIS d'articles pour ces lignes fiscales.
 
-2. EXTRACTION ET NORMALISATION DES ARTICLES :
-Pour chaque article présent sur le ticket :
-- 'rawName' : Libellé brut exact et abrégé tel qu'il figure sur le ticket (ex: "LT 1/2 ECR 1L CANDIA", "PTE COQUIL 500G", "CAF MOULU ARAB 250G").
-- 'standardName' : Libellé normalisé, clair, propre et compréhensible (ex: "Lait demi-écrémé 1L", "Pâtes coquillettes 500g", "Café moulu Arabica 250g").
-- 'category' : Catégorie principale ("Produits frais", "Épicerie", "Boissons", "Hygiène", "Entretien", "Fruits & Légumes", "Boulangerie", "Autres").
-- 'quantity' : Nombre d'unités achetées (nombre entier ou décimal, ex: 1, 2, 3).
-- 'paidPrice' : Prix total payé pour cette ligne en euros (ex: 1.15).
-- 'unit' : Unité de référence ("L", "kg", ou "pièce").
-- 'unitPrice' : Prix unitaire au kg (€/kg) ou au litre (€/L), ou à la pièce.
-  * Si le ticket affiche explicitement le prix au kg/L, utilise-le.
-  * Sinon, calcule-le : paidPrice / volume_ou_poids_net (ex: 1.49 € pour 500g -> 2.98 €/kg).
+================================================================================
+RÈGLE 2 : LOCALISATION PRÉCISE (ENSEIGNE + VILLE)
+================================================================================
+- 'storeName' : Tu dois impérativement extraire le nom de l'enseigne ET la ville/localisation exacte (ex: "E.Leclerc Ville-la-Grand", "Lidl Annemasse", "Carrefour Market Antibes", "Intermarché Gaillard").
+- Deux magasins d'une même marque dans des villes différentes doivent être différenciés pour permettre l'audit multi-sites.
 
-3. MÉCADONNÉES GLOBALES DU TICKET :
-- 'storeName' : Nom de l'enseigne de supermarché (ex: "E.Leclerc", "Lidl", "Carrefour", "Intermarché", "Auchan", "Monoprix", "Aldi", "Super U", etc.).
-- 'date' : Date d'achat au format YYYY-MM-DD (si introuvable, date du jour).
-- 'total' : Montant total payé sur le ticket en euros.
+================================================================================
+RÈGLE 3 : DOUBLE COMPTAGE (FUSION STRICTE MULTI-LIGNES / RÈGLE LECLERC)
+================================================================================
+Sur de nombreux tickets de caisse (notamment E.Leclerc, Carrefour, Intermarché), lorsqu'un article est acheté en plusieurs exemplaires ou vendu au poids, le ticket le présente sur DEUX ou TROIS lignes consécutives :
+  Exemple typique E.Leclerc :
+    Ligne 1 : "CHEVRE FRAIS P.P."       (Nom du produit)
+    Ligne 2 : "2 X 1,85 €"              (Détail Quantité x Prix unitaire)
+    Ligne 2 ou 3 : "3,70 €"             (Prix total payé pour ce regroupement)
+  Autre exemple :
+    Ligne 1 : "BAGUETTE CAMPAGNE"
+    Ligne 2 : "3 X 0,95                 2,85 €"
 
-RÉPONDRE EXCLUSIVEMENT AVEC UN OBJET JSON VALIDE STRICTEMENT AU FORMAT SUIVANT :
+INTERDICTION ABSOLUE DE CRÉER DEUX ARTICLES DISTINCTS !
+Tu dois FORMELLEMENT FUSIONNER la ligne de détail unitaire ("Quantité x Prix unitaire") avec le nom du produit et sa ligne de total.
+Pour chaque produit acheté en plusieurs exemplaires :
+- Tu ne dois générer qu'UNE SEULE ET UNIQUE LIGNE D'ARTICLE dans le tableau "items" du JSON.
+- 'quantity' : Le nombre d'exemplaires achetés (ex: 2).
+- 'unitPrice' : Le prix unitaire d'un exemplaire (ex: 1.85).
+- 'pricePaid' : LE PRIX TOTAL TTC PAYÉ POUR CE REGROUPEMENT (ex: 3.70). Retiens UNIQUEMENT le prix total TTC de ce regroupement.
+
+================================================================================
+RÈGLE 4 : IGNORER STRICTEMENT LES TAXES ÉCO (DEEE / DEA)
+================================================================================
+- Tu dois IGNORER STRICTEMENT les mentions de type "Dont DEEE", "Dont DEA", "Dont éco-part", "Dont éco-participation".
+- Ces montants sont déjà inclus dans le prix TTC de l'appareil ou du meuble et font doublon. Ne crée JAMAIS de ligne d'article pour une éco-participation.
+
+================================================================================
+RÈGLE 5 : AVEUGLE AUX RAYONS DU MAGASIN (CLASSIFICATION AUTONOME)
+================================================================================
+- Tu as l'INTERDICTION FORMELLE de te fier aux en-têtes imprimés par le magasin (ex: ">> DPH", ">> PE TRAD", ">> BAZAR", ">> TEXTILE", ">> FRAIS LS", ">> ALIMENTAIRE").
+- Tu dois classifier TOI-MÊME chaque produit dans notre nomenclature standardisée en lisant UNIQUEMENT le libellé de l'article ("normalizedName" / "rawName").
+
+================================================================================
+RÈGLE 6 : ARRÊT D'URGENCE (MOYENS DE PAIEMENT)
+================================================================================
+- Dès que tu lis la mention "Total X articles", "TOTAL", ou le montant net final payé, ARRÊTE IMMÉDIATEMENT de chercher des articles.
+- Tu ne dois JAMAIS tenter d'extraire les paiements ou les modes de règlement comme des articles ("CB", "Carte Bancaire", "Especes", "T restau CONECS", "Cheque", "Rendu monnaie", "Solde fidélité", etc.).
+
+================================================================================
+RÈGLE 7 : DOUBLE BALAYAGE DES REMISES (DUAL SWEEP) & AUTO-CONTRÔLE D'AUDIT
+================================================================================
+- Double balayage obligatoire :
+  1. Balayage 1 : Scanne les articles pour repérer les remises immédiates intercalées sous un produit (ex: "-0.43 €" sous un article, "Remise immédiate", "Avantage fidélité déduit").
+  2. Balayage 2 : Scanne la fin du ticket pour repérer les bons d'achat globaux, coupons ou remises générales déduites du total.
+- Additionne silencieusement TOUTES ces remises et renvoie le total dans la variable 'totalDiscount' (nombre décimal positif, ex: 3.25, 0 si aucune remise).
+- 'totalArticles' / 'subtotal' : Somme brute des articles TTC avant déduction des remises.
+- 'totalAmount' : Montant total net final payé en caisse (débit carte bancaire ou espèces).
+- Contrôle mathématique interne : (Somme des 'pricePaid' des articles) - ('totalDiscount') = 'totalAmount'.
+
+================================================================================
+NOMENCLATURE OFFICIELLE DES RAYONS (11 RAYONS + 1 FILET DE SÉCURITÉ)
+================================================================================
+Affecte obligatoirement 'categoryKey' à l'une des 12 clés suivantes :
+1. "boucherie_poissonnerie" : Boucherie, Volaille & Poissonnerie (viandes, volailles, charcuteries, poissons, fruits de mer)
+2. "epicerie_salee" : Épicerie salée & Épices (pâtes, riz, conserves, huiles, épices, sauces, soupes)
+3. "fruits_legumes" : Fruits & Légumes (fruits, légumes, primeurs, salades, herbes)
+4. "frais_cremerie" : Produits frais & Crèmerie (laits, beurres, crèmes, fromages, yaourts, œufs)
+5. "epicerie_sucree" : Épicerie sucrée (cafés, thés, chocolats, biscuits, gâteaux, confitures, farines, sucres)
+6. "hygiene_beaute" : Hygiène, Beauté & Sanitaire (savons, gels douche, dentifrices, shampoings, déodorants, papier toilette)
+7. "entretien_maison" : Entretien & Maison (lessives, liquide vaisselle, éponges, sacs poubelle, nettoyants)
+8. "boissons" : Boissons (eaux plates/gazeuses, sodas, jus de fruits, sirops, bières, vins)
+9. "maison_textile_culture" : Maison, Textile & Culture (livres, vaisselle, draps, électroménager, papeterie, petits ustensiles, bazar maison)
+10. "sante_pharmacie" : Santé & Pharmacie (autotests, parapharmacie, pansements, compresses, vitamines, compléments)
+11. "sacs_consignes" : Sacs & Consignes (sacs cabas réutilisables, sacs kraft de caisse, consignes de bouteilles)
+12. "autres_divers" : Autres / Divers (filet de sécurité)
+
+DONNÉES À EXTRAIRE POUR CHAQUE ARTICLE :
+- 'rawName' : Nom brut exact imprimé sur le ticket (ex: "CHEVRE FRAIS P.P.").
+- 'normalizedName' : Nom générique du produit nettoyé de sa marque (ex: "Fromage de chèvre frais").
+- 'brand' : Marque constatée sur le ticket ou déduite (ex: "Marque Repère", "Président", "Milbona", "Générique").
+- 'categoryKey' : L'une des 12 clés slug ci-dessus.
+- 'quantity' : Nombre d'unités achetées (défaut: 1).
+- 'unitPrice' : Prix unitaire à la pièce ou au kilo/litre (ex: 1.85).
+- 'pricePaid' : PRIX TOTAL TTC PAYÉ POUR LA LIGNE (ex: 3.70 pour 2 unités à 1.85).
+- 'weightOrVolume' : Contenance formatée (ex: "2x150 g", "1.5 L", "1 kg").
+- 'weightOrVolumeValue' : Valeur numérique.
+- 'weightOrVolumeUnit' : Unité ('kg', 'g', 'l', 'cl', 'ml', 'piece').
+- 'referenceUnitPrice' : Prix de référence standardisé (€/kg, €/L ou €/pièce).
+- 'unit' : "L", "kg", ou "pièce".
+
+RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
 {
-  "storeName": "E.Leclerc",
-  "date": "2026-04-16",
-  "total": 34.60,
+  "storeName": "E.Leclerc Ville-la-Grand",
+  "date": "2026-10-18",
+  "time": "14:32",
+  "totalArticles": 31.25,
+  "subtotal": 31.25,
+  "totalDiscount": 2.80,
+  "totalDiscounts": 2.80,
+  "totalAmount": 28.45,
   "items": [
     {
-      "rawName": "LT 1/2 ECR 1L CANDIA",
-      "standardName": "Lait demi-écrémé 1L",
-      "category": "Produits frais",
-      "quantity": 1,
-      "paidPrice": 1.15,
-      "unit": "L",
-      "unitPrice": 1.15
+      "rawName": "CHEVRE FRAIS P.P.",
+      "normalizedName": "Fromage de chèvre frais",
+      "brand": "Marque Repère",
+      "categoryKey": "frais_cremerie",
+      "quantity": 2,
+      "unitPrice": 1.85,
+      "pricePaid": 3.70,
+      "weightOrVolume": "2x150 g",
+      "weightOrVolumeValue": 300,
+      "weightOrVolumeUnit": "g",
+      "referenceUnitPrice": 12.33,
+      "unit": "kg"
     }
   ]
 }
@@ -1529,6 +1609,7 @@ export interface ExtractedReceiptResult {
   totalArticles?: number; // Total des articles (sous-total brut avant remises)
   subtotal?: number; // Sous-total brut des articles (synonyme de totalArticles)
   totalDiscounts?: number; // Montant total des remises / bons immédiats
+  totalDiscount?: number; // Alias strict selon cahier des charges
   totalAmount: number; // Total final net payé en caisse
   items: RawExtractedItem[];
   rawFileCount: number;
@@ -1802,7 +1883,8 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
     const rawArticles = Number(parsed.totalArticles ?? parsed.subtotal);
     const totalArticles = rawArticles > 0 ? Number(rawArticles.toFixed(2)) : Number(sumItems.toFixed(2));
     const subtotal = totalArticles;
-    const totalDiscounts = Number(parsed.totalDiscounts) > 0 ? Number(Number(parsed.totalDiscounts).toFixed(2)) : 0;
+    const discountVal = Number(parsed.totalDiscount ?? parsed.totalDiscounts ?? 0);
+    const totalDiscounts = discountVal > 0 ? Number(discountVal.toFixed(2)) : 0;
     
     let totalAmount = Number(parsed.totalAmount || parsed.total);
     if (!totalAmount || isNaN(totalAmount)) {
@@ -1820,6 +1902,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
       totalArticles,
       subtotal,
       totalDiscounts,
+      totalDiscount: totalDiscounts,
       totalAmount,
       items,
       rawFileCount: files.length

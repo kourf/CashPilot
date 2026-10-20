@@ -7,7 +7,8 @@ import {
   type ReceiptItem,
   type ComparativeMatrix,
   type SupermarketAisle,
-  type SupermarketAisleKey 
+  type SupermarketAisleKey,
+  getReceiptUniqueKey
 } from '../types/receipts';
 import { buildComparativeMatrix, classifyItemAisle, normalizeAisle, computeUnitPrice } from '../lib/receiptClassifier';
 import { extractReceiptItemsFromFiles, type ExtractedReceiptResult } from '../lib/geminiService';
@@ -247,6 +248,20 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addReceipt = useCallback(async (
     receiptData: Omit<Receipt, 'id' | 'userId' | 'createdAt'>
   ): Promise<Receipt> => {
+    // Règle 4 : Clé Anti-Doublon stricte (Nom Magasin + Date + Heure/Minute + Montant)
+    const currentKey = getReceiptUniqueKey(
+      receiptData.storeName,
+      receiptData.date,
+      receiptData.time,
+      receiptData.totalAmount
+    );
+    const existing = receipts.find(r => 
+      getReceiptUniqueKey(r.storeName, r.date, r.time, r.totalAmount) === currentKey
+    );
+    if (existing) {
+      throw new Error(`🚨 Ticket déjà importé : Ce ticket de caisse (${receiptData.storeName} le ${receiptData.date} pour ${receiptData.totalAmount} €) existe déjà dans votre historique. Importation bloquée pour éviter les doublons.`);
+    }
+
     const accountId = getActiveAccountId();
     const docId = `receipt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const nowIso = new Date().toISOString();

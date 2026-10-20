@@ -18,6 +18,9 @@ export const AISLE_KEY_TO_LABEL: Record<SupermarketAisleKey, SupermarketAisle> =
   hygiene_beaute: 'Hygiène, Beauté & Sanitaire',
   entretien_maison: 'Entretien & Maison',
   boissons: 'Boissons',
+  maison_textile_culture: 'Maison, Textile & Culture',
+  sante_pharmacie: 'Santé & Pharmacie',
+  sacs_consignes: 'Sacs & Consignes',
   autres_divers: 'Autres / Divers'
 };
 
@@ -30,6 +33,9 @@ export const AISLE_LABEL_TO_KEY: Record<SupermarketAisle, SupermarketAisleKey> =
   'Hygiène, Beauté & Sanitaire': 'hygiene_beaute',
   'Entretien & Maison': 'entretien_maison',
   'Boissons': 'boissons',
+  'Maison, Textile & Culture': 'maison_textile_culture',
+  'Santé & Pharmacie': 'sante_pharmacie',
+  'Sacs & Consignes': 'sacs_consignes',
   'Autres / Divers': 'autres_divers'
 };
 
@@ -89,6 +95,15 @@ export function normalizeAisle(input?: string): { key: SupermarketAisleKey; labe
   }
   if (clean.includes('boisson') || clean.includes('soda') || clean.includes('eau') || clean.includes('jus') || clean.includes('sirop')) {
     return { key: 'boissons', label: 'Boissons' };
+  }
+  if (clean.includes('maison_textile') || clean.includes('textile') || clean.includes('culture') || clean.includes('livre') || clean.includes('vaisselle') || clean.includes('drap') || clean.includes('electromenager') || clean.includes('bazar') || clean.includes('papeterie')) {
+    return { key: 'maison_textile_culture', label: 'Maison, Textile & Culture' };
+  }
+  if (clean.includes('sante') || clean.includes('pharmacie') || clean.includes('parapharmacie') || clean.includes('pansement') || clean.includes('vitamine') || clean.includes('medicament') || clean.includes('test')) {
+    return { key: 'sante_pharmacie', label: 'Santé & Pharmacie' };
+  }
+  if (clean.includes('sac') || clean.includes('cabas') || clean.includes('consigne')) {
+    return { key: 'sacs_consignes', label: 'Sacs & Consignes' };
   }
 
   return { key: 'autres_divers', label: 'Autres / Divers' };
@@ -180,9 +195,36 @@ export const AISLE_CONFIGS: Record<SupermarketAisle, AisleMetadata> = {
     badgeClass: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20',
     accentBorder: 'border-l-teal-500'
   },
+  'Maison, Textile & Culture': {
+    id: 'Maison, Textile & Culture',
+    order: 9,
+    label: 'Maison, Textile & Culture',
+    description: 'Livres, vaisselle, draps, électroménager, papeterie, bazar',
+    iconName: 'BookOpen',
+    badgeClass: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+    accentBorder: 'border-l-indigo-500'
+  },
+  'Santé & Pharmacie': {
+    id: 'Santé & Pharmacie',
+    order: 10,
+    label: 'Santé & Pharmacie',
+    description: 'Parapharmacie, tests, pansements, compléments, soins médicaux',
+    iconName: 'HeartPulse',
+    badgeClass: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
+    accentBorder: 'border-l-red-500'
+  },
+  'Sacs & Consignes': {
+    id: 'Sacs & Consignes',
+    order: 11,
+    label: 'Sacs & Consignes',
+    description: 'Sacs cabas, sacs réutilisables, consignes de bouteilles',
+    iconName: 'ShoppingBag',
+    badgeClass: 'bg-amber-600/10 text-amber-700 dark:text-amber-400 border-amber-600/20',
+    accentBorder: 'border-l-amber-600'
+  },
   'Autres / Divers': {
     id: 'Autres / Divers',
-    order: 9,
+    order: 12,
     label: 'Autres / Divers',
     description: 'Articles non classés ou divers',
     iconName: 'MoreHorizontal',
@@ -196,6 +238,27 @@ export const AISLE_CONFIGS: Record<SupermarketAisle, AisleMetadata> = {
  */
 export function classifyItemAisle(name: string, rawName: string = ''): SupermarketAisle {
   const text = `${name} ${rawName}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // 0. Sacs & Consignes (prioritaire absolu)
+  if (
+    /\b(sacs? cabas|cabas|sacs? reutilisables?|sacs? kraft|sacs? plastique|consignes?|consignations?|bouteilles? consignee)\b/.test(text)
+  ) {
+    return 'Sacs & Consignes';
+  }
+
+  // 0.bis Santé & Pharmacie (dépollue le budget alimentation)
+  if (
+    /\b(parapharmacies?|pansements?|compresses?|desinfectants?|antiseptiques?|tests? covid|autotests?|vitamines?|complements? alimentaires?|dolipranes?|paracetamol|pastilles? gorge|arnica|gel hydroalcoolique|thermometres?|masques?|serum phy|biseptine|preservatifs?)\b/.test(text)
+  ) {
+    return 'Santé & Pharmacie';
+  }
+
+  // 0.ter Maison, Textile & Culture (dépollue le budget alimentation)
+  if (
+    /\b(livres?|romans?|magazines?|journaux?|bd|mangas?|vaisselles?|assiettes?|verres?|casseroles?|poeles?|couverts?|draps?|serviettes? de bain|torchons?|oreillers?|couettes?|ampoules?|piles?|electromenagers?|grille-pain|bouilloires?|cafetieres?|cables?|chargeurs?|ecouteurs?|papeteries?|stylos?|cahiers?|classeurs?|textiles?|t-shirts?|chaussettes?|calecons?|slips?|pyjamas?)\b/.test(text)
+  ) {
+    return 'Maison, Textile & Culture';
+  }
 
   // 1. Entretien & Maison (prioritaire pour éviter que "liquide vaisselle citron" soit classé en fruit)
   if (
@@ -555,6 +618,7 @@ export function buildComparativeMatrix(
           status: 'HIKE',
           message: `🚨 Attention : Prix en hausse (+${diff.toFixed(2).replace('.', ',')} ${unitLabel} depuis le dernier achat)`,
           diffUnitPrice: diff,
+          currentUnitPrice: latest.unitPrice,
           previousDate: comparisonTarget.date,
           previousUnitPrice: comparisonTarget.unitPrice,
           previousStore: comparisonTarget.storeName
@@ -564,6 +628,7 @@ export function buildComparativeMatrix(
           status: 'DROP',
           message: `✅ Bonne affaire : Moins cher qu'en ${previousMonth} (-${Math.abs(diff).toFixed(2).replace('.', ',')} ${unitLabel})`,
           diffUnitPrice: diff,
+          currentUnitPrice: latest.unitPrice,
           previousDate: comparisonTarget.date,
           previousUnitPrice: comparisonTarget.unitPrice,
           previousStore: comparisonTarget.storeName
@@ -573,6 +638,7 @@ export function buildComparativeMatrix(
           status: 'STABLE',
           message: `Prix stable (${latest.unitPrice.toFixed(2).replace('.', ',')} ${unitLabel})`,
           diffUnitPrice: 0,
+          currentUnitPrice: latest.unitPrice,
           previousDate: comparisonTarget.date,
           previousUnitPrice: comparisonTarget.unitPrice,
           previousStore: comparisonTarget.storeName

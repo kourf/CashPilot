@@ -101,13 +101,13 @@ export const PriceEvolutionModal: React.FC<PriceEvolutionModalProps> = ({
           {evolution ? (
             <div className={cn(
               "p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3",
-              evolution.status === 'UP' && "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300",
-              evolution.status === 'DOWN' && "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300",
+              (evolution.status === 'HIKE' || evolution.status === 'UP') && "bg-red-500/15 border-red-500/30 text-red-700 dark:text-red-300",
+              (evolution.status === 'DROP' || evolution.status === 'DOWN') && "bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-300",
               evolution.status === 'STABLE' && "bg-secondary border-border/80 text-muted-foreground"
             )}>
               <div className="mt-0.5 shrink-0">
-                {evolution.status === 'UP' && <AlertTriangle size={18} className="text-red-500" />}
-                {evolution.status === 'DOWN' && <CheckCircle2 size={18} className="text-emerald-500" />}
+                {(evolution.status === 'HIKE' || evolution.status === 'UP') && <AlertTriangle size={18} className="text-red-500" />}
+                {(evolution.status === 'DROP' || evolution.status === 'DOWN') && <CheckCircle2 size={18} className="text-emerald-500" />}
                 {evolution.status === 'STABLE' && <Minus size={18} className="text-muted-foreground" />}
               </div>
               <div className="space-y-0.5 text-xs">
@@ -115,7 +115,7 @@ export const PriceEvolutionModal: React.FC<PriceEvolutionModalProps> = ({
                   {evolution.message}
                 </p>
                 <p className="text-[11px] opacity-90">
-                  Dernier prix : {formatCurrency(evolution.currentUnitPrice, { showSign: false })}/{product.unit || 'u'} 
+                  Dernier prix : {formatCurrency(evolution.currentUnitPrice ?? lastPurchase?.unitPrice ?? 0, { showSign: false })}/{product.unit || 'u'} 
                   {evolution.previousUnitPrice !== undefined && ` vs ${formatCurrency(evolution.previousUnitPrice, { showSign: false })}/${product.unit || 'u'} précédemment.`}
                 </p>
               </div>

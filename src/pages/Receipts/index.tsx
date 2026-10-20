@@ -290,7 +290,7 @@ export default function Receipts() {
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                {analysisProgress || "Gemini extrait les articles, montants, et affecte automatiquement les 8 rayons de grande surface..."}
+                {analysisProgress || "Gemini extrait les articles, montants, et affecte automatiquement les rayons standardisés..."}
               </p>
               <p className="text-[11px] text-cyan-600 dark:text-cyan-400/90 font-medium pt-0.5">
                 💡 Vous pouvez basculer vers un autre onglet, l'extraction continue et vous pourrez valider les données à votre retour !
@@ -610,7 +610,7 @@ export default function Receipts() {
                   {isAnalyzing ? (
                     <>
                       <Loader2 size={16} className="mr-2 animate-spin" />
-                      Extraction multimodale & classification des 8 rayons en cours...
+                      Extraction multimodale & classification des rayons en cours...
                     </>
                   ) : (
                     <>
