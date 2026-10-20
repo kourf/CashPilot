@@ -487,6 +487,123 @@ export function computeUnitPrice(
 }
 
 /**
+ * Capitalise harmonieusement un texte en respectant les tirets et espaces.
+ */
+function capitalizeWords(str: string): string {
+  return str
+    .split(/([ -/])/g)
+    .map(part => {
+      if (part === ' ' || part === '-' || part === '/') return part;
+      if (part.length === 0) return part;
+      const lower = part.toLowerCase();
+      // Mots de liaison français
+      if (['de', 'du', 'des', 'la', 'le', 'les', 'en', 'sur', 'sous', 'aux', 'd', 'l', 'et'].includes(lower)) {
+        return lower;
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join('');
+}
+
+function stripBrandPrefix(fullStr: string, brandLength: number): string {
+  let sub = fullStr.slice(brandLength).trim();
+  while (sub.startsWith('-') || sub.startsWith(':') || sub.startsWith('—')) {
+    sub = sub.slice(1).trim();
+  }
+  return sub;
+}
+
+/**
+ * Normalise rigoureusement le nom d'un magasin pour éviter les doublons dus à la casse,
+ * aux espaces multiples, ou aux variations de saisie (ex: "LIDL ANNEMASSE" -> "Lidl Annemasse").
+ * Préserve les différenciateurs géographiques (ex: "Lidl Annemasse - Chablais" vs "Lidl Annemasse - Centre").
+ */
+export function normalizeStoreName(rawName?: string): string {
+  if (!rawName || typeof rawName !== 'string') return 'Supermarché';
+
+  // 1. Nettoyage des espaces insécables, invisibles et multiples
+  const cleaned = rawName
+    .replace(/[\u200B\u00A0\t]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) return 'Supermarché';
+
+  const lower = cleaned.toLowerCase();
+
+  // E.Leclerc
+  if (lower.startsWith('e.leclerc') || lower.startsWith('leclerc')) {
+    const len = lower.startsWith('e.leclerc') ? 9 : 7;
+    const cityPart = stripBrandPrefix(cleaned, len);
+    return cityPart ? `E.Leclerc ${capitalizeWords(cityPart)}` : 'E.Leclerc';
+  }
+
+  // Lidl
+  if (lower.startsWith('lidl')) {
+    const cityPart = stripBrandPrefix(cleaned, 4);
+    return cityPart ? `Lidl ${capitalizeWords(cityPart)}` : 'Lidl';
+  }
+
+  // Super U / Hyper U / U Express
+  if (lower.startsWith('super u') || lower.startsWith('hyper u') || lower.startsWith('u express')) {
+    let brand = 'Super U';
+    if (lower.startsWith('hyper u')) brand = 'Hyper U';
+    else if (lower.startsWith('u express')) brand = 'U Express';
+    const cityPart = stripBrandPrefix(cleaned, brand.length);
+    return cityPart ? `${brand} ${capitalizeWords(cityPart)}` : brand;
+  }
+
+  // Carrefour / Carrefour Market / Carrefour Express / Carrefour City / Carrefour Contact
+  if (lower.startsWith('carrefour')) {
+    let brand = 'Carrefour';
+    if (lower.startsWith('carrefour market')) brand = 'Carrefour Market';
+    else if (lower.startsWith('carrefour express')) brand = 'Carrefour Express';
+    else if (lower.startsWith('carrefour city')) brand = 'Carrefour City';
+    else if (lower.startsWith('carrefour contact')) brand = 'Carrefour Contact';
+    const cityPart = stripBrandPrefix(cleaned, brand.length);
+    return cityPart ? `${brand} ${capitalizeWords(cityPart)}` : brand;
+  }
+
+  // Intermarché / Intermarche
+  if (lower.startsWith('intermarche') || lower.startsWith('intermarché')) {
+    const cityPart = stripBrandPrefix(cleaned, 11);
+    return cityPart ? `Intermarché ${capitalizeWords(cityPart)}` : 'Intermarché';
+  }
+
+  // Auchan
+  if (lower.startsWith('auchan')) {
+    const cityPart = stripBrandPrefix(cleaned, 6);
+    return cityPart ? `Auchan ${capitalizeWords(cityPart)}` : 'Auchan';
+  }
+
+  // Aldi
+  if (lower.startsWith('aldi')) {
+    const cityPart = stripBrandPrefix(cleaned, 4);
+    return cityPart ? `Aldi ${capitalizeWords(cityPart)}` : 'Aldi';
+  }
+
+  // Monoprix
+  if (lower.startsWith('monoprix')) {
+    const cityPart = stripBrandPrefix(cleaned, 8);
+    return cityPart ? `Monoprix ${capitalizeWords(cityPart)}` : 'Monoprix';
+  }
+
+  // Casino
+  if (lower.startsWith('casino')) {
+    const cityPart = stripBrandPrefix(cleaned, 6);
+    return cityPart ? `Casino ${capitalizeWords(cityPart)}` : 'Casino';
+  }
+
+  // Grand Frais
+  if (lower.startsWith('grand frais')) {
+    const cityPart = stripBrandPrefix(cleaned, 11);
+    return cityPart ? `Grand Frais ${capitalizeWords(cityPart)}` : 'Grand Frais';
+  }
+
+  return capitalizeWords(cleaned);
+}
+
+/**
  * Calculateur haute performance de la matrice comparative Magasins (colonnes) vs Produits (lignes).
  * Strictement basé sur les données réelles (aucun prix externe injecté).
  * Applique la règle du ticket unique et la comparaison au prix unitaire standardisé.
@@ -503,7 +620,7 @@ export function buildComparativeMatrix(
   // 1. Extraction de la liste unique des enseignes réelles présentes dans les tickets
   const storeSet = new Set<string>();
   receipts.forEach(r => {
-    const store = r.storeName?.trim();
+    const store = normalizeStoreName(r.storeName);
     if (store && Array.isArray(r.items) && r.items.length > 0) {
       storeSet.add(store);
     }
@@ -542,7 +659,7 @@ export function buildComparativeMatrix(
   const productMap = new Map<string, ProductAccumulator>();
 
   receipts.forEach(receipt => {
-    const receiptStore = receipt.storeName?.trim();
+    const receiptStore = normalizeStoreName(receipt.storeName);
     if (!receiptStore) return;
 
     receipt.items.forEach(item => {
@@ -640,7 +757,7 @@ export function buildComparativeMatrix(
     if (sortedHistory.length >= 2) {
       const latest = sortedHistory[sortedHistory.length - 1];
       // Chercher si possible un achat antérieur dans le même magasin, sinon le dernier achat global
-      const sameStoreRecords = sortedHistory.filter(r => r.storeName === latest.storeName);
+      const sameStoreRecords = sortedHistory.filter(r => normalizeStoreName(r.storeName) === normalizeStoreName(latest.storeName));
       const comparisonTarget = sameStoreRecords.length >= 2
         ? sameStoreRecords[sameStoreRecords.length - 2]
         : sortedHistory[sortedHistory.length - 2];

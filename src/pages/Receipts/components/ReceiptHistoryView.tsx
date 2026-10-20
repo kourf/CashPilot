@@ -17,7 +17,7 @@ import {
 import { Button } from '../../../components/ui/button';
 import { type Receipt, type SupermarketAisle } from '../../../types/receipts';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
-import { AISLE_CONFIGS } from '../../../lib/receiptClassifier';
+import { AISLE_CONFIGS, normalizeStoreName } from '../../../lib/receiptClassifier';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { ReceiptDetailModal } from './ReceiptDetailModal';
 import { cn } from '../../../lib/utils';
@@ -76,9 +76,9 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
   const availableStores = useMemo(() => {
     const stores = new Set<string>();
     receipts.forEach(r => {
-      if (r.storeName) stores.add(r.storeName);
+      if (r.storeName) stores.add(normalizeStoreName(r.storeName));
     });
-    return Array.from(stores).sort();
+    return Array.from(stores).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   }, [receipts]);
 
   // Filtrage réactif des tickets (Règle 7)
@@ -98,7 +98,7 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
 
       // Filtre Enseigne
       if (selectedStore !== 'ALL') {
-        if (r.storeName !== selectedStore) return false;
+        if (normalizeStoreName(r.storeName) !== selectedStore) return false;
       }
 
       // Recherche par texte

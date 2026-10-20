@@ -29,6 +29,7 @@ import {
   SUPERMARKET_AISLES 
 } from '../../../types/receipts';
 import { cn } from '../../../lib/utils';
+import { normalizeStoreName } from '../../../lib/receiptClassifier';
 
 interface WhereToBuySectionProps {
   receipts: Receipt[];
@@ -195,7 +196,7 @@ export const WhereToBuySection: React.FC<WhereToBuySectionProps> = ({
         if (!aisleItemsMap.has(aisle)) {
           aisleItemsMap.set(aisle, []);
         }
-        aisleItemsMap.get(aisle)!.push({ item: it, storeName: r.storeName });
+        aisleItemsMap.get(aisle)!.push({ item: it, storeName: normalizeStoreName(r.storeName) });
       });
     });
 

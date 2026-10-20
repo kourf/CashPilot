@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIES } from './bankParser.ts';
-import { classifyItemAisle, normalizeAisle, computeUnitPrice } from './receiptClassifier';
+import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName } from './receiptClassifier';
 import { type SupermarketAisle, type SupermarketAisleKey } from '../types/receipts';
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
@@ -1695,9 +1695,10 @@ RÈGLE 6 : DOUBLE BALAYAGE DES REMISES (DUAL SWEEP) & AUTO-CONTRÔLE
   (Somme de tous les pricePaid des items) - totalDiscount = totalAmount (Montant net payé en caisse).
 
 ================================================================================
-RÈGLE 7 : LOCALISATION PRÉCISE DE L'ENSEIGNE
+RÈGLE 7 : LOCALISATION PRÉCISE DE L'ENSEIGNE & DIFFÉRENCIATION DES MAGASINS
 ================================================================================
 - "storeName" : Extraire obligatoirement le nom de l'enseigne ET la ville/commune (ex: "E.Leclerc Ville-la-Grand", "Lidl Annemasse", "Carrefour Market Antibes").
+- CAS CRITIQUE : Si une rue, une adresse, un numéro de succursale ou un quartier est mentionné sur le ticket, ou si l'utilisateur possède des tickets de magasins distincts dans la même commune (ex: deux magasins Lidl à Annemasse), tu DOIS IMPÉRATIVEMENT inclure la rue ou le centre commercial (ex: "Lidl Annemasse - Résistance" ou "Lidl Annemasse - Chablais") afin de les différencier formellement pour que l'utilisateur sache exactement de quel magasin il s'agit.
 
 ================================================================================
 NOMENCLATURE DES 13 CATÉGORIES (+ 1 FILET DE SÉCURITÉ)
@@ -1918,7 +1919,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
     const time = String(parsed.time || '12:00').slice(0, 5);
 
     return {
-      storeName: parsed.storeName || 'Supermarché',
+      storeName: normalizeStoreName(parsed.storeName || 'Supermarché'),
       date: parsed.date || new Date().toISOString().slice(0, 10),
       time,
       totalArticles,

@@ -10,7 +10,7 @@ import {
   type SupermarketAisleKey,
   getReceiptUniqueKey
 } from '../types/receipts';
-import { buildComparativeMatrix, classifyItemAisle, normalizeAisle, computeUnitPrice } from '../lib/receiptClassifier';
+import { buildComparativeMatrix, classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName } from '../lib/receiptClassifier';
 import { extractReceiptItemsFromFiles, type ExtractedReceiptResult } from '../lib/geminiService';
 
 export interface ReceiptsContextType {
@@ -165,7 +165,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const r: Receipt = {
             id: d.id,
             userId: accountId,
-            storeName: String(data.storeName || 'Supermarché').trim(),
+            storeName: normalizeStoreName(data.storeName),
             date: String(data.date || new Date().toISOString().slice(0, 10)),
             time: data.time ? String(data.time).trim() : undefined,
             totalArticles: typeof data.totalArticles === 'number' ? Number(data.totalArticles.toFixed(2)) : (typeof data.subtotal === 'number' ? Number(data.subtotal.toFixed(2)) : undefined),
@@ -248,9 +248,11 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addReceipt = useCallback(async (
     receiptData: Omit<Receipt, 'id' | 'userId' | 'createdAt'>
   ): Promise<Receipt> => {
+    const normalizedStore = normalizeStoreName(receiptData.storeName);
+
     // Règle 4 : Clé Anti-Doublon stricte (Nom Magasin + Date + Heure/Minute + Montant)
     const currentKey = getReceiptUniqueKey(
-      receiptData.storeName,
+      normalizedStore,
       receiptData.date,
       receiptData.time,
       receiptData.totalAmount
@@ -259,7 +261,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       getReceiptUniqueKey(r.storeName, r.date, r.time, r.totalAmount) === currentKey
     );
     if (existing) {
-      throw new Error(`🚨 Ticket déjà importé : Ce ticket de caisse (${receiptData.storeName} le ${receiptData.date} pour ${receiptData.totalAmount} €) existe déjà dans votre historique. Importation bloquée pour éviter les doublons.`);
+      throw new Error(`🚨 Ticket déjà importé : Ce ticket de caisse (${normalizedStore} le ${receiptData.date} pour ${receiptData.totalAmount} €) existe déjà dans votre historique. Importation bloquée pour éviter les doublons.`);
     }
 
     const accountId = getActiveAccountId();
@@ -268,6 +270,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const fullReceipt: Receipt = {
       ...receiptData,
+      storeName: normalizedStore,
       id: docId,
       userId: accountId,
       createdAt: nowIso,

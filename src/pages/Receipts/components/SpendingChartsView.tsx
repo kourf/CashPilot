@@ -25,6 +25,7 @@ import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../../components/ui/card';
 import { type Receipt } from '../../../types/receipts';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
+import { normalizeStoreName } from '../../../lib/receiptClassifier';
 import { cn } from '../../../lib/utils';
 
 interface SpendingChartsViewProps {
@@ -139,7 +140,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
     const storeMap: Record<string, { total: number; receiptCount: number; items: DrillDownItem[] }> = {};
     
     receipts.forEach(r => {
-      const name = r.storeName || 'Autre Enseigne';
+      const name = normalizeStoreName(r.storeName || 'Autre Enseigne');
       if (!storeMap[name]) {
         storeMap[name] = { total: 0, receiptCount: 0, items: [] };
       }
