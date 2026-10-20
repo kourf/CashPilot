@@ -342,14 +342,14 @@ export default function Receipts() {
 
       {/* MESSAGE D'ERREUR */}
       {errorMessage && (
-        <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertCircle size={16} className="shrink-0" />
-            <span>{errorMessage}</span>
+        <div className="p-3.5 sm:p-4 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs flex items-start justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle size={17} className="shrink-0 mt-0.5" />
+            <div className="whitespace-pre-line leading-relaxed font-medium">{errorMessage}</div>
           </div>
           <button 
             onClick={() => setErrorMessage(null)}
-            className="p-1 hover:bg-destructive/20 rounded-md transition-colors"
+            className="p-1 hover:bg-destructive/20 rounded-md transition-colors shrink-0"
           >
             <X size={14} />
           </button>

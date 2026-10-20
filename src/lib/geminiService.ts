@@ -7,25 +7,33 @@ export const AVAILABLE_FREE_GEMINI_MODELS = [
   {
     id: 'gemini-3.8-flash',
     name: 'Gemini 3.8 Flash',
-    badge: '⭐ Recommandé 2026',
-    description: 'Le modèle Google dernière génération. Ultra-intelligent, précis et rapide.',
-    quota: '1 500 requêtes / jour (100% Gratuit)',
+    badge: '⭐ Dernier Modèle Google',
+    description: 'Le modèle Google dernière génération. Vitesse maximale, intelligence et précision OCR.',
+    quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
     speed: '~1 seconde'
   },
   {
     id: 'gemini-flash-latest',
-    name: 'Gemini Flash (Dernière version)',
+    name: 'Gemini Flash (Dernière version stable)',
     badge: '⚡ Auto-Update',
-    description: 'Bascule toujours automatiquement sur la dernière version stable déployée par Google.',
-    quota: '1 500 requêtes / jour (100% Gratuit)',
+    description: 'Bascule automatiquement sur la dernière version stable déployée par Google AI Studio.',
+    quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
     speed: '~1.2 seconde'
   },
   {
-    id: 'gemini-3.5-flash',
-    name: 'Gemini 3.5 Flash',
-    badge: '🛡️ Stable',
-    description: 'Version Flash stable intermédiaire pour les gros volumes.',
-    quota: '1 500 requêtes / jour (100% Gratuit)',
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    badge: '🛡️ Audit Rigoureux',
+    description: 'Modèle haute rigueur d\'audit comptable pour tickets très denses.',
+    quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
+    speed: '~1.2 seconde'
+  },
+  {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    badge: '⚡ Repli Transparent',
+    description: 'Modèle de secours fiable et rapide pour absorber les pics de charge.',
+    quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
     speed: '~1.5 seconde'
   }
 ];
@@ -1755,58 +1763,84 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
 
   let rawJsonText = '';
 
-  if (apiKey) {
-    const preferredModel = getGeminiModelName();
-    const candidateModels = [
-      'gemini-2.5-flash',
-      preferredModel,
-      'gemini-3.8-flash',
-      'gemini-flash-latest',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash'
-    ];
-    const uniqueModels = Array.from(new Set(candidateModels));
-    const genAI = new GoogleGenerativeAI(apiKey);
+  if (!apiKey) {
+    throw new Error("Clé API Google Gemini introuvable. Veuillez renseigner votre clé API Google AI Studio dans vos paramètres (100% gratuite sans carte bancaire sur aistudio.google.com).");
+  }
 
-    for (const modelName of uniqueModels) {
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.1
-          }
-        });
+  const preferredModel = getGeminiModelName();
+  // Ordre de priorité de la cascade : Gemini 3.8 Flash en tête, puis modèle préféré, puis les modèles de secours
+  const candidateModels = [
+    'gemini-3.8-flash',
+    preferredModel,
+    'gemini-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash'
+  ];
+  const uniqueModels = Array.from(new Set(candidateModels));
+  const genAI = new GoogleGenerativeAI(apiKey);
 
-        const contents = [
-          { text: systemPrompt },
-          ...imageParts
-        ];
+  let quotaErrorCount = 0;
+  let lastError: any = null;
 
-        const response = await model.generateContent(contents as any);
-        rawJsonText = response.response.text();
-        if (rawJsonText && rawJsonText.trim()) {
-          break;
+  for (const modelName of uniqueModels) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1
         }
-      } catch (err: any) {
-        console.warn(`Tentative extraction modèle ${modelName} échouée (repli cascade transparent):`, err?.message || err);
+      });
+
+      const contents = [
+        { text: systemPrompt },
+        ...imageParts
+      ];
+
+      const response = await model.generateContent(contents as any);
+      rawJsonText = response.response.text();
+      if (rawJsonText && rawJsonText.trim()) {
+        break;
+      }
+    } catch (err: any) {
+      lastError = err;
+      const errMsg = err?.message || String(err);
+      const isQuota = err?.status === 429 || 
+        errMsg.includes('429') || 
+        errMsg.includes('RESOURCE_EXHAUSTED') || 
+        errMsg.toLowerCase().includes('quota');
+
+      if (isQuota) {
+        quotaErrorCount++;
+        console.warn(`[Gemini Cascade] Quota atteint sur ${modelName} (HTTP 429). Bascule automatique immédiate vers le modèle de secours suivant...`);
+      } else {
+        console.warn(`[Gemini Cascade] Tentative sur ${modelName} indisponible (${errMsg}). Bascule automatique vers le modèle de secours suivant...`);
       }
     }
   }
 
-  // Fallback si pas de clé API ou si requête indisponible
+  // Si aucun modèle n'a pu répondre
   if (!rawJsonText || !rawJsonText.trim()) {
-    console.warn("Gemini API non configurée ou indisponible. Bascule vers extraction heuristique...");
-    return {
-      storeName: 'Supermarché',
-      date: new Date().toISOString().slice(0, 10),
-      time: '12:00',
-      subtotal: 0,
-      totalDiscounts: 0,
-      totalAmount: 0,
-      items: [],
-      rawFileCount: files.length
-    };
+    // Si tous les modèles testés ont échoué par épuisement de quota
+    if (quotaErrorCount > 0) {
+      const now = new Date();
+      const tomorrowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+      const diffMs = tomorrowUtc.getTime() - now.getTime();
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+      throw new Error(
+        `🚨 Quotas gratuits Google AI Studio temporairement atteints sur l'ensemble de la cascade (${uniqueModels.join(' ➔ ')}).\n\n` +
+        `• Quota par minute (15 tickets / min) : Se réinitialise automatiquement dans environ 45 à 60 secondes.\n` +
+        `• Quota journalier (1 500 tickets / jour) : Réinitialisation complète dans ${diffHours}h ${diffMinutes}min (à 00h00 UTC / 02h00 heure de Paris).\n\n` +
+        `👉 Vous pouvez patienter 45 secondes et relancer, ou saisir votre ticket sans attendre via "+ Ticket Manuel".`
+      );
+    }
+
+    throw new Error(
+      lastError?.message || "Impossible d'extraire les données du ticket via Google Gemini. Veuillez vérifier la netteté de votre document ou réessayer dans quelques instants."
+    );
   }
 
   try {
