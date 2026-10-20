@@ -20,6 +20,8 @@ export const AISLE_KEY_TO_LABEL: Record<SupermarketAisleKey, SupermarketAisle> =
   boissons: 'Boissons',
   maison_textile_culture: 'Maison, Textile & Culture',
   sante_pharmacie: 'Santé & Pharmacie',
+  papeterie_bureau: 'Papeterie & Bureau',
+  fleurs_cadeaux: 'Fleurs & Cadeaux',
   sacs_consignes: 'Sacs & Consignes',
   autres_divers: 'Autres / Divers'
 };
@@ -35,6 +37,8 @@ export const AISLE_LABEL_TO_KEY: Record<SupermarketAisle, SupermarketAisleKey> =
   'Boissons': 'boissons',
   'Maison, Textile & Culture': 'maison_textile_culture',
   'Santé & Pharmacie': 'sante_pharmacie',
+  'Papeterie & Bureau': 'papeterie_bureau',
+  'Fleurs & Cadeaux': 'fleurs_cadeaux',
   'Sacs & Consignes': 'sacs_consignes',
   'Autres / Divers': 'autres_divers'
 };
@@ -96,7 +100,13 @@ export function normalizeAisle(input?: string): { key: SupermarketAisleKey; labe
   if (clean.includes('boisson') || clean.includes('soda') || clean.includes('eau') || clean.includes('jus') || clean.includes('sirop')) {
     return { key: 'boissons', label: 'Boissons' };
   }
-  if (clean.includes('maison_textile') || clean.includes('textile') || clean.includes('culture') || clean.includes('livre') || clean.includes('vaisselle') || clean.includes('drap') || clean.includes('electromenager') || clean.includes('bazar') || clean.includes('papeterie')) {
+  if (clean.includes('papeterie') || clean.includes('bureau') || clean.includes('stylo') || clean.includes('cahier') || clean.includes('classeur') || clean.includes('fourniture_scolaire')) {
+    return { key: 'papeterie_bureau', label: 'Papeterie & Bureau' };
+  }
+  if (clean.includes('fleur') || clean.includes('cadeau') || clean.includes('plante') || clean.includes('bouquet') || clean.includes('bougie') || clean.includes('emballage_cadeau')) {
+    return { key: 'fleurs_cadeaux', label: 'Fleurs & Cadeaux' };
+  }
+  if (clean.includes('maison_textile') || clean.includes('textile') || clean.includes('culture') || clean.includes('livre') || clean.includes('vaisselle') || clean.includes('drap') || clean.includes('electromenager') || clean.includes('bazar')) {
     return { key: 'maison_textile_culture', label: 'Maison, Textile & Culture' };
   }
   if (clean.includes('sante') || clean.includes('pharmacie') || clean.includes('parapharmacie') || clean.includes('pansement') || clean.includes('vitamine') || clean.includes('medicament') || clean.includes('test')) {
@@ -199,7 +209,7 @@ export const AISLE_CONFIGS: Record<SupermarketAisle, AisleMetadata> = {
     id: 'Maison, Textile & Culture',
     order: 9,
     label: 'Maison, Textile & Culture',
-    description: 'Livres, vaisselle, draps, électroménager, papeterie, bazar',
+    description: 'Livres, vaisselle, draps, électroménager, bazar, vêtements',
     iconName: 'BookOpen',
     badgeClass: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
     accentBorder: 'border-l-indigo-500'
@@ -213,9 +223,27 @@ export const AISLE_CONFIGS: Record<SupermarketAisle, AisleMetadata> = {
     badgeClass: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
     accentBorder: 'border-l-red-500'
   },
+  'Papeterie & Bureau': {
+    id: 'Papeterie & Bureau',
+    order: 11,
+    label: 'Papeterie & Bureau',
+    description: 'Cahiers, stylos, fournitures scolaires, classeurs, papier, enveloppes',
+    iconName: 'FileText',
+    badgeClass: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20',
+    accentBorder: 'border-l-violet-500'
+  },
+  'Fleurs & Cadeaux': {
+    id: 'Fleurs & Cadeaux',
+    order: 12,
+    label: 'Fleurs & Cadeaux',
+    description: 'Bouquets, plantes, emballages cadeaux, bougies décoratives, cartes',
+    iconName: 'Flower2',
+    badgeClass: 'bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20',
+    accentBorder: 'border-l-pink-500'
+  },
   'Sacs & Consignes': {
     id: 'Sacs & Consignes',
-    order: 11,
+    order: 13,
     label: 'Sacs & Consignes',
     description: 'Sacs cabas, sacs réutilisables, consignes de bouteilles',
     iconName: 'ShoppingBag',
@@ -224,7 +252,7 @@ export const AISLE_CONFIGS: Record<SupermarketAisle, AisleMetadata> = {
   },
   'Autres / Divers': {
     id: 'Autres / Divers',
-    order: 12,
+    order: 14,
     label: 'Autres / Divers',
     description: 'Articles non classés ou divers',
     iconName: 'MoreHorizontal',
@@ -253,9 +281,23 @@ export function classifyItemAisle(name: string, rawName: string = ''): Supermark
     return 'Santé & Pharmacie';
   }
 
-  // 0.ter Maison, Textile & Culture (dépollue le budget alimentation)
+  // 0.ter Papeterie & Bureau (dépollue le budget alimentation)
   if (
-    /\b(livres?|romans?|magazines?|journaux?|bd|mangas?|vaisselles?|assiettes?|verres?|casseroles?|poeles?|couverts?|draps?|serviettes? de bain|torchons?|oreillers?|couettes?|ampoules?|piles?|electromenagers?|grille-pain|bouilloires?|cafetieres?|cables?|chargeurs?|ecouteurs?|papeteries?|stylos?|cahiers?|classeurs?|textiles?|t-shirts?|chaussettes?|calecons?|slips?|pyjamas?)\b/.test(text)
+    /\b(stylos?|cahiers?|classeurs?|feutres?|crayons?|gommes?|regles?|colles?|ciseaux?|enveloppes?|blocs? notes?|scotchs?|rubans? adhesifs?|chemises? cartonnees?|feuilles? simples?|feuilles? doubles?|agrafes?|agrafeuses?|post-it|fournitures? scolaires?|intercalaires?|surligneurs?|pochettes? plastiques?|papeteries?|papier a4|papier imprimante)\b/.test(text)
+  ) {
+    return 'Papeterie & Bureau';
+  }
+
+  // 0.quater Fleurs & Cadeaux (dépollue le budget alimentation)
+  if (
+    /\b(fleurs?|bouquets?|plantes?|roses?|tulipes?|orchidees?|compositions? florales?|papiers? cadeaux?|bolducs?|cartes? postales?|cartes? de voeux?|bougies? parfumees?|bougies? decoratives?|coffrets? cadeaux?|emballages? cadeaux?)\b/.test(text)
+  ) {
+    return 'Fleurs & Cadeaux';
+  }
+
+  // 0.quinquies Maison, Textile & Culture (dépollue le budget alimentation)
+  if (
+    /\b(livres?|romans?|magazines?|journaux?|bd|mangas?|vaisselles?|assiettes?|verres?|casseroles?|poeles?|couverts?|draps?|serviettes? de bain|torchons?|oreillers?|couettes?|ampoules?|piles?|electromenagers?|grille-pain|bouilloires?|cafetieres?|cables?|chargeurs?|ecouteurs?|textiles?|t-shirts?|chaussettes?|calecons?|slips?|pyjamas?)\b/.test(text)
   ) {
     return 'Maison, Textile & Culture';
   }

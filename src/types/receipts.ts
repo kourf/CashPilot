@@ -14,6 +14,8 @@ export const SUPERMARKET_AISLE_KEYS = [
   'boissons',
   'maison_textile_culture',
   'sante_pharmacie',
+  'papeterie_bureau',
+  'fleurs_cadeaux',
   'sacs_consignes',
   'autres_divers'
 ] as const;
@@ -31,6 +33,8 @@ export const SUPERMARKET_AISLES = [
   'Boissons',
   'Maison, Textile & Culture',
   'Santé & Pharmacie',
+  'Papeterie & Bureau',
+  'Fleurs & Cadeaux',
   'Sacs & Consignes',
   'Autres / Divers'
 ] as const;

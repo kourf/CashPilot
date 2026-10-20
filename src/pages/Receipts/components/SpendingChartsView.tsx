@@ -41,7 +41,11 @@ const PALETTE = [
   '#14b8a6', // teal-500
   '#f97316', // orange-500
   '#3b82f6', // blue-500
-  '#84cc16'  // lime-500
+  '#84cc16', // lime-500
+  '#d946ef', // fuchsia-500
+  '#ef4444', // red-500
+  '#a855f7', // violet-500
+  '#64748b'  // slate-500
 ];
 
 interface DrillDownItem {

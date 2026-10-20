@@ -28,7 +28,8 @@ import {
   Layers,
   ArrowRight,
   BookOpen,
-  HeartPulse
+  HeartPulse,
+  Flower2
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { 
@@ -65,6 +66,8 @@ const AISLE_ICONS: Record<SupermarketAisle, React.ComponentType<{ size?: number;
   'Boissons': CupSoda,
   'Maison, Textile & Culture': BookOpen,
   'Santé & Pharmacie': HeartPulse,
+  'Papeterie & Bureau': FileText,
+  'Fleurs & Cadeaux': Flower2,
   'Sacs & Consignes': ShoppingBag,
   'Autres / Divers': MoreHorizontal
 };

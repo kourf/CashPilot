@@ -15,7 +15,9 @@ import {
   TrendingDown,
   BookOpen,
   HeartPulse,
-  ShoppingBag
+  ShoppingBag,
+  FileText,
+  Flower2
 } from 'lucide-react';
 import { 
   type Receipt, 
@@ -61,6 +63,8 @@ const AISLE_ICONS: Record<SupermarketAisle, React.ComponentType<{ size?: number;
   'Hygiène, Beauté & Sanitaire': Sparkles,
   'Maison, Textile & Culture': BookOpen,
   'Santé & Pharmacie': HeartPulse,
+  'Papeterie & Bureau': FileText,
+  'Fleurs & Cadeaux': Flower2,
   'Sacs & Consignes': ShoppingBag,
   'Autres / Divers': MoreHorizontal
 };
@@ -141,6 +145,20 @@ const AISLE_STYLES: Record<SupermarketAisle, {
     badgeBg: 'bg-red-500/10',
     badgeText: 'text-red-700 dark:text-red-300',
     badgeBorder: 'border-red-500/20'
+  },
+  'Papeterie & Bureau': {
+    iconBg: 'bg-violet-500/15 dark:bg-violet-500/20',
+    iconColor: 'text-violet-600 dark:text-violet-400',
+    badgeBg: 'bg-violet-500/10',
+    badgeText: 'text-violet-700 dark:text-violet-300',
+    badgeBorder: 'border-violet-500/20'
+  },
+  'Fleurs & Cadeaux': {
+    iconBg: 'bg-pink-500/15 dark:bg-pink-500/20',
+    iconColor: 'text-pink-600 dark:text-pink-400',
+    badgeBg: 'bg-pink-500/10',
+    badgeText: 'text-pink-700 dark:text-pink-300',
+    badgeBorder: 'border-pink-500/20'
   },
   'Sacs & Consignes': {
     iconBg: 'bg-amber-600/15 dark:bg-amber-600/20',
