@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   PieChart, 
   Pie, 
@@ -58,7 +58,72 @@ interface DrillDownItem {
   totalPaid: number;
 }
 
+/**
+ * Découpe élégamment un libellé de catégorie ou d'enseigne sur 1 ou 2 lignes compactes
+ * afin de garantir une visibilité totale à 100% sans aucun débordement sur écran mobile.
+ */
+const getCategoryLabelLines = (rawName: string, isMobileScreen: boolean): { line1: string; line2: string | null } => {
+  if (!rawName) return { line1: '', line2: null };
+
+  // Sur écran large si le nom est court, une seule ligne suffit
+  if (!isMobileScreen && rawName.length <= 16) {
+    return { line1: rawName, line2: null };
+  }
+
+  // Découpage naturel sur le séparateur " & " (ex: "Produits frais & Crèmerie", "Fruits & Légumes", "Boucherie, Volaille & Poissonnerie")
+  if (rawName.includes(' & ')) {
+    const parts = rawName.split(' & ');
+    if (parts.length === 2) {
+      return { line1: parts[0].trim(), line2: `& ${parts[1].trim()}` };
+    }
+  }
+
+  // Découpage naturel sur le séparateur " / " (ex: "Autres / Divers")
+  if (rawName.includes(' / ')) {
+    const parts = rawName.split(' / ');
+    return { line1: `${parts[0].trim()} /`, line2: parts[1].trim() };
+  }
+
+  // Découpage sur virgule (ex: "Boucherie, Volaille")
+  if (rawName.includes(',')) {
+    const idx = rawName.indexOf(',');
+    return { 
+      line1: rawName.slice(0, idx + 1).trim(), 
+      line2: rawName.slice(idx + 1).trim() 
+    };
+  }
+
+  // Découpage au dernier espace si le mot est long (> 13 caractères)
+  if (rawName.length > 13 && rawName.includes(' ')) {
+    const lastSpace = rawName.lastIndexOf(' ');
+    return {
+      line1: rawName.slice(0, lastSpace).trim(),
+      line2: rawName.slice(lastSpace + 1).trim()
+    };
+  }
+
+  return { line1: rawName, line2: null };
+};
+
 export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts }) => {
+  // Détection réactive de l'affichage mobile pour adapter et dézoomer les rayons du graphique
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 640;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   // Mode de regroupement : 'aisle' (Par Rayon) ou 'store' (Par Enseigne)
   const [chartMode, setChartMode] = useState<'store' | 'aisle'>('aisle');
   // Type de diagramme : 'donut' (Camembert) ou 'bar' (Bâtons décroissants)
@@ -197,11 +262,13 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
     const { cx, cy, midAngle, outerRadius, percent, name, value } = props;
     if (percent < 0.02) return null;
     const RADIAN = Math.PI / 180;
-    const radius = outerRadius + 22;
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+    // Dézoom dynamique : sur mobile, ancrage rapproché (12px) pour laisser un maximum d'espace aux étiquettes
+    const labelRadius = outerRadius + (isMobile ? 12 : 20);
+    const x = cx + labelRadius * Math.cos(-midAngle * RADIAN);
+    const y = cy + labelRadius * Math.sin(-midAngle * RADIAN);
     const isRight = x > cx;
-    const shortName = name.length > 15 ? name.slice(0, 13) + '…' : name;
+    const { line1, line2 } = getCategoryLabelLines(name, isMobile);
+    const hasLine2 = Boolean(line2);
 
     return (
       <text
@@ -210,10 +277,34 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
         fill="#cbd5e1"
         textAnchor={isRight ? 'start' : 'end'}
         dominantBaseline="central"
-        className="text-[10px] font-medium select-none"
+        className="select-none pointer-events-none"
+        style={{ fontSize: isMobile ? '8.5px' : '9.5px', lineHeight: 1 }}
       >
-        <tspan fill="#f8fafc" fontWeight="bold">{shortName}</tspan>
-        <tspan fill="#38bdf8" dx="4" fontFamily="monospace" fontWeight="600">
+        <tspan 
+          x={x} 
+          dy={hasLine2 ? (isMobile ? "-9" : "-8") : (isMobile ? "-5" : "-4")} 
+          fill="#f8fafc" 
+          fontWeight="700"
+        >
+          {line1}
+        </tspan>
+        {hasLine2 && (
+          <tspan 
+            x={x} 
+            dy={isMobile ? "10" : "11"} 
+            fill="#f8fafc" 
+            fontWeight="600"
+          >
+            {line2}
+          </tspan>
+        )}
+        <tspan 
+          x={x} 
+          dy={isMobile ? "10" : "11"} 
+          fill="#38bdf8" 
+          fontWeight="700" 
+          fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        >
           {formatCurrency(value, { showSign: false })}
         </tspan>
       </text>
@@ -321,20 +412,20 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
             
             {/* GRAPHIQUE DONUT RECHARTS AVEC ÉTIQUETTES VISIBLES SANS SURVOL */}
-            <div className="lg:col-span-6 h-[280px] sm:h-[300px] w-full flex items-center justify-center relative">
+            <div className="lg:col-span-6 h-[290px] sm:h-[310px] w-full flex items-center justify-center relative overflow-visible">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 20, right: 35, left: 35, bottom: 20 }}>
+                <PieChart margin={{ top: 12, right: isMobile ? 6 : 28, left: isMobile ? 6 : 28, bottom: 12 }}>
                   <Tooltip content={<CustomTooltip />} />
                   <Pie
                     data={activeData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={50}
-                    outerRadius={75}
+                    innerRadius={isMobile ? 32 : 48}
+                    outerRadius={isMobile ? 50 : 74}
                     paddingAngle={3}
                     dataKey="value"
                     cursor="pointer"
-                    labelLine={{ stroke: 'rgba(255, 255, 255, 0.3)', strokeWidth: 1 }}
+                    labelLine={{ stroke: 'rgba(255, 255, 255, 0.35)', strokeWidth: 1 }}
                     label={renderCustomPieLabel}
                     onClick={(entry) => {
                       setSelectedSliceName(prev => prev === entry.name ? null : entry.name);
@@ -356,16 +447,16 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
                 </PieChart>
               </ResponsiveContainer>
 
-              {/* TOTAL AU CENTRE DU DONUT */}
+              {/* TOTAL AU CENTRE DU DONUT (DÉZOOMÉ POUR MOBILE) */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                  Total Audit
+                <span className="text-[8px] sm:text-[10px] uppercase font-bold text-muted-foreground tracking-wider leading-none">
+                  Total
                 </span>
-                <span className="text-base sm:text-lg font-black font-mono text-foreground">
+                <span className="text-xs sm:text-base font-black font-mono text-foreground leading-tight my-0.5">
                   {formatCurrency(totalSpent, { showSign: false })}
                 </span>
-                <span className="text-[9px] text-muted-foreground">
-                  {activeData.length} {chartMode === 'store' ? 'enseigne(s)' : 'rayon(s)'}
+                <span className="text-[8px] sm:text-[9px] text-muted-foreground leading-none">
+                  {activeData.length} {chartMode === 'store' ? 'ens.' : 'rayons'}
                 </span>
               </div>
             </div>
@@ -444,7 +535,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
                       angle={-25}
                       textAnchor="end"
                       height={65}
-                      tickFormatter={(name: string) => name.length > 18 ? name.slice(0, 16) + '…' : name}
+                      tickFormatter={(name: string) => name.length > 20 ? name.slice(0, 18) + '…' : name}
                     />
                     <YAxis 
                       tick={{ fontSize: 10, fill: '#94a3b8' }}
@@ -479,7 +570,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
                         dataKey="name" 
                         position="top" 
                         offset={18}
-                        formatter={(name: string) => name.length > 13 ? name.slice(0, 11) + '…' : name}
+                        formatter={(name: string) => name.length > 18 ? name.slice(0, 16) + '…' : name}
                         style={{ fontSize: 10, fill: '#f8fafc', fontWeight: 'bold' }} 
                       />
                       {/* PRIX AFFICHÉ AU-DESSUS DE CHAQUE BÂTON SANS TOUCHER LA SOURIS */}
