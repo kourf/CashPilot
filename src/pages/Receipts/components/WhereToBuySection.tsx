@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   Carrot, 
   Milk, 
@@ -17,13 +17,15 @@ import {
   HeartPulse,
   ShoppingBag,
   FileText,
-  Flower2
+  Flower2,
+  Award,
+  Layers,
+  ChevronRight
 } from 'lucide-react';
 import { 
   type Receipt, 
   type ReceiptItem, 
   type SupermarketAisle, 
-  type SupermarketAisleKey, 
   type ComparativeMatrix,
   type AisleGroup,
   SUPERMARKET_AISLES 
@@ -51,6 +53,33 @@ interface CategoryRecommendation {
     badgeText: string;
     badgeBorder: string;
   };
+}
+
+interface StoreRecommendationGroup {
+  storeName: string;
+  ticketCount: number;
+  totalItems: number;
+  branding: {
+    gradient: string;
+    borderHover: string;
+    iconBg: string;
+    iconColor: string;
+    badgeBg: string;
+    accentDot: string;
+  };
+  wonAisles: Array<{
+    aisle: SupermarketAisle;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    badgeLabel: string;
+    itemCount: number;
+    style: {
+      iconBg: string;
+      iconColor: string;
+      badgeBg: string;
+      badgeText: string;
+      badgeBorder: string;
+    };
+  }>;
 }
 
 const AISLE_ICONS: Record<SupermarketAisle, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -177,14 +206,70 @@ const AISLE_STYLES: Record<SupermarketAisle, {
   }
 };
 
+const getStoreBranding = (storeName: string) => {
+  const lower = storeName.toLowerCase();
+  if (lower.includes('leclerc')) {
+    return {
+      gradient: 'from-blue-600/10 via-sky-500/5 to-transparent',
+      borderHover: 'hover:border-blue-500/50',
+      iconBg: 'bg-blue-500/15 dark:bg-blue-500/25',
+      iconColor: 'text-blue-600 dark:text-blue-400',
+      badgeBg: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20',
+      accentDot: 'bg-blue-500'
+    };
+  }
+  if (lower.includes('lidl')) {
+    return {
+      gradient: 'from-amber-500/10 via-yellow-500/5 to-transparent',
+      borderHover: 'hover:border-amber-500/50',
+      iconBg: 'bg-amber-500/15 dark:bg-amber-500/25',
+      iconColor: 'text-amber-600 dark:text-amber-400',
+      badgeBg: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20',
+      accentDot: 'bg-amber-500'
+    };
+  }
+  if (lower.includes('intermarche') || lower.includes('intermarché')) {
+    return {
+      gradient: 'from-rose-500/10 via-red-500/5 to-transparent',
+      borderHover: 'hover:border-rose-500/50',
+      iconBg: 'bg-rose-500/15 dark:bg-rose-500/25',
+      iconColor: 'text-rose-600 dark:text-rose-400',
+      badgeBg: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20',
+      accentDot: 'bg-rose-500'
+    };
+  }
+  if (lower.includes('super u') || lower.includes('hyper u') || lower.includes('u express')) {
+    return {
+      gradient: 'from-cyan-500/10 via-teal-500/5 to-transparent',
+      borderHover: 'hover:border-cyan-500/50',
+      iconBg: 'bg-cyan-500/15 dark:bg-cyan-500/25',
+      iconColor: 'text-cyan-600 dark:text-cyan-400',
+      badgeBg: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/20',
+      accentDot: 'bg-cyan-500'
+    };
+  }
+  return {
+    gradient: 'from-primary/10 via-violet-500/5 to-transparent',
+    borderHover: 'hover:border-primary/50',
+    iconBg: 'bg-primary/15 dark:bg-primary/25',
+    iconColor: 'text-primary',
+    badgeBg: 'bg-primary/10 text-primary border-primary/20',
+    accentDot: 'bg-primary'
+  };
+};
+
 export const WhereToBuySection: React.FC<WhereToBuySectionProps> = ({
   receipts,
   matrix,
   onSelectAisle
 }) => {
+  // Mode de vue : 'store' (Par Enseigne - ZÉRO DOUBLON) ou 'aisle' (Par Rayon - 13 Rayons)
+  // Par défaut sur 'store' pour garantir qu'aucune enseigne ne soit dupliquée visuellement
+  const [viewMode, setViewMode] = useState<'store' | 'aisle'>('store');
+
   // Calcul avec rigueur d'audit de l'enseigne la plus économique pour chaque rayon
   // RÈGLE MÉTIER STRICTE : AUCUNE MENTION DE POURCENTAGE DANS CETTE SECTION
-  const recommendations = useMemo(() => {
+  const categoryRecommendations = useMemo(() => {
     const list: CategoryRecommendation[] = [];
 
     // 1. Regrouper les articles réels de tous les tickets par rayon
@@ -299,90 +384,296 @@ export const WhereToBuySection: React.FC<WhereToBuySectionProps> = ({
     return list;
   }, [receipts, matrix]);
 
-  if (recommendations.length === 0) return null;
+  // REGROUPEMENT PAR ENSEIGNE (VUE 100% SANS DOUBLONS)
+  // Chaque magasin unique forme une seule carte listant tous ses rayons champions
+  const storeRecommendations = useMemo(() => {
+    // 1. Recenser toutes les enseignes réelles
+    const storeMap = new Map<string, StoreRecommendationGroup>();
+
+    receipts.forEach(r => {
+      const s = normalizeStoreName(r.storeName);
+      if (!s) return;
+      if (!storeMap.has(s)) {
+        storeMap.set(s, {
+          storeName: s,
+          ticketCount: 0,
+          totalItems: 0,
+          branding: getStoreBranding(s),
+          wonAisles: []
+        });
+      }
+      const grp = storeMap.get(s)!;
+      grp.ticketCount += 1;
+      grp.totalItems += r.items.length;
+    });
+
+    // 2. Affecter chaque rayon gagnant à son enseigne
+    categoryRecommendations.forEach(rec => {
+      const grp = storeMap.get(rec.recommendedStore);
+      if (grp) {
+        grp.wonAisles.push({
+          aisle: rec.aisle,
+          icon: rec.icon,
+          badgeLabel: rec.badgeLabel,
+          itemCount: rec.itemCount,
+          style: rec.style
+        });
+      }
+    });
+
+    // 3. Trier par nombre de rayons remportés (décroissant), puis par nombre d'articles
+    return Array.from(storeMap.values()).sort((a, b) => {
+      if (b.wonAisles.length !== a.wonAisles.length) {
+        return b.wonAisles.length - a.wonAisles.length;
+      }
+      return b.totalItems - a.totalItems;
+    });
+  }, [receipts, categoryRecommendations]);
+
+  if (categoryRecommendations.length === 0) return null;
 
   return (
-    <section className="space-y-3.5 animate-in fade-in duration-300">
-      {/* EN-TÊTE DE LA SECTION STYLE GOOGLE STITCH */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+    <section className="space-y-4 animate-in fade-in duration-300">
+      {/* EN-TÊTE DE SECTION AVEC SÉLECTEUR DE VUE (PAR ENSEIGNE vs PAR RAYON) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-primary/20 to-emerald-500/20 text-primary flex items-center justify-center shrink-0 shadow-xs">
-            <Store size={16} className="text-primary dark:text-cyan-400" />
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-primary/20 to-emerald-500/20 text-primary flex items-center justify-center shrink-0 shadow-xs border border-primary/20">
+            <Store size={18} className="text-primary dark:text-cyan-400" />
           </div>
           <div>
             <h3 className="text-base sm:text-lg font-black text-foreground tracking-tight flex items-center gap-2">
               <span>Où acheter quoi ?</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border/70 font-mono">
-                {recommendations.length} rayon{recommendations.length > 1 ? 's' : ''}
+                {viewMode === 'store' 
+                  ? `${storeRecommendations.length} enseigne${storeRecommendations.length > 1 ? 's' : ''}`
+                  : `${categoryRecommendations.length} rayon${categoryRecommendations.length > 1 ? 's' : ''}`
+                }
               </span>
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              L'enseigne la plus économique pour chaque catégorie, calculée d'après vos tickets réels.
+              {viewMode === 'store'
+                ? "Vos magasins analysés et les rayons où ils sont les plus économiques."
+                : "L'enseigne la plus économique pour chaque catégorie, calculée d'après vos tickets réels."
+              }
             </p>
           </div>
         </div>
 
-        <div className="text-[11px] font-medium text-muted-foreground hidden sm:flex items-center gap-1.5 self-start sm:self-auto">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Calculé en temps réel sur vos prix constatés</span>
+        {/* BOUTONS TOGGLE VUE PAR ENSEIGNE (4 MAGASINS SANS DOUBLON) VS VUE PAR RAYON */}
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-secondary/80 dark:bg-card/90 border border-border/80 self-start sm:self-auto shadow-xs">
+          <button
+            type="button"
+            onClick={() => setViewMode('store')}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+              viewMode === 'store'
+                ? "bg-card dark:bg-primary/20 text-foreground dark:text-primary shadow-xs border border-border/60 dark:border-primary/30"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+            title="Afficher une seule carte par enseigne avec tous ses rayons champions"
+          >
+            <Store size={13} className={viewMode === 'store' ? "text-primary" : ""} />
+            <span>Par Enseigne ({storeRecommendations.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('aisle')}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+              viewMode === 'aisle'
+                ? "bg-card dark:bg-primary/20 text-foreground dark:text-primary shadow-xs border border-border/60 dark:border-primary/30"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+            title="Afficher chaque rayon avec son enseigne recommandée"
+          >
+            <Layers size={13} className={viewMode === 'aisle' ? "text-primary" : ""} />
+            <span>Par Rayon ({categoryRecommendations.length})</span>
+          </button>
         </div>
       </div>
 
-      {/* GRILLE DE CARTES DESIGN DNA GOOGLE STITCH */}
-      <div className="flex sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 overflow-x-auto no-scrollbar pb-2 sm:pb-0 overscroll-contain">
-        {recommendations.map((rec) => {
-          const Icon = rec.icon;
-
-          return (
-            <div
-              key={rec.aisle}
-              onClick={() => onSelectAisle?.(rec.aisle)}
-              className={cn(
-                "min-w-[175px] sm:min-w-0 flex-1 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all duration-200",
-                "bg-card/90 dark:bg-card/60 backdrop-blur-md border-border/80 dark:border-white/[0.08]",
-                "hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer group flex flex-col items-center justify-between text-center select-none"
-              )}
-              title={`Voir les articles de ${rec.aisle}`}
-            >
-              {/* PASTILLE RONDE AVEC ICÔNE DÉDIÉE AU RAYON */}
-              <div 
+      {/* ========================================================================= */}
+      {/* 1. VUE PAR ENSEIGNE (PAR DÉFAUT : EXACTEMENT 1 CARTE PAR MAGASIN UNIQUE)  */}
+      {/* ========================================================================= */}
+      {viewMode === 'store' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
+          {storeRecommendations.map((grp) => {
+            return (
+              <div
+                key={grp.storeName}
                 className={cn(
-                  "w-12 h-12 rounded-2xl flex items-center justify-center mb-3 shadow-xs transition-transform group-hover:scale-110 duration-200",
-                  rec.style.iconBg,
-                  rec.style.iconColor
+                  "p-4 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all duration-200 flex flex-col justify-between",
+                  "bg-card/90 dark:bg-card/60 backdrop-blur-md border-border/80 dark:border-white/[0.08]",
+                  "hover:shadow-lg relative overflow-hidden group select-none",
+                  grp.branding.borderHover
                 )}
               >
-                <Icon size={22} />
-              </div>
+                {/* DÉGRADÉ DE FOND DISCRET */}
+                <div 
+                  className={cn(
+                    "absolute -top-12 -right-12 w-40 h-40 rounded-full blur-2xl pointer-events-none opacity-40 bg-gradient-to-br",
+                    grp.branding.gradient
+                  )} 
+                />
 
-              {/* NOM DE LA CATÉGORIE / RAYON */}
-              <div className="w-full space-y-1 mb-2">
-                <span className="text-[11px] sm:text-xs font-semibold text-muted-foreground block truncate" title={rec.aisle}>
-                  {rec.aisle}
-                </span>
+                <div className="space-y-3.5 relative z-10">
+                  {/* EN-TÊTE DU MAGASIN : NOM UNIQUE EN GRAND ET STATISTIQUES */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className={cn("w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-xs", grp.branding.iconBg, grp.branding.iconColor)}>
+                        <Store size={22} />
+                      </div>
+                      <div>
+                        <h4 className="text-base sm:text-lg font-black text-foreground tracking-tight">
+                          {grp.storeName}
+                        </h4>
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-medium mt-0.5">
+                          <span>{grp.ticketCount} ticket{grp.ticketCount > 1 ? 's' : ''}</span>
+                          <span>•</span>
+                          <span>{grp.totalItems} articles analysés</span>
+                        </div>
+                      </div>
+                    </div>
 
-                {/* ENSEIGNE RECOMMANDÉE EN GRAND ET EN GRAS */}
-                <h4 className="text-base sm:text-lg font-black text-foreground group-hover:text-primary transition-colors tracking-tight truncate" title={rec.recommendedStore}>
-                  {rec.recommendedStore}
-                </h4>
-              </div>
+                    <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold border shrink-0 flex items-center gap-1", grp.branding.badgeBg)}>
+                      <Award size={12} className="shrink-0" />
+                      <span>{grp.wonAisles.length} rayon{grp.wonAisles.length > 1 ? 's' : ''} n°1</span>
+                    </div>
+                  </div>
 
-              {/* BADGE ÉCONOMIQUE (STRICTEMENT SANS POURCENTAGE) */}
-              <div 
-                className={cn(
-                  "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold border max-w-full truncate",
-                  rec.style.badgeBg,
-                  rec.style.badgeText,
-                  rec.style.badgeBorder
+                  {/* LISTE DES RAYONS RECOMMANDÉS POUR CE MAGASIN */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 block">
+                      À acheter en priorité chez {grp.storeName.split(' ')[0]} :
+                    </span>
+
+                    {grp.wonAisles.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {grp.wonAisles.map((w) => {
+                          const Icon = w.icon;
+                          return (
+                            <div
+                              key={w.aisle}
+                              onClick={() => onSelectAisle?.(w.aisle)}
+                              className={cn(
+                                "p-2.5 rounded-xl border border-border/70 bg-secondary/40 dark:bg-white/[0.03]",
+                                "hover:bg-primary/5 hover:border-primary/40 hover:translate-x-0.5 cursor-pointer transition-all",
+                                "flex items-center justify-between gap-2 group/item"
+                              )}
+                              title={`Filtrer le rayon ${w.aisle} dans le comparateur`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-xs", w.style.iconBg, w.style.iconColor)}>
+                                  <Icon size={14} />
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="text-xs font-bold text-foreground block truncate">
+                                    {w.aisle}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground block truncate">
+                                    {w.badgeLabel}
+                                  </span>
+                                </div>
+                              </div>
+                              <ChevronRight size={14} className="text-muted-foreground group-hover/item:text-primary group-hover/item:translate-x-0.5 transition-all shrink-0" />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic py-1">
+                        Magasin analysé, aucun rayon n°1 sur l'ensemble du panier.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* BAS DE CARTE AVEC LIEN DIRECT VERS LE COMPARATEUR */}
+                {grp.wonAisles.length > 0 && (
+                  <div className="mt-3.5 pt-3 border-t border-border/60 flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className={cn("w-1.5 h-1.5 rounded-full", grp.branding.accentDot)} />
+                      <span>{grp.wonAisles.length} recommandation{grp.wonAisles.length > 1 ? 's' : ''} auditée{grp.wonAisles.length > 1 ? 's' : ''}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onSelectAisle?.(grp.wonAisles[0].aisle)}
+                      className="text-primary hover:underline flex items-center gap-1 text-[11px] font-bold"
+                    >
+                      <span>Explorer les prix</span>
+                      <ArrowRight size={12} />
+                    </button>
+                  </div>
                 )}
-              >
-                <Check size={12} className="shrink-0 text-emerald-500" />
-                <span className="truncate">{rec.badgeLabel}</span>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. VUE PAR RAYON (13 CARTES AVEC TITRE DE RAYON UNIQUE EN GRAND)          */}
+      {/* ========================================================================= */}
+      {viewMode === 'aisle' && (
+        <div className="flex sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 overflow-x-auto no-scrollbar pb-2 sm:pb-0 overscroll-contain">
+          {categoryRecommendations.map((rec) => {
+            const Icon = rec.icon;
+
+            return (
+              <div
+                key={rec.aisle}
+                onClick={() => onSelectAisle?.(rec.aisle)}
+                className={cn(
+                  "min-w-[190px] sm:min-w-0 flex-1 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all duration-200",
+                  "bg-card/90 dark:bg-card/60 backdrop-blur-md border-border/80 dark:border-white/[0.08]",
+                  "hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer group flex flex-col items-center justify-between text-center select-none"
+                )}
+                title={`Voir les articles de ${rec.aisle}`}
+              >
+                {/* PASTILLE RONDE AVEC ICÔNE DU RAYON */}
+                <div 
+                  className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center mb-3 shadow-xs transition-transform group-hover:scale-110 duration-200",
+                    rec.style.iconBg,
+                    rec.style.iconColor
+                  )}
+                >
+                  <Icon size={22} />
+                </div>
+
+                {/* NOM DU RAYON EN TITRE PRINCIPAL (ÉVITE TOUTE DUPLICATION VISUELLE D'ENSEIGNE) */}
+                <div className="w-full space-y-1.5 mb-2.5">
+                  <h4 className="text-sm sm:text-base font-black text-foreground group-hover:text-primary transition-colors tracking-tight truncate" title={rec.aisle}>
+                    {rec.aisle}
+                  </h4>
+
+                  {/* ENSEIGNE RECOMMANDÉE CLAIREMENT IDENTIFIÉE COMME DESTINATION */}
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-secondary/80 dark:bg-white/[0.04] border border-border/80 max-w-full">
+                    <Store size={12} className="text-primary shrink-0" />
+                    <span className="text-[11px] font-extrabold text-foreground truncate" title={rec.recommendedStore}>
+                      {rec.recommendedStore}
+                    </span>
+                  </div>
+                </div>
+
+                {/* BADGE ÉCONOMIQUE (STRICTEMENT SANS POURCENTAGE) */}
+                <div 
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold border max-w-full truncate",
+                    rec.style.badgeBg,
+                    rec.style.badgeText,
+                    rec.style.badgeBorder
+                  )}
+                >
+                  <Check size={12} className="shrink-0 text-emerald-500" />
+                  <span className="truncate">{rec.badgeLabel}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 };

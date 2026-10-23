@@ -7,7 +7,7 @@ import {
   type ProductComparisonRow, 
   type ComparativeMatrix,
   type AisleGroup
-} from '../types/receipts';
+} from '../types/receipts.ts';
 
 export const AISLE_KEY_TO_LABEL: Record<SupermarketAisleKey, SupermarketAisle> = {
   boucherie_poissonnerie: 'Boucherie, Volaille & Poissonnerie',
@@ -713,6 +713,19 @@ export function reconcileStoreWithExisting(
     item => stripAccents(item.normalized) === candidateKey
   );
   if (phoneticMatch) return phoneticMatch.original;
+
+  // 3.5 Correspondance par marque unique lorsque la commune est omise sur le ticket
+  // Ex: Le ticket indique juste "LIDL" ou "E.LECLERC", et l'utilisateur n'a qu'un seul magasin de cette enseigne (ex: "Lidl Annemasse")
+  const candidateWords = candidateKey.split(' ').filter(Boolean);
+  if (candidateWords.length <= 2) {
+    const brandMatches = normalizedExisting.filter(item => {
+      const existingKey = stripAccents(item.normalized);
+      return existingKey.startsWith(candidateKey) || candidateWords.every(w => existingKey.includes(w));
+    });
+    if (brandMatches.length === 1) {
+      return brandMatches[0].original;
+    }
+  }
 
   // 4. Si c'est un véritable nouveau magasin, renvoyer le nouveau nom canonique
   return normalizedCandidate;
