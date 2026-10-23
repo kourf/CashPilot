@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIES } from './bankParser.ts';
-import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName } from './receiptClassifier';
+import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from './receiptClassifier';
 import { type SupermarketAisle, type SupermarketAisleKey } from '../types/receipts';
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
@@ -1634,7 +1634,8 @@ export interface ExtractedReceiptResult {
  * 6. Classification dans la nomenclature officielle des 8 rayons.
  */
 export async function extractReceiptItemsFromFiles(
-  files: File[]
+  files: File[],
+  existingStores: string[] = []
 ): Promise<ExtractedReceiptResult> {
   if (!files || files.length === 0) {
     throw new Error("Aucun fichier fourni pour l'analyse du ticket.");
@@ -1703,10 +1704,29 @@ RÈGLE 6 : DOUBLE BALAYAGE DES REMISES (DUAL SWEEP) & AUTO-CONTRÔLE
   (Somme de tous les pricePaid des items) - totalDiscount = totalAmount (Montant net payé en caisse).
 
 ================================================================================
-RÈGLE 7 : LOCALISATION PRÉCISE DE L'ENSEIGNE (ENSEIGNE + VILLE SANS ADRESSE NI RUE)
+RÈGLE 7 : LOCALISATION DU MAGASIN & RAPPROCHEMENT GÉOGRAPHIQUE AVEC L'APPLICATION
 ================================================================================
-- "storeName" : Extraire obligatoirement et STRICTEMENT le nom de l'enseigne ET la ville/commune (ex: "E.Leclerc Ville-la-Grand", "Super U Étrembières", "Lidl Annemasse", "Carrefour Market Antibes", "Intermarché Gaillard").
-- INTERDICTION ABSOLUE DES RUES ET ADRESSES : Ne JAMAIS inclure le nom de la rue, de l'avenue, du boulevard, l'adresse postale, le code postal ou le numéro d'établissement dans "storeName" (ex: interdiction absolue d'écrire "E.Leclerc Ville-la-Grand - Rue Albert Henon", écris STRICTEMENT "E.Leclerc Ville-la-Grand"). L'ajout de rues crée des colonnes en doublon pour un même magasin dans le comparateur.
+- "storeName" : Extraire obligatoirement le nom de l'enseigne ET la ville/commune (ex: "E.Leclerc Ville-la-Grand", "Super U Étrembières", "Lidl Annemasse", "Carrefour Market Antibes", "Intermarché Gaillard").
+- CONNAISSANCE GÉOGRAPHIQUE / RECONNAISSANCE D'ADRESSE :
+  Tu disposes d'une connaissance géographique exhaustive des adresses, rues, zones commerciales et enseignes de France.
+  Analyse l'adresse, la rue, la zone commerciale, le code postal ou la commune imprimés sur le ticket pour identifier avec certitude le magasin.
+${
+  existingStores && existingStores.length > 0
+    ? `
+- MAGASINS DÉJÀ ENREGISTRÉS DANS L'APPLICATION :
+${existingStores.map(s => `  * "${s}"`).join('\n')}
+
+- RÈGLE DE RAPPROCHEMENT STRICTE AVEC LES MAGASINS EXISTANTS :
+  1. Si l'adresse, la rue, le centre commercial ou l'enseigne du ticket correspond à l'un des magasins DÉJÀ ENREGISTRÉS ci-dessus (ex: "Rue Albert Hénon" = "E.Leclerc Ville-la-Grand", "Shopping Léman" = "Super U Étrembières"), tu DOIS OBLIGATOIREMENT réutiliser le libellé EXACT de cette liste (ex: "${existingStores[0]}").
+     Cela permet de rattacher directement le ticket à la colonne existante de ce magasin pour mettre à jour les prix sans créer de colonne doublon.
+  2. UNIQUEMENT si l'adresse et le magasin ne correspondent à AUCUN des magasins ci-dessus (véritable nouveau magasin ou nouvelle commune), génère alors un nouveau nom canonique au format [Enseigne] [Ville]. Une nouvelle colonne sera ainsi créée dans le comparateur.
+`
+    : `
+- RÈGLE DE NOMMAGE :
+  Attribue au magasin un nom canonique clair au format [Enseigne] [Ville] (ex: "E.Leclerc Ville-la-Grand", "Super U Étrembières").
+`
+}
+- INTERDICTION ABSOLUE DES RUES DANS LE NOM : Ne jamais inclure la mention de la rue ou de l'adresse dans la chaîne "storeName" (ex: interdiction formelle d'écrire "E.Leclerc Ville-la-Grand - Rue Albert Henon", écris STRICTEMENT "E.Leclerc Ville-la-Grand").
 
 ================================================================================
 NOMENCLATURE DES 13 CATÉGORIES (+ 1 FILET DE SÉCURITÉ)
@@ -1953,7 +1973,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
     const time = String(parsed.time || '12:00').slice(0, 5);
 
     return {
-      storeName: normalizeStoreName(parsed.storeName || 'Supermarché'),
+      storeName: reconcileStoreWithExisting(parsed.storeName || 'Supermarché', existingStores),
       date: parsed.date || new Date().toISOString().slice(0, 10),
       time,
       totalArticles,

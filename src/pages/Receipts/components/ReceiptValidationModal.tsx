@@ -23,7 +23,7 @@ import {
   getReceiptUniqueKey
 } from '../../../types/receipts';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
-import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle, normalizeStoreName } from '../../../lib/receiptClassifier';
+import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle, normalizeStoreName, reconcileStoreWithExisting } from '../../../lib/receiptClassifier';
 
 interface ReceiptValidationModalProps {
   isOpen: boolean;
@@ -80,6 +80,10 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
   const [time, setTime] = useState(initialData.time || '');
   const [totalDiscounts, setTotalDiscounts] = useState(initialData.totalDiscounts || 0);
   const [totalAmount, setTotalAmount] = useState(initialData.totalAmount || 0);
+
+  const existingStoreNames = React.useMemo(() => {
+    return Array.from(new Set(existingReceipts.map(r => normalizeStoreName(r.storeName)).filter(Boolean)));
+  }, [existingReceipts]);
 
   const [items, setItems] = useState<ReceiptItem[]>(() => {
     return (initialData.items || []).map((it, idx) => {
@@ -189,7 +193,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
     e.preventDefault();
     setErrorMsg(null);
 
-    const cleanStore = normalizeStoreName(storeName);
+    const cleanStore = reconcileStoreWithExisting(storeName, existingStoreNames);
     if (!cleanStore) {
       setErrorMsg("Veuillez renseigner le nom du magasin / enseigne.");
       return;
@@ -332,9 +336,15 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                   required
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
+                  list="validation-existing-stores"
                   placeholder="ex: E.Leclerc Ville-la-Grand, Lidl Annemasse..."
                   className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
                 />
+                <datalist id="validation-existing-stores">
+                  {existingStoreNames.map(s => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
               </div>
 
               {/* DATE */}

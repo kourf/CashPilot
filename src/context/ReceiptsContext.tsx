@@ -10,7 +10,7 @@ import {
   type SupermarketAisleKey,
   getReceiptUniqueKey
 } from '../types/receipts';
-import { buildComparativeMatrix, classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName } from '../lib/receiptClassifier';
+import { buildComparativeMatrix, classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from '../lib/receiptClassifier';
 import { extractReceiptItemsFromFiles, type ExtractedReceiptResult } from '../lib/geminiService';
 
 export interface ReceiptsContextType {
@@ -248,7 +248,8 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addReceipt = useCallback(async (
     receiptData: Omit<Receipt, 'id' | 'userId' | 'createdAt'>
   ): Promise<Receipt> => {
-    const normalizedStore = normalizeStoreName(receiptData.storeName);
+    const knownStores = Array.from(new Set(receipts.map(r => normalizeStoreName(r.storeName)).filter(Boolean)));
+    const normalizedStore = reconcileStoreWithExisting(receiptData.storeName, knownStores);
 
     // Règle 4 : Clé Anti-Doublon stricte (Nom Magasin + Date + Heure/Minute + Montant)
     const currentKey = getReceiptUniqueKey(
@@ -369,14 +370,15 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       setIsAnalyzing(true);
       setAnalysisProgress("Extraction par Gemini Flash Vision...");
-      const res = await extractReceiptItemsFromFiles(files);
+      const knownStores = Array.from(new Set(receipts.map(r => normalizeStoreName(r.storeName)).filter(Boolean)));
+      const res = await extractReceiptItemsFromFiles(files, knownStores);
       setPendingValidationReceipt(res);
       return res;
     } finally {
       setIsAnalyzing(false);
       setAnalysisProgress('');
     }
-  }, [setPendingValidationReceipt]);
+  }, [receipts, setPendingValidationReceipt]);
 
   const value: ReceiptsContextType = {
     receipts,

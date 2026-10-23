@@ -663,6 +663,58 @@ export function normalizeStoreName(rawName?: string): string {
 }
 
 /**
+ * Rapproche intelligemment un nom de magasin extrait ou saisi avec la liste des magasins déjà existants
+ * dans l'application.
+ * 
+ * Si le magasin correspond à une enseigne déjà enregistrée (même marque + même commune, ou correspondance
+ * normalisée), il renvoie le nom exact déjà présent dans l'application pour consolider les données
+ * (mise à jour des prix, historique, zéro colonne doublon).
+ * 
+ * Si le magasin ne correspond à aucun magasin existant, il renvoie le nouveau nom canonique
+ * (permettant la création d'une nouvelle colonne dans la matrice comparative).
+ */
+export function reconcileStoreWithExisting(
+  candidateStore: string,
+  existingStores: string[] = []
+): string {
+  const normalizedCandidate = normalizeStoreName(candidateStore);
+  if (!existingStores || existingStores.length === 0) {
+    return normalizedCandidate;
+  }
+
+  // 1. Correspondance exacte insensible à la casse
+  const exactMatch = existingStores.find(
+    s => s.toLowerCase() === normalizedCandidate.toLowerCase()
+  );
+  if (exactMatch) return exactMatch;
+
+  // 2. Correspondance après normalisation des deux côtés
+  const normalizedExisting = existingStores.map(s => ({
+    original: s,
+    normalized: normalizeStoreName(s)
+  }));
+
+  const normMatch = normalizedExisting.find(
+    item => item.normalized.toLowerCase() === normalizedCandidate.toLowerCase()
+  );
+  if (normMatch) return normMatch.original;
+
+  // 3. Correspondance phonétique / sans accents (gère les typos OCR)
+  const stripAccents = (str: string) =>
+    str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const candidateKey = stripAccents(normalizedCandidate);
+
+  const phoneticMatch = normalizedExisting.find(
+    item => stripAccents(item.normalized) === candidateKey
+  );
+  if (phoneticMatch) return phoneticMatch.original;
+
+  // 4. Si c'est un véritable nouveau magasin, renvoyer le nouveau nom canonique
+  return normalizedCandidate;
+}
+
+/**
  * Calculateur haute performance de la matrice comparative Magasins (colonnes) vs Produits (lignes).
  * Strictement basé sur les données réelles (aucun prix externe injecté).
  * Applique la règle du ticket unique et la comparaison au prix unitaire standardisé.
