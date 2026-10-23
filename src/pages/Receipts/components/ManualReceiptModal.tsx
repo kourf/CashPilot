@@ -20,7 +20,7 @@ import {
   SUPERMARKET_AISLES,
   getReceiptUniqueKey
 } from '../../../types/receipts';
-import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle } from '../../../lib/receiptClassifier';
+import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle, normalizeStoreName } from '../../../lib/receiptClassifier';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
 
 interface ManualReceiptModalProps {
@@ -79,9 +79,9 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
   const isEquationBalanced = diffEquation <= 0.05;
 
   // Contrôle anti-doublon (Règle 4)
-  const currentKey = getReceiptUniqueKey(storeName, date, time, finalTotal);
+  const currentKey = getReceiptUniqueKey(normalizeStoreName(storeName), date, time, finalTotal);
   const isDuplicate = Boolean(existingReceipts.find(r => 
-    getReceiptUniqueKey(r.storeName, r.date, r.time, r.totalAmount) === currentKey
+    getReceiptUniqueKey(normalizeStoreName(r.storeName), r.date, r.time, r.totalAmount) === currentKey
   ));
 
   const handleItemChange = (index: number, field: keyof ReceiptItem, value: any) => {
@@ -134,7 +134,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
     e.preventDefault();
     setErrorMsg(null);
 
-    const cleanStore = storeName.trim();
+    const cleanStore = normalizeStoreName(storeName);
     if (!cleanStore) {
       setErrorMsg("Veuillez renseigner le nom de l'enseigne.");
       return;

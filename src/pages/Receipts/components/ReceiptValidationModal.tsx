@@ -23,7 +23,7 @@ import {
   getReceiptUniqueKey
 } from '../../../types/receipts';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
-import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle } from '../../../lib/receiptClassifier';
+import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle, normalizeStoreName } from '../../../lib/receiptClassifier';
 
 interface ReceiptValidationModalProps {
   isOpen: boolean;
@@ -75,7 +75,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
   onCancel,
   onSave
 }) => {
-  const [storeName, setStoreName] = useState(initialData.storeName || 'Supermarché');
+  const [storeName, setStoreName] = useState(normalizeStoreName(initialData.storeName || 'Supermarché'));
   const [date, setDate] = useState(initialData.date || new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState(initialData.time || '');
   const [totalDiscounts, setTotalDiscounts] = useState(initialData.totalDiscounts || 0);
@@ -134,9 +134,9 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
   const isEquationBalanced = diffEquation <= 0.05;
 
   // Règle 4 : Contrôle strict anti-doublon (magasin + date + heure + total)
-  const currentKey = getReceiptUniqueKey(storeName, date, time, totalAmount);
+  const currentKey = getReceiptUniqueKey(normalizeStoreName(storeName), date, time, totalAmount);
   const duplicateReceipt = existingReceipts.find(r => 
-    getReceiptUniqueKey(r.storeName, r.date, r.time, r.totalAmount) === currentKey
+    getReceiptUniqueKey(normalizeStoreName(r.storeName), r.date, r.time, r.totalAmount) === currentKey
   );
   const isDuplicate = Boolean(duplicateReceipt);
 
@@ -189,7 +189,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
     e.preventDefault();
     setErrorMsg(null);
 
-    const cleanStore = storeName.trim();
+    const cleanStore = normalizeStoreName(storeName);
     if (!cleanStore) {
       setErrorMsg("Veuillez renseigner le nom du magasin / enseigne.");
       return;

@@ -258,7 +258,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       receiptData.totalAmount
     );
     const existing = receipts.find(r => 
-      getReceiptUniqueKey(r.storeName, r.date, r.time, r.totalAmount) === currentKey
+      getReceiptUniqueKey(normalizeStoreName(r.storeName), r.date, r.time, r.totalAmount) === currentKey
     );
     if (existing) {
       throw new Error(`🚨 Ticket déjà importé : Ce ticket de caisse (${normalizedStore} le ${receiptData.date} pour ${receiptData.totalAmount} €) existe déjà dans votre historique. Importation bloquée pour éviter les doublons.`);

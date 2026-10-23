@@ -491,9 +491,9 @@ export function computeUnitPrice(
  */
 function capitalizeWords(str: string): string {
   return str
-    .split(/([ -/])/g)
+    .split(/(\s+|-|\/)/)
     .map(part => {
-      if (part === ' ' || part === '-' || part === '/') return part;
+      if (part === ' ' || part === '-' || part === '/' || /^\s+$/.test(part)) return part;
       if (part.length === 0) return part;
       const lower = part.toLowerCase();
       // Mots de liaison français
@@ -514,9 +514,66 @@ function stripBrandPrefix(fullStr: string, brandLength: number): string {
 }
 
 /**
+ * Nettoie et normalise la partie localisation (ville/commune) du magasin :
+ * - Supprime les suffixes d'adresse ou de rue (ex: "- Rue Albert Henon")
+ * - Supprime les codes postaux (ex: "74100")
+ * - Harmonise les anomalies d'OCR ou de casse (ex: "Etrembi res" -> "Etrembières")
+ */
+function cleanCityLocation(rawCity: string): string {
+  if (!rawCity || typeof rawCity !== 'string') return '';
+  let city = rawCity.trim();
+
+  // Supprimer les caractères de séparation au début ou à la fin sans regex bracket dangereuse
+  while (city.startsWith('-') || city.startsWith(':') || city.startsWith('—') || city.startsWith(' ')) {
+    city = city.slice(1).trim();
+  }
+  while (city.endsWith('-') || city.endsWith(':') || city.endsWith('—') || city.endsWith(' ')) {
+    city = city.slice(0, -1).trim();
+  }
+
+  // Supprimer les codes postaux à 5 chiffres (ex: "74100")
+  city = city.replace(/\b\d{5}\b/g, '').trim();
+
+  // Supprimer les mentions de voies / adresses / rues / boulevards
+  city = city.replace(/\s*-\s*(?:rue|av|avenue|bd|boulevard|route|rte|chemin|allee|allée|impasse|zi|zac|centre commercial|c\.?c\.?)\b.*$/i, '').trim();
+  city = city.replace(/\s+(?:rue|avenue|boulevard|route|chemin|impasse)\s+.*$/i, '').trim();
+  city = city.replace(/\s+/g, ' ').trim();
+
+  // Harmonisation canonique des villes fréquentes pour éliminer tout risque de doublon
+  const normalizedKey = city
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (normalizedKey.includes('etrembi') || normalizedKey.includes('etrembiere') || normalizedKey.includes('etrembieres')) {
+    return 'Etrembières';
+  }
+  if (normalizedKey.includes('ville la grand') || normalizedKey.includes('villelagrand')) {
+    return 'Ville-la-Grand';
+  }
+  if (normalizedKey.includes('vetraz') || normalizedKey.includes('monthoux')) {
+    return 'Vétraz-Monthoux';
+  }
+  if (normalizedKey === 'annemasse') {
+    return 'Annemasse';
+  }
+  if (normalizedKey === 'gaillard') {
+    return 'Gaillard';
+  }
+  if (normalizedKey.includes('saint julien') || normalizedKey.includes('st julien')) {
+    return 'Saint-Julien-en-Genevois';
+  }
+
+  return capitalizeWords(city);
+}
+
+/**
  * Normalise rigoureusement le nom d'un magasin pour éviter les doublons dus à la casse,
- * aux espaces multiples, ou aux variations de saisie (ex: "LIDL ANNEMASSE" -> "Lidl Annemasse").
- * Préserve les différenciateurs géographiques (ex: "Lidl Annemasse - Chablais" vs "Lidl Annemasse - Centre").
+ * aux adresses superflues, aux espaces multiples ou aux variations d'OCR.
+ * Format canonique garanti : "[Enseigne] [Ville]" (ex: "E.Leclerc Ville-la-Grand", "Super U Etrembières").
  */
 export function normalizeStoreName(rawName?: string): string {
   if (!rawName || typeof rawName !== 'string') return 'Supermarché';
@@ -534,14 +591,14 @@ export function normalizeStoreName(rawName?: string): string {
   // E.Leclerc
   if (lower.startsWith('e.leclerc') || lower.startsWith('leclerc')) {
     const len = lower.startsWith('e.leclerc') ? 9 : 7;
-    const cityPart = stripBrandPrefix(cleaned, len);
-    return cityPart ? `E.Leclerc ${capitalizeWords(cityPart)}` : 'E.Leclerc';
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, len));
+    return cityPart ? `E.Leclerc ${cityPart}` : 'E.Leclerc';
   }
 
   // Lidl
   if (lower.startsWith('lidl')) {
-    const cityPart = stripBrandPrefix(cleaned, 4);
-    return cityPart ? `Lidl ${capitalizeWords(cityPart)}` : 'Lidl';
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 4));
+    return cityPart ? `Lidl ${cityPart}` : 'Lidl';
   }
 
   // Super U / Hyper U / U Express / U
@@ -551,8 +608,8 @@ export function normalizeStoreName(rawName?: string): string {
     if (lower.startsWith('hyper u')) { brand = 'Hyper U'; len = 7; }
     else if (lower.startsWith('u express')) { brand = 'U Express'; len = 9; }
     else if (lower.startsWith('u ')) { brand = 'Super U'; len = 2; }
-    const cityPart = stripBrandPrefix(cleaned, len);
-    return cityPart ? `${brand} ${capitalizeWords(cityPart)}` : brand;
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, len));
+    return cityPart ? `${brand} ${cityPart}` : brand;
   }
 
   // Carrefour / Carrefour Market / Carrefour Express / Carrefour City / Carrefour Contact
@@ -562,47 +619,47 @@ export function normalizeStoreName(rawName?: string): string {
     else if (lower.startsWith('carrefour express')) brand = 'Carrefour Express';
     else if (lower.startsWith('carrefour city')) brand = 'Carrefour City';
     else if (lower.startsWith('carrefour contact')) brand = 'Carrefour Contact';
-    const cityPart = stripBrandPrefix(cleaned, brand.length);
-    return cityPart ? `${brand} ${capitalizeWords(cityPart)}` : brand;
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, brand.length));
+    return cityPart ? `${brand} ${cityPart}` : brand;
   }
 
   // Intermarché / Intermarche
   if (lower.startsWith('intermarche') || lower.startsWith('intermarché')) {
-    const cityPart = stripBrandPrefix(cleaned, 11);
-    return cityPart ? `Intermarché ${capitalizeWords(cityPart)}` : 'Intermarché';
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 11));
+    return cityPart ? `Intermarché ${cityPart}` : 'Intermarché';
   }
 
   // Auchan
   if (lower.startsWith('auchan')) {
-    const cityPart = stripBrandPrefix(cleaned, 6);
-    return cityPart ? `Auchan ${capitalizeWords(cityPart)}` : 'Auchan';
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 6));
+    return cityPart ? `Auchan ${cityPart}` : 'Auchan';
   }
 
   // Aldi
   if (lower.startsWith('aldi')) {
-    const cityPart = stripBrandPrefix(cleaned, 4);
-    return cityPart ? `Aldi ${capitalizeWords(cityPart)}` : 'Aldi';
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 4));
+    return cityPart ? `Aldi ${cityPart}` : 'Aldi';
   }
 
   // Monoprix
   if (lower.startsWith('monoprix')) {
-    const cityPart = stripBrandPrefix(cleaned, 8);
-    return cityPart ? `Monoprix ${capitalizeWords(cityPart)}` : 'Monoprix';
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 8));
+    return cityPart ? `Monoprix ${cityPart}` : 'Monoprix';
   }
 
   // Casino
   if (lower.startsWith('casino')) {
-    const cityPart = stripBrandPrefix(cleaned, 6);
-    return cityPart ? `Casino ${capitalizeWords(cityPart)}` : 'Casino';
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 6));
+    return cityPart ? `Casino ${cityPart}` : 'Casino';
   }
 
   // Grand Frais
   if (lower.startsWith('grand frais')) {
-    const cityPart = stripBrandPrefix(cleaned, 11);
-    return cityPart ? `Grand Frais ${capitalizeWords(cityPart)}` : 'Grand Frais';
+    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 11));
+    return cityPart ? `Grand Frais ${cityPart}` : 'Grand Frais';
   }
 
-  return capitalizeWords(cleaned);
+  return cleanCityLocation(cleaned);
 }
 
 /**

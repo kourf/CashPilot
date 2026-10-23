@@ -1277,10 +1277,10 @@ RÈGLE 1 : LA RÈGLE DU TTC EXCLUSIF ET OMISSION TOTALE DE LA TVA
 - OBLIGATION STRICTE D'IGNORER les tableaux récapitulatifs de TVA situés en bas de ticket (taux de TVA, base HT, montant TVA, récapitulatif fiscal). Ne crée JAMAIS d'articles pour ces lignes fiscales.
 
 ================================================================================
-RÈGLE 2 : LOCALISATION PRÉCISE (ENSEIGNE + VILLE)
+RÈGLE 2 : LOCALISATION PRÉCISE (ENSEIGNE + VILLE SANS ADRESSE NI RUE)
 ================================================================================
-- 'storeName' : Tu dois impérativement extraire le nom de l'enseigne ET la ville/localisation exacte (ex: "E.Leclerc Ville-la-Grand", "Lidl Annemasse", "Carrefour Market Antibes", "Intermarché Gaillard").
-- Deux magasins d'une même marque dans des villes différentes doivent être différenciés pour permettre l'audit multi-sites.
+- 'storeName' : Tu dois impérativement extraire le nom de l'enseigne ET la ville/localisation exacte (ex: "E.Leclerc Ville-la-Grand", "Super U Étrembières", "Lidl Annemasse", "Carrefour Market Antibes", "Intermarché Gaillard").
+- Format STRICT : [Enseigne] [Ville]. NE JAMAIS ajouter le nom de la rue, l'avenue, l'adresse postale ou le code postal dans 'storeName' (ex: NE PAS ajouter "Rue Albert Henon", écris UNIQUEMENT "E.Leclerc Ville-la-Grand") afin de ne jamais créer de doublons artificiels d'enseigne dans le comparateur.
 
 ================================================================================
 RÈGLE 3 : DOUBLE COMPTAGE (FUSION STRICTE MULTI-LIGNES / RÈGLE LECLERC)
@@ -1581,7 +1581,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
 
   return {
     id: `receipt-${Date.now()}`,
-    storeName: parsed.storeName || 'Supermarché',
+    storeName: normalizeStoreName(parsed.storeName || 'Supermarché'),
     date: parsed.date || new Date().toISOString().slice(0, 10),
     total: Number(totalPaid.toFixed(2)),
     items,
@@ -1703,10 +1703,10 @@ RÈGLE 6 : DOUBLE BALAYAGE DES REMISES (DUAL SWEEP) & AUTO-CONTRÔLE
   (Somme de tous les pricePaid des items) - totalDiscount = totalAmount (Montant net payé en caisse).
 
 ================================================================================
-RÈGLE 7 : LOCALISATION PRÉCISE DE L'ENSEIGNE & DIFFÉRENCIATION DES MAGASINS
+RÈGLE 7 : LOCALISATION PRÉCISE DE L'ENSEIGNE (ENSEIGNE + VILLE SANS ADRESSE NI RUE)
 ================================================================================
-- "storeName" : Extraire obligatoirement le nom de l'enseigne ET la ville/commune (ex: "E.Leclerc Ville-la-Grand", "Lidl Annemasse", "Carrefour Market Antibes").
-- CAS CRITIQUE : Si une rue, une adresse, un numéro de succursale ou un quartier est mentionné sur le ticket, ou si l'utilisateur possède des tickets de magasins distincts dans la même commune (ex: deux magasins Lidl à Annemasse), tu DOIS IMPÉRATIVEMENT inclure la rue ou le centre commercial (ex: "Lidl Annemasse - Résistance" ou "Lidl Annemasse - Chablais") afin de les différencier formellement pour que l'utilisateur sache exactement de quel magasin il s'agit.
+- "storeName" : Extraire obligatoirement et STRICTEMENT le nom de l'enseigne ET la ville/commune (ex: "E.Leclerc Ville-la-Grand", "Super U Étrembières", "Lidl Annemasse", "Carrefour Market Antibes", "Intermarché Gaillard").
+- INTERDICTION ABSOLUE DES RUES ET ADRESSES : Ne JAMAIS inclure le nom de la rue, de l'avenue, du boulevard, l'adresse postale, le code postal ou le numéro d'établissement dans "storeName" (ex: interdiction absolue d'écrire "E.Leclerc Ville-la-Grand - Rue Albert Henon", écris STRICTEMENT "E.Leclerc Ville-la-Grand"). L'ajout de rues crée des colonnes en doublon pour un même magasin dans le comparateur.
 
 ================================================================================
 NOMENCLATURE DES 13 CATÉGORIES (+ 1 FILET DE SÉCURITÉ)
