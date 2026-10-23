@@ -129,6 +129,20 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Détection du mode clair / sombre pour adapter le contraste des étiquettes graphiques
+  const [isDark, setIsDark] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const checkDark = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+    checkDark();
+    const observer = new MutationObserver(checkDark);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   // Mode de regroupement : 'aisle' (Par Rayon) ou 'store' (Par Enseigne)
   const [chartMode, setChartMode] = useState<'store' | 'aisle'>('aisle');
   // Type de diagramme : 'donut' (Camembert) ou 'bar' (Bâtons décroissants)
@@ -234,26 +248,29 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
     const color = data.fill || PALETTE[0];
 
     return (
-      <div className="bg-slate-900/95 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2.5 text-xs shadow-2xl space-y-1.5 z-50 pointer-events-none">
+      <div className={cn(
+        "backdrop-blur-md rounded-xl px-3.5 py-2.5 text-xs shadow-2xl space-y-1.5 z-50 pointer-events-none border",
+        isDark ? "bg-slate-900/95 border-white/10 text-white" : "bg-white/95 border-slate-200 text-slate-900"
+      )}>
         <div className="flex items-center gap-2">
           <span 
             className="w-3 h-3 rounded-full shrink-0 shadow-xs" 
             style={{ backgroundColor: color }} 
           />
-          <span className="font-extrabold text-white text-xs sm:text-sm">
+          <span className={cn("font-extrabold text-xs sm:text-sm", isDark ? "text-white" : "text-slate-900")}>
             {data.name}
           </span>
         </div>
         <div className="flex items-center justify-between gap-4 pt-1 font-mono">
-          <span className="text-cyan-400 font-bold text-xs sm:text-sm">
+          <span className={cn("font-bold text-xs sm:text-sm", isDark ? "text-cyan-400" : "text-sky-600")}>
             {formatCurrency(val, { showSign: false })}
           </span>
-          <span className="text-slate-300 font-semibold text-xs">
+          <span className={cn("font-semibold text-xs", isDark ? "text-slate-300" : "text-slate-600")}>
             {pct}% du total
           </span>
         </div>
         {data.itemCount !== undefined && (
-          <div className="text-[10px] text-slate-400 pt-0.5 border-t border-white/10 flex items-center justify-between">
+          <div className={cn("text-[10px] pt-0.5 border-t flex items-center justify-between", isDark ? "text-slate-400 border-white/10" : "text-slate-500 border-slate-200")}>
             <span>{data.itemCount} article{data.itemCount > 1 ? 's' : ''}</span>
             {data.receiptCount ? <span>{data.receiptCount} ticket{data.receiptCount > 1 ? 's' : ''}</span> : null}
           </div>
@@ -265,7 +282,8 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
   // Étiquette visible directement sur les tranches du camembert sans devoir survoler à la souris
   const renderCustomPieLabel = (props: any) => {
     const { cx, cy, midAngle, outerRadius, percent, name, value } = props;
-    if (percent < 0.02) return null;
+    // Masquer les tranches inférieures à 3.5% pour éviter les chevauchements et les flèches parasites
+    if (percent < 0.035) return null;
     const RADIAN = Math.PI / 180;
     // Dézoom dynamique : sur mobile, ancrage rapproché (12px) pour laisser un maximum d'espace aux étiquettes
     const labelRadius = outerRadius + (isMobile ? 12 : 20);
@@ -275,11 +293,16 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
     const { line1, line2 } = getCategoryLabelLines(name, isMobile);
     const hasLine2 = Boolean(line2);
 
+    // Couleurs adaptées dynamiquement au mode clair / sombre pour un contraste parfait
+    const textColor = isDark ? '#f8fafc' : '#0f172a';
+    const subtextColor = isDark ? '#cbd5e1' : '#334155';
+    const priceColor = isDark ? '#38bdf8' : '#0284c7';
+
     return (
       <text
         x={x}
         y={y}
-        fill="#cbd5e1"
+        fill={subtextColor}
         textAnchor={isRight ? 'start' : 'end'}
         dominantBaseline="central"
         className="select-none pointer-events-none"
@@ -288,7 +311,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
         <tspan 
           x={x} 
           dy={hasLine2 ? (isMobile ? "-9" : "-8") : (isMobile ? "-5" : "-4")} 
-          fill="#f8fafc" 
+          fill={textColor} 
           fontWeight="700"
         >
           {line1}
@@ -297,7 +320,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
           <tspan 
             x={x} 
             dy={isMobile ? "10" : "11"} 
-            fill="#f8fafc" 
+            fill={textColor} 
             fontWeight="600"
           >
             {line2}
@@ -306,7 +329,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
         <tspan 
           x={x} 
           dy={isMobile ? "10" : "11"} 
-          fill="#38bdf8" 
+          fill={priceColor} 
           fontWeight="700" 
           fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
         >
@@ -430,7 +453,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
                     paddingAngle={3}
                     dataKey="value"
                     cursor="pointer"
-                    labelLine={{ stroke: 'rgba(255, 255, 255, 0.35)', strokeWidth: 1 }}
+                    labelLine={false}
                     label={renderCustomPieLabel}
                     onClick={(entry) => {
                       setSelectedSliceName(prev => prev === entry.name ? null : entry.name);
@@ -532,10 +555,10 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
                     data={activeData}
                     margin={{ top: 38, right: 20, left: 10, bottom: 65 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255, 255, 255, 0.08)" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)"} />
                     <XAxis 
                       dataKey="name" 
-                      tick={{ fontSize: 11, fill: '#94a3b8' }}
+                      tick={{ fontSize: 11, fill: isDark ? '#94a3b8' : '#475569' }}
                       interval={0}
                       angle={-25}
                       textAnchor="end"
@@ -543,7 +566,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
                       tickFormatter={(name: string) => name.length > 20 ? name.slice(0, 18) + '…' : name}
                     />
                     <YAxis 
-                      tick={{ fontSize: 10, fill: '#94a3b8' }}
+                      tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#475569' }}
                       tickFormatter={(val) => `${val} €`}
                       width={55}
                     />
@@ -576,7 +599,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
                         position="top" 
                         offset={18}
                         formatter={(name: string) => name.length > 18 ? name.slice(0, 16) + '…' : name}
-                        style={{ fontSize: 10, fill: '#f8fafc', fontWeight: 'bold' }} 
+                        style={{ fontSize: 10, fill: isDark ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }} 
                       />
                       {/* PRIX AFFICHÉ AU-DESSUS DE CHAQUE BÂTON SANS TOUCHER LA SOURIS */}
                       <LabelList 
@@ -584,7 +607,7 @@ export const SpendingChartsView: React.FC<SpendingChartsViewProps> = ({ receipts
                         position="top" 
                         offset={4}
                         formatter={(val: number) => formatCurrency(val, { showSign: false })}
-                        style={{ fontSize: 10, fill: '#38bdf8', fontWeight: 'bold', fontFamily: 'monospace' }} 
+                        style={{ fontSize: 10, fill: isDark ? '#38bdf8' : '#0284c7', fontWeight: 'bold', fontFamily: 'monospace' }} 
                       />
                     </Bar>
                   </BarChart>

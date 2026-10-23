@@ -1954,7 +1954,24 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
       });
     }
 
-    const items = validExtractedItems;
+    // Fusion stricte anti-doublon des articles identiques au sein du ticket
+    const consolidatedMap = new Map<string, typeof validExtractedItems[0]>();
+    validExtractedItems.forEach(item => {
+      const key = `${item.normalizedName.toLowerCase()}__${(item.unit || '').toLowerCase()}`;
+      if (consolidatedMap.has(key)) {
+        const existing = consolidatedMap.get(key)!;
+        existing.quantity += item.quantity;
+        existing.pricePaid = Number((existing.pricePaid + item.pricePaid).toFixed(2));
+        existing.price = existing.pricePaid;
+        const recomputed = computeUnitPrice(existing.pricePaid, existing.weightOrVolume, existing.quantity, existing.weightOrVolumeValue, existing.weightOrVolumeUnit);
+        existing.unitPrice = recomputed.unitPrice;
+        existing.referenceUnitPrice = recomputed.unitPrice;
+      } else {
+        consolidatedMap.set(key, { ...item });
+      }
+    });
+
+    const items = Array.from(consolidatedMap.values());
 
     const sumItems = items.reduce((acc, it) => acc + it.pricePaid, 0);
     const rawArticles = cleanNumericPrice(parsed.totalArticles ?? parsed.subtotal);

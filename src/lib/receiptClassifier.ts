@@ -625,7 +625,11 @@ export function normalizeStoreName(rawName?: string): string {
 
   // Intermarché / Intermarche
   if (lower.startsWith('intermarche') || lower.startsWith('intermarché')) {
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 11));
+    let cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 11));
+    const norm = cityPart.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (norm.includes('annemasse') || norm.includes('vetraz') || norm.includes('monthoux') || norm.includes('gaillard')) {
+      cityPart = 'Annemasse';
+    }
     return cityPart ? `Intermarché ${cityPart}` : 'Intermarché';
   }
 

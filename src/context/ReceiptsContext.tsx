@@ -126,7 +126,9 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ? data.items 
             : (Array.isArray(data.products) ? data.products : []);
 
-          const items: ReceiptItem[] = rawItems.map((it: Record<string, unknown>, idx: number) => {
+          const consolidatedItemsMap = new Map<string, ReceiptItem>();
+
+          rawItems.forEach((it: Record<string, unknown>, idx: number) => {
             const rawName = String(it.rawName || it.name || 'Article').trim();
             const normalizedName = String(it.normalizedName || it.standardName || it.cleanName || rawName).trim();
             const brand = String(it.brand || '').trim();
@@ -140,24 +142,39 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const unitPrice = Number(it.referenceUnitPrice || it.unitPrice) > 0 ? Number(it.referenceUnitPrice || it.unitPrice) : comp.unitPrice;
             const aisle = normalizeAisle(String(it.categoryKey || it.category || classifyItemAisle(normalizedName, rawName)));
 
-            return {
-              id: String(it.id || `item-${d.id}-${idx}`),
-              rawName,
-              normalizedName,
-              brand: brand || 'Générique',
-              pricePaid: Number(pricePaid.toFixed(2)),
-              price: Number(pricePaid.toFixed(2)),
-              quantity,
-              weightOrVolume,
-              weightOrVolumeValue,
-              weightOrVolumeUnit,
-              unitPrice: Number(unitPrice.toFixed(2)),
-              referenceUnitPrice: Number(unitPrice.toFixed(2)),
-              category: aisle.label,
-              categoryKey: aisle.key,
-              unit
-            };
+            // Clé de fusion stricte au sein du ticket : même libellé normalisé + même unité
+            const itemKey = `${normalizedName.toLowerCase()}__${unit.toLowerCase()}`;
+
+            if (consolidatedItemsMap.has(itemKey)) {
+              const existing = consolidatedItemsMap.get(itemKey)!;
+              existing.quantity += quantity;
+              existing.pricePaid = Number((existing.pricePaid + pricePaid).toFixed(2));
+              existing.price = existing.pricePaid;
+              const recomputed = computeUnitPrice(existing.pricePaid, existing.weightOrVolume, existing.quantity, existing.weightOrVolumeValue, existing.weightOrVolumeUnit);
+              existing.unitPrice = recomputed.unitPrice;
+              existing.referenceUnitPrice = recomputed.unitPrice;
+            } else {
+              consolidatedItemsMap.set(itemKey, {
+                id: String(it.id || `item-${d.id}-${idx}`),
+                rawName,
+                normalizedName,
+                brand: brand || 'Générique',
+                pricePaid: Number(pricePaid.toFixed(2)),
+                price: Number(pricePaid.toFixed(2)),
+                quantity,
+                weightOrVolume,
+                weightOrVolumeValue,
+                weightOrVolumeUnit,
+                unitPrice: Number(unitPrice.toFixed(2)),
+                referenceUnitPrice: Number(unitPrice.toFixed(2)),
+                category: aisle.label,
+                categoryKey: aisle.key,
+                unit
+              });
+            }
           });
+
+          const items: ReceiptItem[] = Array.from(consolidatedItemsMap.values());
 
           const totalCalculated = items.reduce((acc, it) => acc + (it.pricePaid ?? it.price ?? 0), 0);
           const totalAmount = Number(data.totalAmount ?? data.totalPaid ?? data.total) || Number(totalCalculated.toFixed(2));
