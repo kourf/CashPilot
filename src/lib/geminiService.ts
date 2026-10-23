@@ -138,7 +138,7 @@ Tu es l'IA financière experte de CashPilot.
 Ta mission est d'auditer et classifier avec une précision chirurgicale ces opérations bancaires :
 - flowType : STRICTEMENT 'INCOME' (Revenu / Encaissement), 'FIXED_EXPENSE' (Charge Fixe), 'VARIABLE_EXPENSE' (Dépense Courante), ou 'SAVINGS_TRANSFER' (Épargne / Virement interne neutralisé).
 - category : STRICTEMENT choisie parmi :
-${CATEGORIES.map(c => `- ${c}`).join('\n')}
+${CATEGORIES.map(c => `- ${c}`).join('\r\n')}
 - cleanDesc : Nom propre nettoyé (ex: "Nom Commerçant", "CAF", "France Travail", "TotalEnergies").
 
 RÈGLES CAPITALES POUR LES FLUX ENTRANTS (Montant > 0) :
@@ -217,10 +217,10 @@ export async function categorizeWithGemini(descriptions: string[]): Promise<Reco
   const prompt = `
 Tu es un expert financier. Ta mission est de catégoriser des libellés bancaires isolés.
 Tu dois choisir STRICTEMENT la catégorie correspondante dans cette liste exacte :
-${CATEGORIES.map(c => `- ${c}`).join('\n')}
+${CATEGORIES.map(c => `- ${c}`).join('\r\n')}
 
 Voici les libellés à catégoriser :
-${uniqueDescriptions.map((desc, i) => `${i + 1}. "${desc}"`).join('\n')}
+${uniqueDescriptions.map((desc, i) => `${i + 1}. "${desc}"`).join('\r\n')}
 
 Renvoie UNIQUEMENT un objet JSON valide dont les clés sont les libellés exacts fournis et les valeurs la catégorie choisie.
 `;
@@ -998,7 +998,7 @@ Quelques exemples flagrants relevés sur vos opérations :
 
 | Libellé réel | Catégorie du fichier | Problème détecté |
 | :--- | :--- | :--- |
-${falseBankCategories.map(f => `| **${f.realLabel}** | ${f.fileCategory} | ${f.problem} |`).join('\n')}
+${falseBankCategories.map(f => `| **${f.realLabel}** | ${f.fileCategory} | ${f.problem} |`).join('\r\n')}
 
 > ➡️ **Conclusion :** Ne jamais se fier aux colonnes Catégorie / Sous-Catégorie de la banque. Il faut impérativement reclasser par analyse sémantique du libellé brut.
 
@@ -1008,7 +1008,7 @@ ${falseBankCategories.map(f => `| **${f.realLabel}** | ${f.fileCategory} | ${f.p
 
 | Source (nature réelle) | Nombre | Total (${currSym}) |
 | :--- | :---: | :---: |
-${inflowItems.map(i => `| **${i.source}** | ${i.count} | **+${i.total.toFixed(2)} ${currSym}** |`).join('\n')}
+${inflowItems.map(i => `| **${i.source}** | ${i.count} | **+${i.total.toFixed(2)} ${currSym}** |`).join('\r\n')}
 
 💡 **Ressources réelles récurrentes :** France Travail + CAF ≈ **${coreRecurringTotal.toFixed(2)} ${currSym}** sur la période (soit environ **${coreMonthlyBudget} ${currSym}/mois**). C'est le socle incompressible de votre budget. Les virements familiaux reçus sont nombreux mais font souvent l'objet d'allers-retours.
 
@@ -1020,11 +1020,11 @@ ${inflowItems.map(i => `| **${i.source}** | ${i.count} | **+${i.total.toFixed(2)
 
 | Poste | Détail des libellés | Total estimé (${currSym}) |
 | :--- | :--- | :---: |
-${heavyRecurringItems.map(h => `| **${h.title}** ${h.isWarning ? '⚠️' : ''} | ${h.details} | **−${h.total.toFixed(2)} ${currSym}** |`).join('\n')}
+${heavyRecurringItems.map(h => `| **${h.title}** ${h.isWarning ? '⚠️' : ''} | ${h.details} | **−${h.total.toFixed(2)} ${currSym}** |`).join('\r\n')}
 
 ### 🟠 Dépenses courantes (par libellé brut)
 
-${dailyLivingItems.map(d => `* **${d.title}** (${d.details}) : ≈ **${d.total.toFixed(2)} ${currSym}**`).join('\n')}
+${dailyLivingItems.map(d => `* **${d.title}** (${d.details}) : ≈ **${d.total.toFixed(2)} ${currSym}**`).join('\r\n')}
 
 ---
 
@@ -1032,7 +1032,7 @@ ${dailyLivingItems.map(d => `* **${d.title}** (${d.details}) : ≈ **${d.total.t
 
 ${alerts.map((a, idx) => `**${idx + 1}. ${a.title}** ${a.severity === 'critical' ? '🔴' : (a.severity === 'warning' ? '🟠' : 'ℹ️')}
 ${a.details}
-`).join('\n')}
+`).join('\r\n')}
 
 ---
 
@@ -1055,7 +1055,7 @@ ${a.details}
 
 ${recommendations.map(r => `**${r.num}. ${r.title}**
 ${r.action}
-`).join('\n')}`;
+`).join('\r\n')}`;
 
   return {
     periodLabel,
@@ -1714,7 +1714,7 @@ ${
   existingStores && existingStores.length > 0
     ? `
 - MAGASINS DÉJÀ ENREGISTRÉS DANS L'APPLICATION :
-${existingStores.map(s => `  * "${s}"`).join('\n')}
+${existingStores.map(s => `  * "${s}"`).join('\r\n')}
 
 - RÈGLE DE RAPPROCHEMENT STRICTE AVEC LES MAGASINS EXISTANTS :
   1. Si l'adresse, la rue, le centre commercial ou l'enseigne du ticket correspond à l'un des magasins DÉJÀ ENREGISTRÉS ci-dessus (ex: "Rue Albert Hénon" = "E.Leclerc Ville-la-Grand", "Shopping Léman" = "Super U Étrembières"), tu DOIS OBLIGATOIREMENT réutiliser le libellé EXACT de cette liste (ex: "${existingStores[0]}").
@@ -1851,9 +1851,9 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
       const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
       throw new Error(
-        `🚨 Quotas gratuits Google AI Studio temporairement atteints sur l'ensemble de la cascade (${uniqueModels.join(' ➔ ')}).\n\n` +
-        `• Quota par minute (15 tickets / min) : Se réinitialise automatiquement dans environ 45 à 60 secondes.\n` +
-        `• Quota journalier (1 500 tickets / jour) : Réinitialisation complète dans ${diffHours}h ${diffMinutes}min (à 00h00 UTC / 02h00 heure de Paris).\n\n` +
+        `🚨 Quotas gratuits Google AI Studio temporairement atteints sur l'ensemble de la cascade (${uniqueModels.join(' ➔ ')}).\r\n\r\n` +
+        `• Quota par minute (15 tickets / min) : Se réinitialise automatiquement dans environ 45 à 60 secondes.\r\n` +
+        `• Quota journalier (1 500 tickets / jour) : Réinitialisation complète dans ${diffHours}h ${diffMinutes}min (à 00h00 UTC / 02h00 heure de Paris).\r\n\r\n` +
         `👉 Vous pouvez patienter 45 secondes et relancer, ou saisir votre ticket sans attendre via "+ Ticket Manuel".`
       );
     }
@@ -1991,6 +1991,8 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
 }
 
 export interface ExtractedBankStatementResult {
+  isBankStatement?: boolean;
+  rejectionReason?: string;
   bankName: string;
   accountName: string;
   accountType: string;
@@ -2026,11 +2028,19 @@ export async function extractBankStatementDirectly(
 
   const prompt = `
 Tu es un expert comptable et auditeur bancaire d'élite pour l'application CashPilot.
-MISSION :
-Analyse ce relevé de compte bancaire (document PDF ou image) avec une précision mathématique absolue.
-Découpe rigoureusement chaque transaction individuellement sans fusionner de lignes consécutives.
+MISSION ET VÉRIFICATION INITIALE OBLIGATOIRE :
+1. VÉRIFIE d'abord si ce document est RÉELLEMENT un relevé ou extrait de compte bancaire officiel (tableau d'opérations bancaires avec dates, libellés de débits/crédits, montants).
+   Si ce document N'EST PAS un relevé bancaire (ex: facture d'achat, ticket de caisse, bulletin de paie, quittance, photo personnelle, devis, contrat, document administratif hors relevé) :
+   - Indique : "isBankStatement": false
+   - Indique la raison dans "rejectionReason" (ex: "Facture", "Ticket de caisse", "Document non bancaire")
+   - Laisse "transactions": []
+2. SI LE DOCUMENT EST BIEN UN RELEVÉ BANCAIRE ("isBankStatement": true) :
+   Analyse ce relevé de compte bancaire avec une précision mathématique absolue.
+   Découpe rigoureusement chaque transaction individuellement sans fusionner de lignes consécutives.
 
 DONNÉES À EXTRAIRE :
+- isBankStatement : true si relevé bancaire officiel, false si autre document
+- rejectionReason : motif du rejet si isBankStatement est false
 - bankName : Nom officiel de la banque (ex: "Société Générale", "Fortuneo", "BoursoBank", "Crédit Agricole", "UBS", "Revolut", "BNP Paribas", etc.).
 - accountName : Intitulé du compte (ex: "Société Générale - Compte Courant").
 - accountType : "Compte Courant", "Livret A", etc.
@@ -2054,6 +2064,8 @@ DONNÉES À EXTRAIRE :
 
 RÉPONDS STRICTEMENT EN JSON VALIDE AU FORMAT :
 {
+  "isBankStatement": true,
+  "rejectionReason": "",
   "bankName": "Société Générale",
   "accountName": "Société Générale - Compte Courant",
   "accountType": "Compte Courant",
@@ -2128,6 +2140,8 @@ RÉPONDS STRICTEMENT EN JSON VALIDE AU FORMAT :
 
   const parsed = JSON.parse(cleanedJson);
   return {
+    isBankStatement: parsed.isBankStatement !== false,
+    rejectionReason: parsed.rejectionReason || '',
     bankName: parsed.bankName || 'Banque',
     accountName: parsed.accountName || `${parsed.bankName || 'Banque'} - Compte Courant`,
     accountType: parsed.accountType || 'Compte Courant',

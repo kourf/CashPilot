@@ -2,6 +2,32 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // =========================================================================
+    // MODÈLE NOSQL COMPTESBANCAIRES & SOUS-COLLECTIONS IMBRIQUÉES
+    // Architecture 100% gratuite et optimisée pour les lectures / coûts zéro
+    // =========================================================================
+    match /ComptesBancaires/{compteId} {
+      // Entité principale du compte (nom, numéro, devise, actif, soldeActuel)
+      allow read, write: if true;
+
+      // Sous-collection des relevés importés (CSV / PDF)
+      match /RelevesImportes/{releveId} {
+        allow read, write: if true;
+      }
+
+      // Sous-collection des transactions uniques (ID = hash_deduplication)
+      // Écrase automatiquement les doublons à coût zéro
+      match /Transactions/{hashId} {
+        allow read, write: if true;
+      }
+
+      // Sous-collection de la frise chronologique (bornes PDF, segments CSV, trous)
+      match /FriseChronologique/{segmentId} {
+        allow read, write: if true;
+      }
+    }
+
     // Accès public en lecture pour les références France
     match /externalBenchmarks/{document=**} {
       allow read: if true;
@@ -21,6 +47,7 @@ service cloud.firestore {
         allow read, write: if true;
       }
     }
+
     // Règles strictes pour le reste
     match /{document=**} {
       allow read, write: if false;

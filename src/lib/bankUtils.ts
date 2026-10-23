@@ -1,6 +1,7 @@
 import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, formatDateFR, classifyTransaction, detectBankName, cleanMerchantDescription, sanitizeRawBankLabel, CATEGORIES, extractCleanBankStatementRows, type CleanBankStatementRow } from './bankParser';
+import { validateBankStatementFile, validateBankStatementCSVContent, sanitizeImportErrorMessage, type BankFileValidationResult } from './bankValidation';
 
-export { formatMonthLabel, formatDateFR, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName, cleanMerchantDescription, sanitizeRawBankLabel, CATEGORIES, extractCleanBankStatementRows, type CleanBankStatementRow };
+export { formatMonthLabel, formatDateFR, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName, cleanMerchantDescription, sanitizeRawBankLabel, CATEGORIES, extractCleanBankStatementRows, validateBankStatementFile, validateBankStatementCSVContent, sanitizeImportErrorMessage, type CleanBankStatementRow, type BankFileValidationResult };
 export type FlowType = 'INCOME' | 'FIXED_EXPENSE' | 'VARIABLE_EXPENSE' | 'SAVINGS_TRANSFER';
 
 export interface BankTransaction {

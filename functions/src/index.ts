@@ -79,6 +79,15 @@ Standardise les noms de produits (ex: "COCA COLA 1L" devient "Coca-Cola â€”
     } else {
       // Relevé bancaire
       prompt = `Tu es un expert-comptable et auditeur financier d'élite pour l'application CashPilot.
+VÉRIFICATION INITIALE OBLIGATOIRE DU DOCUMENT :
+Vérifie impérativement si ce document est RÉELLEMENT un relevé ou extrait de compte bancaire officiel (contenant des opérations bancaires avec débits/crédits, dates et montants).
+Si ce document N'EST PAS un relevé bancaire officiel (ex: facture d'achat, ticket de caisse, quittance, bulletin de salaire, photo personnelle, devis, contrat, document administratif divers) :
+- Définis "isBankStatement": false
+- Précise la nature du document dans "rejectionReason" (ex: "Facture", "Ticket de caisse", "Document non bancaire")
+- Laisse "transactions": []
+
+Si c'est bien un relevé bancaire :
+- Définis "isBankStatement": true
 Analyse rigoureusement ce relevé bancaire (PDF, image ou document). Extrais chaque transaction avec une fidélité mathématique absolue.
 CashPilot n’est pas une application de gestion d'entreprise : n'inclus AUCUNE information de TVA.
 
@@ -101,6 +110,8 @@ RÈGLES COMPTABLES STRICTES ET PRIORITAIRES (NEUTRALISATION DES BIAIS & COÛT Z�
       schema = {
         type: Type.OBJECT,
         properties: {
+          isBankStatement: { type: Type.BOOLEAN, description: "True si le document est un relevé bancaire officiel, false si c'est un autre document (facture, ticket de caisse, photo perso, etc.)" },
+          rejectionReason: { type: Type.STRING, description: "Raison du rejet si ce n'est pas un relevé bancaire" },
           bankName: { type: Type.STRING, description: "Nom de la banque (ex: BoursoBank, BNP Paribas, Revolut, Crédit Agricole, Société Générale)" },
           accountType: { type: Type.STRING, description: "Type de compte (courant, épargne, pro, joint, etc.)" },
           accountNumber: { type: Type.STRING, description: "Numéro masqué du compte ou identifiant si présent (ex: ...4819)" },
@@ -1157,3 +1168,259 @@ RÈGLES COMPTABLES STRICTES ET PRIORITAIRES :
   });
 
 
+
+
+// ============================================================================
+// MODULE FRISE CHRONOLOGIQUE & GESTION BANCAIRE (COMPTESBANCAIRES)
+// ============================================================================
+
+import {
+  generateTransactionHash,
+  recalculerFriseChronologique,
+  ReleveImporte,
+  TransactionDocument,
+  FriseChronologiqueSegment,
+  FriseRecalculResult,
+  SourceReleveType
+} from './bankTimelineEngine';
+
+export {
+  generateTransactionHash,
+  recalculerFriseChronologique,
+  ReleveImporte,
+  TransactionDocument,
+  FriseChronologiqueSegment,
+  FriseRecalculResult
+};
+
+/**
+ * Cloud Function : importerReleveBancaire
+ * Traitement en arrière-plan des relevés bancaires (CSV ou PDF).
+ * 1. Enregistre le compte bancaire si non existant.
+ * 2. Déduplique et écrit les transactions avec hash_deduplication comme ID de document Firestore (coût zéro).
+ * 3. Enregistre le relevé importé dans RelevesImportes.
+ * 4. Exécute l'algorithme de recalcul chronologique rétroactif.
+ * 5. Met à jour la frise chronologique et le solde certifié ou dérivé.
+ */
+export const importerReleveBancaire = functions.region('europe-west1')
+  .runWith({ timeoutSeconds: 300, memory: '512MB' })
+  .https.onCall(async (data, context) => {
+    try {
+      console.log("[importerReleveBancaire] Démarrage du traitement d'import...");
+
+      const {
+        compteId = 'compte_principal',
+        compteNom = 'Compte Courant Principal',
+        compteNumero = '',
+        devise = 'EUR',
+        source_type,
+        nom_fichier = 'releve_sans_nom',
+        date_debut,
+        date_fin,
+        solde_initial = null,
+        solde_final = null,
+        transactions = []
+      } = data || {};
+
+      if (!source_type || (source_type !== 'CSV' && source_type !== 'PDF')) {
+        throw new functions.https.HttpsError(
+          'invalid-argument',
+          "Le paramètre 'source_type' doit être strictement 'CSV' ou 'PDF'."
+        );
+      }
+
+      if (!date_debut || !date_fin) {
+        throw new functions.https.HttpsError(
+          'invalid-argument',
+          "Les dates de début et de fin du relevé ('date_debut' et 'date_fin' au format YYYY-MM-DD) sont requises."
+        );
+      }
+
+      const db = admin.firestore();
+
+      // 1. Mise à jour ou création du compte bancaire
+      const compteRef = db.collection('ComptesBancaires').doc(compteId);
+      await compteRef.set({
+        id: compteId,
+        nom: compteNom,
+        numero: compteNumero,
+        devise: devise === 'CHF' ? 'CHF' : 'EUR',
+        actif: true,
+        derniereMaj: new Date().toISOString()
+      }, { merge: true });
+
+      // 2. Déduplication par hash et écriture par lots des transactions
+      const releveId = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const batchSize = 400; // Limite Firestore batch = 500 ops
+      const txCollectionRef = compteRef.collection('Transactions');
+      const preparedTxs: TransactionDocument[] = [];
+
+      let totalMouvements = 0;
+
+      for (const t of transactions) {
+        const montantNum = Number(t.montant) || 0;
+        totalMouvements += montantNum;
+        const libelle = String(t.libelle || t.description || 'Opération').trim();
+        const dateStr = String(t.date || date_debut).substring(0, 10);
+
+        const hash = generateTransactionHash({
+          date: dateStr,
+          libelle,
+          montant: montantNum,
+          compteId
+        });
+
+        preparedTxs.push({
+          hash_deduplication: hash,
+          date: dateStr,
+          libelle,
+          montant: Math.round(montantNum * 100) / 100,
+          categorie: t.categorie || t.category || 'Non catégorisé',
+          flowType: t.flowType || (montantNum > 0 ? 'INCOME' : 'VARIABLE_EXPENSE'),
+          releveId,
+          compteId,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      // Écriture par lots de 400
+      for (let i = 0; i < preparedTxs.length; i += batchSize) {
+        const batch = db.batch();
+        const chunk = preparedTxs.slice(i, i + batchSize);
+        for (const tx of chunk) {
+          const docRef = txCollectionRef.doc(tx.hash_deduplication);
+          batch.set(docRef, tx, { merge: true });
+        }
+        await batch.commit();
+      }
+
+      console.log(`[importerReleveBancaire] ${preparedTxs.length} transactions écrites sous ComptesBancaires/${compteId}/Transactions`);
+
+      // 3. Enregistrement du relevé dans RelevesImportes
+      const nouveauReleve: ReleveImporte = {
+        id: releveId,
+        source_type: source_type as SourceReleveType,
+        nom_fichier,
+        date_debut: String(date_debut).substring(0, 10),
+        date_fin: String(date_fin).substring(0, 10),
+        solde_initial: solde_initial !== null && solde_initial !== undefined ? Number(solde_initial) : null,
+        solde_final: solde_final !== null && solde_final !== undefined ? Number(solde_final) : null,
+        total_mouvements: Math.round(totalMouvements * 100) / 100,
+        nb_transactions: preparedTxs.length,
+        createdAt: new Date().toISOString()
+      };
+
+      await compteRef.collection('RelevesImportes').doc(releveId).set(nouveauReleve);
+
+      // 4. Exécution du re-calcul chronologique rétroactif
+      const allRelevesSnap = await compteRef.collection('RelevesImportes').get();
+      const allReleves: ReleveImporte[] = allRelevesSnap.docs.map(d => d.data() as ReleveImporte);
+
+      const allTxsSnap = await compteRef.collection('Transactions').get();
+      const allTxs: TransactionDocument[] = allTxsSnap.docs.map(d => d.data() as TransactionDocument);
+
+      const friseResult = recalculerFriseChronologique(compteId, allReleves, allTxs);
+
+      // 5. Mise à jour de la sous-collection FriseChronologique
+      const friseCollRef = compteRef.collection('FriseChronologique');
+      const oldFriseSnap = await friseCollRef.get();
+      
+      // Nettoyage anciens segments
+      const deleteBatch = db.batch();
+      oldFriseSnap.docs.forEach(docSnap => deleteBatch.delete(docSnap.ref));
+      await deleteBatch.commit();
+
+      // Écriture des nouveaux segments recalculés
+      for (let i = 0; i < friseResult.segments.length; i += batchSize) {
+        const insertBatch = db.batch();
+        const chunk = friseResult.segments.slice(i, i + batchSize);
+        for (const seg of chunk) {
+          const segDocRef = friseCollRef.doc(seg.id);
+          insertBatch.set(segDocRef, seg);
+        }
+        await insertBatch.commit();
+      }
+
+      // Mise à jour du document CompteBancaire principal
+      await compteRef.update({
+        soldeActuel: friseResult.soldeActuel,
+        typeSoldeActuel: friseResult.typeSoldeActuel,
+        nbReleves: allReleves.length,
+        nbTransactions: allTxs.length,
+        alertesRapprochementCount: friseResult.alertesRapprochement.length,
+        trousCount: friseResult.trousDetectes.length,
+        derniereMaj: new Date().toISOString()
+      });
+
+      console.log(`[importerReleveBancaire] Frise recalculée avec succès : ${friseResult.segments.length} segments (${friseResult.alertesRapprochement.length} alertes, ${friseResult.trousDetectes.length} trous).`);
+
+      return {
+        success: true,
+        releveId,
+        compteId,
+        transactionsImportees: preparedTxs.length,
+        friseResult
+      };
+
+    } catch (error: any) {
+      console.error("[importerReleveBancaire] Erreur traitement relevé:", error);
+      throw new functions.https.HttpsError(
+        'internal',
+        `Erreur lors du traitement du relevé bancaire : ${error.message || 'Erreur interne'}`
+      );
+    }
+  });
+
+/**
+ * Cloud Function : recalculerFriseBancaire
+ * Recalcule à la demande la frise chronologique d'un compte donné.
+ */
+export const recalculerFriseBancaire = functions.region('europe-west1')
+  .runWith({ timeoutSeconds: 300, memory: '512MB' })
+  .https.onCall(async (data, context) => {
+    try {
+      const { compteId = 'compte_principal' } = data || {};
+      const db = admin.firestore();
+      const compteRef = db.collection('ComptesBancaires').doc(compteId);
+
+      const [relevesSnap, txsSnap] = await Promise.all([
+        compteRef.collection('RelevesImportes').get(),
+        compteRef.collection('Transactions').get()
+      ]);
+
+      const releves: ReleveImporte[] = relevesSnap.docs.map(d => d.data() as ReleveImporte);
+      const txs: TransactionDocument[] = txsSnap.docs.map(d => d.data() as TransactionDocument);
+
+      const result = recalculerFriseChronologique(compteId, releves, txs);
+
+      // Persistance de la frise mise à jour
+      const friseCollRef = compteRef.collection('FriseChronologique');
+      const oldFriseSnap = await friseCollRef.get();
+      const deleteBatch = db.batch();
+      oldFriseSnap.docs.forEach(d => deleteBatch.delete(d.ref));
+      await deleteBatch.commit();
+
+      const insertBatch = db.batch();
+      for (const seg of result.segments) {
+        insertBatch.set(friseCollRef.doc(seg.id), seg);
+      }
+      await insertBatch.commit();
+
+      await compteRef.update({
+        soldeActuel: result.soldeActuel,
+        typeSoldeActuel: result.typeSoldeActuel,
+        alertesRapprochementCount: result.alertesRapprochement.length,
+        trousCount: result.trousDetectes.length,
+        derniereMaj: new Date().toISOString()
+      });
+
+      return {
+        success: true,
+        compteId,
+        result
+      };
+    } catch (err: any) {
+      console.error("[recalculerFriseBancaire] Erreur:", err);
+      throw new functions.https.HttpsError('internal', err.message || 'Erreur recalcul frise');
+    }
+  });

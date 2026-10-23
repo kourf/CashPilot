@@ -46,6 +46,7 @@ import { isPeerTransferTransaction } from '../../lib/categorizationRules';
 import { CostOfLivingBuilderDrawer } from '../../components/CostOfLivingBuilderDrawer';
 import { SpendingHabitsDrawer } from '../../components/SpendingHabitsDrawer';
 import { BudgetTrackingDrawer } from '../../components/BudgetTrackingDrawer';
+import { FriseChronologiqueView } from '../../components/FriseChronologiqueView';
 
 import { useTransactions } from '../../context/TransactionsContext';
 import { 
@@ -84,6 +85,10 @@ import {
   checkDuplicateTransactions, 
   findDuplicateStoredTransactionIds,
   detectAccountFromFilename,
+  detectBankName,
+  validateBankStatementFile,
+  validateBankStatementCSVContent,
+  sanitizeImportErrorMessage,
   parseCSVBankStatement,
   smartCategorizeTransaction,
   cleanMerchantDescription,
@@ -148,6 +153,7 @@ export const BankStatements: React.FC = () => {
   // Local state for interactive features
   const [searchTerm, setSearchTerm] = useState('');
   const [isToolsSheetOpen, setIsToolsSheetOpen] = useState(false);
+  const [activeViewMode, setActiveViewMode] = useState<'transactions' | 'timeline'>('transactions');
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
   const [selectedAccount, setSelectedAccount] = useState<string>('ALL');
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
@@ -1487,6 +1493,18 @@ export const BankStatements: React.FC = () => {
 
   // 8. File Upload & Extraction avec refonte stricte CSV (3 colonnes) & Audit IA Gemini 3.8 Flash
   const handleFileUpload = async (file: File) => {
+    if (!file) return;
+
+    // --- 0. VALIDATION PRÉALABLE DU RELEVÉ BANCAIRE (REJET IMMÉDIAT DES FICHIERS HORS RB) ---
+    const fileValidation = validateBankStatementFile(file);
+    if (!fileValidation.isValid) {
+      setNotification({
+        type: 'error',
+        message: fileValidation.errorMessage || `Le fichier "${file.name}" n'est pas un relevé bancaire supporté. Veuillez importer un relevé au format CSV ou PDF.`
+      });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     setIsProcessingFile(true);
     setFileStatusMessage(`Lecture de ${file.name}...`);
 
@@ -1500,6 +1518,18 @@ export const BankStatements: React.FC = () => {
         // --- 1. REFONTE IMPORT CSV : FILTRAGE STRICT DES 3 COLONNES (Date, Libellé brut, Montant) ---
         setFileStatusMessage("Filtrage des colonnes bancaires (Date, Libellé brut, Montant)...");
         const text = await readBankStatementFileText(file);
+        // Validation du contenu : vérification de la structure d'un relevé bancaire
+        const csvValidation = validateBankStatementCSVContent(text, file.name);
+        if (!csvValidation.isValid) {
+          setNotification({
+            type: 'error',
+            message: csvValidation.errorMessage || `Ce fichier ne semble pas être un relevé de compte bancaire valide.`
+          });
+          setIsProcessingFile(false);
+          setFileStatusMessage(null);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+        }
         
         // Détection automatique de la devise et du nom de banque/compte
         const detectedBank = detectBankName(text);
@@ -1517,8 +1547,8 @@ export const BankStatements: React.FC = () => {
 
         if (cleanRows.length === 0) {
           setNotification({
-            type: 'info',
-            message: "Aucune transaction exploitable n'a été détectée dans ce fichier CSV."
+            type: 'error',
+            message: `Ce fichier ("${file.name}") ne contient aucune transaction bancaire exploitable (colonnes Date, Libellé et Montant introuvables). Veuillez vérifier votre fichier.`
           });
           setIsProcessingFile(false);
           setFileStatusMessage(null);
@@ -1664,6 +1694,16 @@ export const BankStatements: React.FC = () => {
 
         try {
           const directResult = await extractBankStatementDirectly(file);
+          if (directResult && directResult.isBankStatement === false) {
+            setNotification({
+              type: 'error',
+              message: `Ce document ("${file.name}") ne semble pas être un relevé de compte bancaire${directResult.rejectionReason ? ` (${directResult.rejectionReason})` : ''}. Veuillez importer un relevé bancaire officiel.`
+            });
+            setIsProcessingFile(false);
+            setFileStatusMessage(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+          }
           if (directResult && directResult.transactions && directResult.transactions.length > 0) {
             detectedBankName = directResult.bankName || 'Banque';
             detectedAccountName = directResult.accountName || `${detectedBankName} - ${directResult.accountType || 'Compte'}`;
@@ -1713,6 +1753,16 @@ export const BankStatements: React.FC = () => {
           const result = response.data as any;
 
           if (result.success && result.data) {
+            if (result.data.isBankStatement === false) {
+              setNotification({
+                type: 'error',
+                message: `Ce document ("${file.name}") ne semble pas être un relevé bancaire valide${result.data.rejectionReason ? ` (${result.data.rejectionReason})` : ''}. Assurez-vous d'importer un relevé de compte officiel.`
+              });
+              setIsProcessingFile(false);
+              setFileStatusMessage(null);
+              if (fileInputRef.current) fileInputRef.current.value = '';
+              return;
+            }
             detectedBankName = result.data.bankName || 'Banque';
             detectedAccountName = result.data.accountName || `${detectedBankName} - ${result.data.accountType || 'Compte'}`;
 
@@ -1752,8 +1802,8 @@ export const BankStatements: React.FC = () => {
 
       if (extractedTxs.length === 0) {
         setNotification({
-          type: 'info',
-          message: "Aucune transaction exploitable n'a été détectée dans ce relevé."
+          type: 'error',
+          message: `Aucune opération bancaire n'a été détectée dans ce document ("${file.name}"). Assurez-vous d'importer un relevé bancaire officiel (PDF ou CSV).`
         });
         setIsProcessingFile(false);
         setFileStatusMessage(null);
@@ -1811,6 +1861,38 @@ export const BankStatements: React.FC = () => {
 
       await batch.commit();
 
+      // Synchronisation en arrière-plan avec ComptesBancaires & Frise Chronologique NoSQL
+      try {
+        const sortedByDate = [...uniqueTxs].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        const dateDebut = sortedByDate[0]?.date || new Date().toISOString().substring(0, 10);
+        const dateFin = sortedByDate[sortedByDate.length - 1]?.date || dateDebut;
+        const isPdfFile = file.name.toLowerCase().endsWith('.pdf') || file.type.includes('pdf');
+
+        const importerReleveFn = httpsCallable(functions, 'importerReleveBancaire');
+        await importerReleveFn({
+          compteId: 'compte_principal',
+          compteNom: detectedAccountName || 'Compte Principal',
+          compteNumero: '',
+          devise: currency,
+          source_type: isPdfFile ? 'PDF' : 'CSV',
+          nom_fichier: file.name,
+          date_debut: dateDebut,
+          date_fin: dateFin,
+          solde_initial: null,
+          solde_final: null,
+          transactions: uniqueTxs.map(t => ({
+            date: t.date,
+            libelle: t.cleanLabel || t.description || t.rawLabel,
+            montant: t.amount,
+            categorie: t.category,
+            flowType: t.flowType
+          }))
+        });
+        console.log("[importerReleveBancaire] Synchronisation ComptesBancaires terminée avec succès.");
+      } catch (syncErr) {
+        console.warn("Synchronisation ComptesBancaires différée :", syncErr);
+      }
+
       // Génération automatique du rapport d'audit approfondi IA
       try {
         const fullAudit = await generateDeepAuditReport(uniqueTxs, detectedCurrency);
@@ -1828,7 +1910,7 @@ export const BankStatements: React.FC = () => {
       console.error("Erreur import relevé:", err);
       setNotification({
         type: 'error',
-        message: "Erreur lors de l'analyse du relevé : " + (err.message || 'Format non supporté.')
+        message: sanitizeImportErrorMessage(err, file.name)
       });
     } finally {
       setIsProcessingFile(false);
@@ -1910,12 +1992,45 @@ export const BankStatements: React.FC = () => {
           type="file" 
           ref={fileInputRef} 
           className="hidden" 
-          accept=".csv,.txt"
+          accept=".csv,.txt,.tsv,.pdf,application/pdf,text/csv,text/plain"
           onChange={(e) => { if (e.target.files && e.target.files.length > 0) handleFileUpload(e.target.files[0]) }} 
         />
       </header>
+      {/* SÉLECTEUR DE VUE : OPÉRATIONS vs FRISE CHRONOLOGIQUE */}
+      <div className="flex items-center space-x-2 border-b border-gray-100 dark:border-gray-800 px-4 pt-2.5 pb-2.5 bg-white dark:bg-gray-900 sticky top-0 z-20 shadow-xs">
+        <button
+          onClick={() => setActiveViewMode('transactions')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+            activeViewMode === 'transactions'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-750'
+          }`}
+        >
+          <FileSpreadsheet size={14} />
+          <span>Opérations & Analyses</span>
+        </button>
+
+        <button
+          onClick={() => setActiveViewMode('timeline')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+            activeViewMode === 'timeline'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-750'
+          }`}
+        >
+          <Clock size={14} />
+          <span>Frise Chronologique</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+            Soldes
+          </span>
+        </button>
+      </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {activeViewMode === 'timeline' ? (
+          <FriseChronologiqueView compteId="compte_principal" currency={currency} />
+        ) : (
+          <>
         {/* Indicateur de chargement visuel avec chronomètre en direct lors de l'analyse IA */}
         {isAiAnalyzing && (
           <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-950/40 dark:via-indigo-950/40 dark:to-purple-950/40 border-2 border-indigo-500/40 dark:border-indigo-500/50 rounded-[1.8rem] p-5 shadow-lg shadow-indigo-500/10 transition-all animate-pulse">
@@ -2184,6 +2299,8 @@ export const BankStatements: React.FC = () => {
              )}
            </div>
         </div>
+        </>
+      )}
       </div>
 
       {/* Tools Bottom Sheet */}
@@ -2196,6 +2313,32 @@ export const BankStatements: React.FC = () => {
                <button onClick={() => setIsToolsSheetOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full active:scale-90 transition-transform"><X size={18}/></button>
              </div>
              <div className="p-4 space-y-3 pb-8">
+                
+                {/* Outil Frise Chronologique & Rapprochement */}
+                <button 
+                  onClick={() => {
+                    setIsToolsSheetOpen(false); 
+                    setActiveViewMode('timeline');
+                  }} 
+                  className="w-full flex items-center justify-between p-4 bg-emerald-50/70 dark:bg-emerald-950/20 border-2 border-emerald-500/30 dark:border-emerald-500/40 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform group cursor-pointer"
+                >
+                  <div className="flex items-center space-x-4 text-left">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
+                      <Clock size={22} />
+                    </div>
+                    <div>
+                      <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                        <span>Frise Chronologique & Rapprochement</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 font-semibold font-mono">NoSQL</span>
+                      </div>
+                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        Soldes vérifiés (PDF), dérivés (CSV), détection des trous et alertes d'écart
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronDown className="rotate-[-90deg] text-emerald-500" size={20}/>
+                </button>
+
                 {/* 1. Rapport d'Audit Approfondi IA */}
                 <button 
                   onClick={() => {
