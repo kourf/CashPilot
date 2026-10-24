@@ -344,7 +344,14 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setCurrency,
         customBalances,
         setCustomBalances,
-        isRealtimeSynced
+        isRealtimeSynced,
+        importState,
+        startImportSession,
+        updateImportStatus,
+        finishImportSession,
+        cancelImportSession,
+        appNotification,
+        setAppNotification
       }}
     >
       {children}

@@ -2058,7 +2058,7 @@ export const BankStatements: React.FC = () => {
         ) : (
           <>
         {/* Indicateur de chargement visuel avec chronomètre en direct lors de l'analyse IA */}
-        {(importState.isAiAnalyzing || isAiAnalyzing || importState.isImporting) && (
+        {(Boolean(importState?.isAiAnalyzing) || isAiAnalyzing || Boolean(importState?.isImporting)) && (
           <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-950/40 dark:via-indigo-950/40 dark:to-purple-950/40 border-2 border-indigo-500/40 dark:border-indigo-500/50 rounded-[1.8rem] p-5 shadow-lg shadow-indigo-500/10 transition-all animate-pulse">
             <div className="flex items-center space-x-4">
               <div className="relative flex items-center justify-center w-12 h-12 rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-500/30 flex-shrink-0">
@@ -2075,11 +2075,11 @@ export const BankStatements: React.FC = () => {
                   </h4>
                   <div className="flex items-center space-x-1.5 font-mono text-base font-extrabold text-indigo-600 dark:text-indigo-400 bg-white/80 dark:bg-gray-800/80 px-2.5 py-0.5 rounded-xl border border-indigo-100 dark:border-indigo-800">
                     <Clock size={14} className="animate-spin text-indigo-500" />
-                    <span>{(importState.isAiAnalyzing ? importState.aiAnalysisSeconds : aiAnalysisSeconds).toFixed(1)}s</span>
+                    <span>{((importState?.isAiAnalyzing ? importState?.aiAnalysisSeconds : aiAnalysisSeconds) ?? 0).toFixed(1)}s</span>
                   </div>
                 </div>
                 <p className="text-xs text-gray-600 dark:text-gray-300 mt-1.5">
-                  {importState.fileStatusMessage || fileStatusMessage || "Filtrage des 3 colonnes (Date, Libellé brut, Montant) et audit en lot par l'IA..."}
+                  {importState?.fileStatusMessage || fileStatusMessage || "Filtrage des 3 colonnes (Date, Libellé brut, Montant) et audit en lot par l'IA..."}
                 </p>
                 {/* Barre de progression visuelle */}
                 <div className="w-full bg-indigo-100 dark:bg-indigo-900/50 rounded-full h-2 mt-3 overflow-hidden">
@@ -2091,7 +2091,7 @@ export const BankStatements: React.FC = () => {
         )}
 
         {/* Chronomètre & Résultat d'analyse IA une fois terminée */}
-        {(importState.aiAnalysisStats || aiAnalysisStats) && !(importState.isAiAnalyzing || isAiAnalyzing || importState.isImporting) && (
+        {(importState?.aiAnalysisStats || aiAnalysisStats) && !(importState?.isAiAnalyzing || isAiAnalyzing || importState?.isImporting) && (
           <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-green-50 dark:from-emerald-950/30 dark:via-teal-950/30 dark:to-green-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-[1.8rem] p-4 sm:p-5 shadow-sm flex items-start justify-between gap-3 transition-all">
             <div className="flex items-start space-x-3.5">
               <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -2100,10 +2100,10 @@ export const BankStatements: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-bold text-emerald-950 dark:text-emerald-200">
-                    ⏱️ Analyse IA terminée en <span className="font-mono text-emerald-600 dark:text-emerald-400 font-extrabold text-base">{(importState.aiAnalysisStats || aiAnalysisStats).executionTimeSeconds} secondes</span> !
+                    ⏱️ Analyse IA terminée en <span className="font-mono text-emerald-600 dark:text-emerald-400 font-extrabold text-base">{(importState?.aiAnalysisStats || aiAnalysisStats)?.executionTimeSeconds} secondes</span> !
                   </span>
                   <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 font-semibold font-mono">
-                    {(importState.aiAnalysisStats || aiAnalysisStats).totalCount} opérations
+                    {(importState?.aiAnalysisStats || aiAnalysisStats)?.totalCount} opérations
                   </span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium">
                     Gemini 2.5 Flash Ultra

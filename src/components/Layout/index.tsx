@@ -23,7 +23,9 @@ const navItems = [
 
 export default function Layout() {
   const location = useLocation();
-  const { importState, appNotification } = useTransactions();
+  const txContext = useTransactions();
+  const importState = txContext?.importState;
+  const appNotification = txContext?.appNotification;
 
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -182,7 +184,7 @@ export default function Layout() {
       </nav>
       
       {/* Badge Flottant Persistant : Indique l'avancement du relevé même en changeant d'onglet */}
-      {importState.isImporting && location.pathname !== '/releves' && (
+      {Boolean(importState?.isImporting) && location.pathname !== '/releves' && (
         <Link
           to="/releves"
           className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white backdrop-blur-xl shadow-xl shadow-indigo-500/25 border border-white/20 text-xs font-semibold hover:scale-105 active:scale-95 transition-all group animate-pulse"
@@ -193,7 +195,7 @@ export default function Layout() {
           </div>
           <span>Analyse du relevé en cours</span>
           <span className="font-mono bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-bold">
-            {importState.aiAnalysisSeconds.toFixed(1)}s
+            {(importState?.aiAnalysisSeconds ?? 0).toFixed(1)}s
           </span>
           <span className="text-[10px] bg-white/15 px-1.5 py-0.5 rounded-md text-indigo-100 group-hover:bg-white/25">
             Voir →
