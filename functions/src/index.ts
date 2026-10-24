@@ -1,4 +1,4 @@
-import { generateGenericNeedKey, resolvePhysicalStore, normalizeLockedAisle } from "./receiptPriceEngine";
+import { generateGenericNeedKey, resolvePhysicalStore, normalizeLockedAisle, sanitizeGenericDisplayName } from "./receiptPriceEngine";
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { GoogleGenAI, Type, Schema } from "@google/genai";
@@ -41,38 +41,66 @@ export const analyzeDocument = functions.region('europe-west1')
 
     if (fileType === 'receipt') {
       prompt = `Tu es l'analyste financier d'élite et auditeur de prix de CashPilot.
-Analyse rigoureusement ce ticket de caisse (photo, scan ou PDF).
-Extrais chaque article en JSON STRICT avec une fidélité absolue, sans aucun texte introductif, sans markdown ni backticks.
+MISSION PRIORITAIRE : Analyse rigoureusement ce ticket de caisse (photo, scan ou PDF) et extrais chaque article en JSON STRICT avec une fidélité absolue, sans aucun texte introductif, sans markdown ni backticks.
 N'inclus AUCUNE information de TVA (ne pas analyser, extraire ou afficher la TVA).
 
-RÈGLES D'EXTRACTION STRICTES :
-1. "nom_generique_nettoye" : Nom du produit brut répondant au besoin générique purifié de toute marque, quantité, format ou conditionnement (ex: "Sauce burger", "Blanc de volaille", "Pommes de terre", "Lait demi-écrémé").
-2. "marque" : Marque explicite ("Super U", "Marque Repère", "Heinz", "Candia") ou obligatoirement "generique" pour les produits frais, fruits/légumes, viande à la coupe, vrac ou sans marque.
-3. "format_exact" : Poids, volume ou contenance nette lue sur le ticket (ex: "510g", "500g", "1.5L", "6x1L", "1 pièce").
-4. "prix_paye" : Prix net total payé en caisse pour la ligne (nombre décimal pur).
-5. "prix_unitaire_calcule" : Prix au kilo (€/kg), au litre (€/L) ou à l'unité (€/pièce) calculé ou extrait (ex: 4.58).
-6. "unite_mesure" : "kg", "L" ou "piece".
-7. "rayon_assigne" : Choisi STRICTEMENT parmi la liste des 13 rayons officiels suivants :
-   1. Boucherie, Volaille & Poissonnerie
-   2. Épicerie salée & Épices
-   3. Fruits & Légumes
-   4. Produits frais & Crèmerie
-   5. Épicerie sucrée
-   6. Hygiène, Beauté & Sanitaire
-   7. Entretien & Maison
-   8. Boissons
-   9. Maison, Textile & Culture
-   10. Santé & Pharmacie
-   11. Papeterie & Bureau
-   12. Fleurs & Cadeaux
-   13. Sacs & Consignes
+================================================================================
+RÈGLE 1 : LE "NETTOYAGE EXTRÊME" (RÉDUCTION À L'ESSENCE STRICTE DU BESOIN)
+================================================================================
+Pour chaque article, tu dois extraire le champ "nom_generique_nettoye" en réduisant le libellé à l'ESSENCE PURE du besoin consommateur.
+IL EST FORMELLEMENT ET STRICTEMENT INTERDIT D'INCLURE DANS "nom_generique_nettoye" :
+1. LA MARQUE : Élimine totalement toute marque, enseigne commerciale ou gamme (ex: Harry's, Lu, Danone, Heinz, Marque Repère, Super U, Président, Candia, Lesieur, etc.).
+2. LE TYPE D'EMBALLAGE OU CONDITIONNEMENT : Élimine tout mot décrivant l'emballage (ex: Pet, Bocal, Bocaux, Sachet, Sachets, Bidon, Flacon, Brique, Boîte, Canette, Barquette, Lot, Pack, Filet, Tube, Étui, Pot, Verre, Plastique, Squeeze, Doypack, etc.).
+3. LA CONTENANCE OU LE POIDS : Élimine toute indication de quantité, volume ou poids (ex: Kg, 825g, 500g, 1 Litre, 1L, 1.5L, 6x1L, 1 pièce, Tranches, etc.).
+4. LES ADJECTIFS ET MENTIONS MARKETING : Élimine tous les adjectifs promotionnels ou qualificatifs superflus (ex: Croustillant, Croustille, Douceur, Moelleux, Pur/Pure, Nature, Complet, Sandwich, Toast, Extra fin, Délicieux, Fondant, Gourmand, Savoureux, Tradition, Classique, Suprême, Familial, Eco, etc.).
 
-RÈGLE VITALE D'ORTHOGRAPHE ET DE STANDARDISATION :
-Corrige OBLIGATOIREMENT toutes les erreurs d'OCR, abréviations tronquées et fautes de frappe sur le nom générique :
-- Corrige les coquilles OCR : transforme par exemple "B Uf" ou "B uf" en "Bœuf", "Steack" en "Steak", "Pomm terre" en "Pommes de terre".
-- Rétablis impérativement tous les accents et caractères français manquants : "Creme" -> "Crème", "Pate" -> "Pâte", "Oeuf" -> "Œuf", "Ecreme" -> "Écrémé", "Roti" -> "Rôti".
-- Supprime tous les préfixes internes de caisse ou codes barres résiduels ("BIO ART", "PROMO", "ART.").
-- Capitalise la première lettre pour un affichage haut de gamme parfait (ex: "Sauce Burger", "Blanc de volaille").`;
+EXEMPLES D'APPLICATION DU NETTOYAGE EXTRÊME :
+- "Pain de Mie Harry S Nature" -> "Pain de mie"
+- "Pain mie sandwich complet 825g" -> "Pain de mie"
+- "Pain de Mie Nature Harry S" -> "Pain de mie"
+- "Pur Jus de Pomme 1Litre" -> "Jus de pomme"
+- "Pur Jus Pomme Pet" -> "Jus de pomme"
+- "Pur Jus de Pomme Douceur" -> "Jus de pomme"
+- "Jus de Pomme Pet" -> "Jus de pomme"
+- "Mayonnaise Squeez" -> "Mayonnaise"
+- "Haricots verts extra fins bocal" -> "Haricots verts"
+- "Lait 1 2 écrémé Uht 1L" -> "Lait demi-écrémé"
+- "Sirop Fraise Bidon" -> "Sirop de fraise"
+- "Frites Allumettes Just Au Four 1kg" -> "Frites allumettes"
+
+================================================================================
+RÈGLE 2 : RÈGLE VITALE D'ORTHOGRAPHE ET DE CASSE FRANÇAISE
+================================================================================
+Corrige OBLIGATOIREMENT toutes les erreurs d'OCR, abréviations tronquées et fautes de frappe :
+- "B Uf" ou "B uf" -> "Bœuf"
+- "Steack" -> "Steak"
+- "Pomm terre" ou "Pomme terre" -> "Pommes de terre"
+- Rétablis impérativement tous les accents et caractères français manquants ("Crème", "Pâte", "Œuf", "Écrémé", "Rôti").
+- Capitalise élégamment la première lettre du nom générique uniquement ("Pain de mie", "Jus de pomme").
+
+================================================================================
+RÈGLE 3 : GESTION DES PRODUITS SANS MARQUE OU FRAIS
+================================================================================
+- Pour tout produit frais (fruits, légumes, boucherie à la coupe, vrac) ou si aucune marque n'est explicitement imprimée sur le ticket, inscris OBLIGATOIREMENT "marque": "generique".
+- Si une marque industrielle est explicitement présente, renseigne son nom propre dans "marque" (ex: "Harry's", "Danone", "Heinz").
+
+================================================================================
+RÈGLE 4 : NOMENCLATURE STRICTE DES 13 RAYONS OFFICIELS
+================================================================================
+Le champ "rayon_assigne" doit être choisi STRICTEMENT parmi la liste suivante :
+1. Boucherie, Volaille & Poissonnerie
+2. Épicerie salée & Épices
+3. Fruits & Légumes
+4. Produits frais & Crèmerie
+5. Épicerie sucrée
+6. Hygiène, Beauté & Sanitaire
+7. Entretien & Maison
+8. Boissons
+9. Maison, Textile & Culture
+10. Santé & Pharmacie
+11. Papeterie & Bureau
+12. Fleurs & Cadeaux
+13. Sacs & Consignes`;
 
       schema = {
         type: Type.OBJECT,
@@ -1538,6 +1566,168 @@ export const recalculerFriseBancaire = functions.region('europe-west1')
     }
   });
 
+/**
+ * ============================================================================
+ * CLOUD FUNCTION (LIVRABLE 3 & 4) : MIGRATION & FUSION DE L'HISTORIQUE FIRESTORE
+ * Parcourt les produits Firestore d'un utilisateur, regroupe les anciens "faux doublons"
+ * sous les nouvelles Clés de Besoin Générique issues du Nettoyage Extrême,
+ * fusionne offres_magasins et historiques de prix, et supprime les doublons obsolètes (0 € coût).
+ * ============================================================================
+ */
+export const migrateAndMergeDuplicateProducts = functions.region('europe-west1')
+  .runWith({ timeoutSeconds: 300, memory: '1GB' })
+  .https.onCall(async (data) => {
+    const { userId = 'cashpilot_main_user' } = data || {};
+    const db = admin.firestore();
+
+    const productsCollRef = db.collection(`users/${userId}/products`);
+    const snapshot = await productsCollRef.get();
+
+    if (snapshot.empty) {
+      return { success: true, message: "Aucun produit trouvé dans la collection.", mergedGroups: 0, deletedCount: 0 };
+    }
+
+    // Regrouper par nouvelle clé canonique de besoin
+    const groups = new Map<string, Array<{ id: string; data: any }>>();
+
+    snapshot.docs.forEach(docSnap => {
+      const docData = docSnap.data();
+      const currentId = docSnap.id;
+      const rawName = docData.nom_generique || currentId;
+      const brand = docData.marque || '';
+      const canonicalKey = generateGenericNeedKey(rawName, brand);
+
+      if (!groups.has(canonicalKey)) {
+        groups.set(canonicalKey, []);
+      }
+      groups.get(canonicalKey)!.push({ id: currentId, data: docData });
+    });
+
+    let mergedCount = 0;
+    let deletedCount = 0;
+    const mergeLog: Array<{ canonicalKey: string; oldIds: string[]; finalName: string }> = [];
+
+    // Traitement par batch Firestore
+    for (const [canonicalKey, docList] of groups.entries()) {
+      const needsConsolidation = docList.length > 1 || docList[0].id !== canonicalKey;
+
+      if (!needsConsolidation) {
+        continue;
+      }
+
+      const mergedOffers: Record<string, any> = {};
+      const allHistPrix: Array<{ date: string; magasin: string; prix_unitaire: number }> = [];
+      const allHistOffres: Array<any> = [];
+      let representativeName = '';
+      let representativeAisle = '';
+      let representativeAisleKey = '';
+
+      for (const item of docList) {
+        const d = item.data;
+        if (!representativeName) {
+          representativeName = sanitizeGenericDisplayName(d.nom_generique || d.cle_besoin || canonicalKey);
+        }
+        if (!representativeAisle) {
+          representativeAisle = d.rayon || 'Autres / Divers';
+          representativeAisleKey = d.rayon_cle || 'autres_divers';
+        }
+
+        const offers = d.offres_magasins || {};
+        for (const [storeId, offer] of Object.entries(offers)) {
+          if (!mergedOffers[storeId] || new Date((offer as any).date).getTime() >= new Date(mergedOffers[storeId].date).getTime()) {
+            mergedOffers[storeId] = offer;
+          }
+        }
+
+        if (Array.isArray(d.historique_prix)) {
+          allHistPrix.push(...d.historique_prix);
+        }
+
+        if (Array.isArray(d.historique_offres)) {
+          allHistOffres.push(...d.historique_offres);
+        }
+      }
+
+      // Dédoublonnage et tri chronologique
+      const seenPriceKeys = new Set<string>();
+      const dedupedHistPrix = allHistPrix.filter(h => {
+        const key = `${h.date}_${h.magasin}`;
+        if (seenPriceKeys.has(key)) return false;
+        seenPriceKeys.add(key);
+        return true;
+      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      const seenOfferKeys = new Set<string>();
+      const dedupedHistOffres = allHistOffres.filter(h => {
+        const key = `${h.date}_${h.magasin || h.magasin_id}`;
+        if (seenOfferKeys.has(key)) return false;
+        seenOfferKeys.add(key);
+        return true;
+      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      const offerEntries = Object.entries(mergedOffers);
+      let meilleure: any = undefined;
+      let pire: any = undefined;
+      if (offerEntries.length > 0) {
+        const sorted = [...offerEntries].sort((a, b) => a[1].prix_unitaire - b[1].prix_unitaire);
+        meilleure = {
+          magasin_id: sorted[0][0],
+          magasin_nom: sorted[0][1].magasin_nom || sorted[0][0],
+          prix_unitaire: sorted[0][1].prix_unitaire,
+          unite: sorted[0][1].unite
+        };
+        pire = {
+          magasin_id: sorted[sorted.length - 1][0],
+          magasin_nom: sorted[sorted.length - 1][1].magasin_nom || sorted[sorted.length - 1][0],
+          prix_unitaire: sorted[sorted.length - 1][1].prix_unitaire,
+          unite: sorted[sorted.length - 1][1].unite
+        };
+      }
+
+      const consolidatedDoc = {
+        nom_generique: representativeName,
+        rayon: representativeAisle,
+        rayon_cle: representativeAisleKey,
+        cle_besoin: canonicalKey,
+        offres_magasins: mergedOffers,
+        historique_prix: dedupedHistPrix,
+        historique_offres: dedupedHistOffres,
+        meilleure_offre: meilleure || null,
+        pire_offre: pire || null,
+        derniere_mise_a_jour: new Date().toISOString(),
+        nombre_releves: dedupedHistOffres.length
+      };
+
+      const batch = db.batch();
+      const targetDocRef = productsCollRef.doc(canonicalKey);
+      batch.set(targetDocRef, consolidatedDoc, { merge: true });
+
+      for (const oldItem of docList) {
+        if (oldItem.id !== canonicalKey) {
+          batch.delete(productsCollRef.doc(oldItem.id));
+          deletedCount++;
+        }
+      }
+
+      await batch.commit();
+      mergedCount++;
+      mergeLog.push({
+        canonicalKey,
+        oldIds: docList.map(d => d.id),
+        finalName: representativeName
+      });
+    }
+
+    return {
+      success: true,
+      userId,
+      totalInitialDocs: snapshot.size,
+      mergedGroupsCount: mergedCount,
+      deletedObsoleteDocsCount: deletedCount,
+      mergeLog
+    };
+  });
+
 // ============================================================================
 // EXPORT DU MOTEUR COMPARATIF & GESTION DES SUPER CLÉS CASHPILOT (0 € COÛT)
 // ============================================================================
@@ -1545,6 +1735,9 @@ export {
   processReceiptWithSuperKeys,
   generateGenericNeedKey,
   generateSuperKey,
+  cleanGenericEssence,
+  sanitizeGenericDisplayName,
+  correctFrenchSpelling,
   resolvePhysicalStore,
   normalizeLockedAisle,
   LOCKED_SUPERMARKET_AISLES

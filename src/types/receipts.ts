@@ -344,16 +344,30 @@ export interface GenericProductDoc {
 }
 
 export const KNOWN_BRANDS_AND_STORES = [
-  'super u', 'u', 'leclerc', 'e.leclerc', 'marque repere', 'carrefour', 'carrefour market',
+  'super u', 'u', 'leclerc', 'e leclerc', 'e.leclerc', 'marque repere', 'carrefour', 'carrefour market',
   'intermarche', 'lidl', 'aldi', 'auchan', 'monoprix', 'casino', 'cora', 'franprix',
   'leader price', 'danone', 'barilla', 'panzani', 'heinz', 'amora', 'president', 
-  'cristaline', 'volvic', 'evian', 'coca cola', 'coca-cola', 'freeway', 'milka', 'nestle'
+  'cristaline', 'volvic', 'evian', 'coca cola', 'coca-cola', 'freeway', 'milka', 'nestle',
+  'harry s', 'harrys', 'harry', 'lu', 'oreo', 'jafad', 'lesieur', 'candia', 'lactel', 'pepsi',
+  'bonduelle', 'fleury michon', 'herta', 'knorr', 'maggi', 'maille', 'paysan breton', 'elle vire'
 ] as const;
 
 export const KNOWN_PACKAGING_WORDS = [
-  'flacon', 'bouteille', 'brique', 'boite', 'sachet', 'pot', 'pack', 'filet', 
-  'barquette', 'lot', 'tube', 'etui', 'canette', 'portion', 'portions', 'souple', 
-  'verre', 'plastique', 'bocal', 'conserve', 'familial', 'eco', 'recharge', 'cuisson', 'rapide'
+  'flacon', 'flacons', 'bouteille', 'bouteilles', 'brique', 'briques', 'boite', 'boites',
+  'sachet', 'sachets', 'pot', 'pots', 'pack', 'packs', 'filet', 'filets', 
+  'barquette', 'barquettes', 'lot', 'lots', 'tube', 'tubes', 'etui', 'etuis',
+  'canette', 'canettes', 'portion', 'portions', 'souple', 'pet', 'bidon', 'bidons',
+  'verre', 'plastique', 'bocal', 'bocaux', 'conserve', 'recharge', 'squeeze', 'squeez',
+  'carton', 'poche', 'spray', 'doypack', 'vrac'
+] as const;
+
+export const KNOWN_MARKETING_WORDS = [
+  'pur', 'pure', 'nature', 'complet', 'complete', 'croustillant', 'croustillante',
+  'croustille', 'douceur', 'moelleux', 'moelleuse', 'sandwich', 'toast', 'extra fin',
+  'extra fins', 'delicieux', 'fondant', 'gourmand', 'savoureux', 'traditionnel',
+  'supreme', 'recette', 'just au four', 'au four', 'format familial', 'familial', 
+  'eco', 'rapide', 'cuisson', 'petit', 'petite', 'grand', 'grande', 'maxi', 'mini',
+  'uht', 'frais', 'fraiche', 'fraiches'
 ] as const;
 
 /**
@@ -366,15 +380,18 @@ export const KNOWN_PACKAGING_WORDS = [
  * - "Lait demi-écrémé brique 1L" -> "lait_demi_ecreme"
  * ============================================================================
  */
-export function generateGenericNeedKey(rawName?: string, brand?: string): string {
-  if (!rawName || typeof rawName !== 'string') {
-    return 'produit';
-  }
+/**
+ * RÈGLE 1 : NETTOYAGE EXTRÊME - RÉDUCTION À L'ESSENCE STRICTE DU BESOIN
+ * Isole uniquement le besoin consommateur en éliminant :
+ * - Marques (ex: Harry's, U, Leclerc, Lu)
+ * - Emballages / Conditionnements (ex: Pet, Bocal, Sachet, Bidon, Flacon, Brique)
+ * - Contenances / Quantités (ex: Kg, 825g, 1Litre, 1.5L, 6x1L)
+ * - Adjectifs marketing / superflus (ex: Croustillant, Douceur, Moelleux, Nature, Complet, Sandwich)
+ */
+export function cleanGenericEssence(rawName?: string, brand?: string): string {
+  if (!rawName || typeof rawName !== 'string') return 'produit';
 
-  let s = rawName
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+  let s = rawName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-_'/]/g, ' ');
 
   if (brand && typeof brand === 'string') {
     const b = brand.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -383,27 +400,73 @@ export function generateGenericNeedKey(rawName?: string, brand?: string): string
     }
   }
 
-  // Suppression des formats et quantités numériques (ex: "500g", "510 g", "1.5l", "6x1l", "4x100g")
-  s = s.replace(/\b\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml|piece|pieces|unite|unites)\b/gi, ' ');
+  // Normalisation des fractions (ex: 1/2 ou 1 2 -> demi)
+  s = s.replace(/\b1\s*[/_-\s]?\s*2\b/g, 'demi');
+
+  // Suppression des formats et quantités numériques (ex: "500g", "825g", "1.5l", "6x1l", "4x100g", "1litre")
+  s = s.replace(/\b\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml|piece|pieces|unite|unites|tranches?)\b/gi, ' ');
   s = s.replace(/\b\d+\s*x\s*\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml)?\b/gi, ' ');
   s = s.replace(/\bx\s*\d+\b/gi, ' ');
+  s = s.replace(/\b\d+\s*(litre|litres|kilo|kilos|gramme|grammes)\b/gi, ' ');
+  s = s.replace(/\b\d+([.,]\d+)?\b/gi, ' ');
 
-  // Suppression des marques et enseignes courantes
+  // Suppression des marques
   for (const b of KNOWN_BRANDS_AND_STORES) {
     s = s.replace(new RegExp('\\b' + b.replace(/[^a-z0-9]/g, '\\s*') + '\\b', 'gi'), ' ');
   }
 
-  // Suppression des conditionnements
+  // Suppression du conditionnement
   for (const w of KNOWN_PACKAGING_WORDS) {
     s = s.replace(new RegExp('\\b' + w + '\\b', 'gi'), ' ');
   }
 
-  // Caractères spéciaux vers underscore
-  s = s.replace(/[^a-z0-9]+/g, '_')
-       .replace(/_+/g, '_')
-       .replace(/^_|_$/g, '');
+  // Suppression du marketing
+  for (const m of KNOWN_MARKETING_WORDS) {
+    s = s.replace(new RegExp('\\b' + m + '\\b', 'gi'), ' ');
+  }
 
+  // Remplacement des faux-amis / normalisations canoniques françaises
+  s = s.replace(/\bpur\s+jus\b/gi, 'jus');
+  s = s.replace(/\bjus\s+pomme\b/gi, 'jus de pomme');
+  s = s.replace(/\bjus\s+orange\b/gi, 'jus d orange');
+  s = s.replace(/\bjus\s+clementine\b/gi, 'jus de clementine');
+  s = s.replace(/\bpain\s+mie\b/gi, 'pain de mie');
+  s = s.replace(/\blait\s+demi(\s+ecrem(e|ee)?)?\b/gi, 'lait demi ecreme');
+  s = s.replace(/\bsteack\b/gi, 'steak');
+  s = s.replace(/\bpomm?\s+terre\b/gi, 'pommes de terre');
+
+  s = s.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
   return s || 'produit';
+}
+
+export function generateGenericNeedKey(rawName?: string, brand?: string): string {
+  const essence = cleanGenericEssence(rawName, brand);
+  return essence.replace(/\s+/g, '_') || 'produit';
+}
+
+export function sanitizeGenericDisplayName(rawName?: string, brand?: string): string {
+  const essence = cleanGenericEssence(rawName, brand);
+  const canonicalMap: Record<string, string> = {
+    'pain de mie': 'Pain de mie',
+    'jus de pomme': 'Jus de pomme',
+    'jus d orange': "Jus d'orange",
+    'jus de clementine': 'Jus de clémentine',
+    'lait demi ecreme': 'Lait demi-écrémé',
+    'haricots verts': 'Haricots verts',
+    'mayonnaise': 'Mayonnaise',
+    'limonade': 'Limonade',
+    'frites allumettes': 'Frites allumettes',
+    'pommes de terre': 'Pommes de terre',
+    'steak hache': 'Steak haché',
+    'creme fraiche': 'Crème fraîche',
+    'huile tournesol': 'Huile de tournesol',
+    'huile de tournesol': 'Huile de tournesol'
+  };
+
+  if (essence in canonicalMap) {
+    return canonicalMap[essence];
+  }
+  return essence.charAt(0).toUpperCase() + essence.slice(1);
 }
 
 /**

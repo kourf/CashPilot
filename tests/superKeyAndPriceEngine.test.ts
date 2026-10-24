@@ -3,6 +3,8 @@ import assert from 'node:assert';
 import { 
   generateSuperKey,
   generateGenericNeedKey,
+  cleanGenericEssence,
+  sanitizeGenericDisplayName,
   correctFrenchSpelling,
   type StandardizedProductDoc,
   type GenericProductDoc
@@ -315,5 +317,49 @@ describe('Audit Financier : Super Clé Universelle & Matrice Comparative 0 €',
     assert.strictEqual(docWithPriceHistory.historique_prix[1].date, '2026-10-24');
     assert.strictEqual(docWithPriceHistory.historique_prix[1].magasin, 'leclerc_ville_la_grand');
     assert.strictEqual(docWithPriceHistory.historique_prix[1].prix_unitaire, 4.10);
+  });
+
+  it('10. Nettoyage Extrême : Éradication des faux doublons (Pain de mie Harrys, Pur jus pomme pet, Haricots verts)', () => {
+    // Pain de mie : Harry's Nature vs sandwich complet 825g
+    const k1 = generateGenericNeedKey('Pain de Mie Harry S Nature');
+    const k2 = generateGenericNeedKey('Pain mie sandwich complet 825g');
+    const k3 = generateGenericNeedKey('Pain de Mie Nature');
+    assert.strictEqual(k1, 'pain_de_mie');
+    assert.strictEqual(k2, 'pain_de_mie');
+    assert.strictEqual(k3, 'pain_de_mie');
+    assert.strictEqual(sanitizeGenericDisplayName('Pain de Mie Harry S Nature'), 'Pain de mie');
+    assert.strictEqual(sanitizeGenericDisplayName('Pain mie sandwich complet 825g'), 'Pain de mie');
+
+    // Jus de pomme : Pur Jus 1Litre vs Pur Jus Pomme Pet vs Jus de Pomme
+    const j1 = generateGenericNeedKey('Pur Jus de Pomme');
+    const j2 = generateGenericNeedKey('Pur Jus de Pomme 1Litre');
+    const j3 = generateGenericNeedKey('Pur Jus Pomme Pet');
+    const j4 = generateGenericNeedKey('Jus de Pomme Pet');
+    const j5 = generateGenericNeedKey('Pur Jus de Pomme Douceur');
+    assert.strictEqual(j1, 'jus_de_pomme');
+    assert.strictEqual(j2, 'jus_de_pomme');
+    assert.strictEqual(j3, 'jus_de_pomme');
+    assert.strictEqual(j4, 'jus_de_pomme');
+    assert.strictEqual(j5, 'jus_de_pomme');
+    assert.strictEqual(sanitizeGenericDisplayName('Pur Jus Pomme Pet'), 'Jus de pomme');
+
+    // Lait demi-écrémé : Lait 1 2 écrémé Uht vs Lait demi-écrémé brique 1L
+    const l1 = generateGenericNeedKey('Lait 1 2 écrémé Uht');
+    const l2 = generateGenericNeedKey('Lait demi-écrémé UHT 1L');
+    assert.strictEqual(l1, 'lait_demi_ecreme');
+    assert.strictEqual(l2, 'lait_demi_ecreme');
+    assert.strictEqual(sanitizeGenericDisplayName('Lait 1 2 écrémé Uht'), 'Lait demi-écrémé');
+
+    // Mayonnaise squeez vs Mayonnaise
+    const m1 = generateGenericNeedKey('Mayonnaise Squeez');
+    const m2 = generateGenericNeedKey('Mayonnaise');
+    assert.strictEqual(m1, 'mayonnaise');
+    assert.strictEqual(m2, 'mayonnaise');
+
+    // Haricots verts extra fins bocal vs Haricots verts
+    const h1 = generateGenericNeedKey('Haricots verts extra fins');
+    const h2 = generateGenericNeedKey('Haricots verts');
+    assert.strictEqual(h1, 'haricots_verts');
+    assert.strictEqual(h2, 'haricots_verts');
   });
 });

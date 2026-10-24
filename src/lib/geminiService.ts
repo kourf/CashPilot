@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIES } from './bankParser.ts';
 import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from './receiptClassifier';
-import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey, generateGenericNeedKey } from '../types/receipts';
+import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey, generateGenericNeedKey, sanitizeGenericDisplayName, correctFrenchSpelling } from '../types/receipts';
 import { resolvePhysicalStore, TARGET_PHYSICAL_STORES } from './storeRegistry.ts';
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
@@ -1743,6 +1743,30 @@ Il existe 3 magasins Intermarché distincts ciblés dans la zone pour le compara
 Tu DOIS IMPÉRATIVEMENT extraire l'adresse de rue et la ville avec exactitude pour permettre à l'application de savoir dans lequel des 3 magasins le ticket a été émis.
 
 ================================================================================
+RÈGLE 8 : LE "NETTOYAGE EXTRÊME" (RÉDUCTION À L'ESSENCE STRICTE DU BESOIN)
+================================================================================
+Pour chaque article, tu dois extraire le champ "nom_generique_nettoye" en réduisant le libellé à l'ESSENCE PURE du besoin consommateur.
+IL EST FORMELLEMENT ET STRICTEMENT INTERDIT D'INCLURE DANS "nom_generique_nettoye" :
+1. LA MARQUE : Élimine totalement toute marque, enseigne commerciale ou gamme (ex: Harry's, Lu, Danone, Heinz, Marque Repère, Super U, Président, Candia, Lesieur, etc.).
+2. LE TYPE D'EMBALLAGE OU CONDITIONNEMENT : Élimine tout mot décrivant l'emballage (ex: Pet, Bocal, Bocaux, Sachet, Sachets, Bidon, Flacon, Brique, Boîte, Canette, Barquette, Lot, Pack, Filet, Tube, Étui, Pot, Verre, Plastique, Squeeze, Doypack, etc.).
+3. LA CONTENANCE OU LE POIDS : Élimine toute indication de quantité, volume ou poids (ex: Kg, 825g, 500g, 1 Litre, 1L, 1.5L, 6x1L, 1 pièce, Tranches, etc.).
+4. LES ADJECTIFS ET MENTIONS MARKETING : Élimine tous les adjectifs promotionnels ou qualificatifs superflus (ex: Croustillant, Croustille, Douceur, Moelleux, Pur/Pure, Nature, Complet, Sandwich, Toast, Extra fin, Délicieux, Fondant, Gourmand, Savoureux, Tradition, Classique, Suprême, Familial, Eco, etc.).
+
+EXEMPLES D'APPLICATION DU NETTOYAGE EXTRÊME :
+- "Pain de Mie Harry S Nature" -> "Pain de mie"
+- "Pain mie sandwich complet 825g" -> "Pain de mie"
+- "Pain de Mie Nature Harry S" -> "Pain de mie"
+- "Pur Jus de Pomme 1Litre" -> "Jus de pomme"
+- "Pur Jus Pomme Pet" -> "Jus de pomme"
+- "Pur Jus de Pomme Douceur" -> "Jus de pomme"
+- "Jus de Pomme Pet" -> "Jus de pomme"
+- "Mayonnaise Squeez" -> "Mayonnaise"
+- "Haricots verts extra fins bocal" -> "Haricots verts"
+- "Lait 1 2 écrémé Uht 1L" -> "Lait demi-écrémé"
+- "Sirop Fraise Bidon" -> "Sirop de fraise"
+- "Frites Allumettes Just Au Four 1kg" -> "Frites allumettes"
+
+================================================================================
 RÈGLE D'ORTHOGRAPHE ET DE STANDARDISATION ABSOLUE (CORRECTION OCR IMPÉRATIVE)
 ================================================================================
 Tu DOIS OBLIGATOIREMENT corriger toutes les erreurs, coupures d'OCR, fautes de frappe et abréviations :
@@ -1966,7 +1990,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         rawBrand.toLowerCase() === 'vrac';
 
       const brand = isGeneric ? 'Générique' : (rawBrand.charAt(0).toUpperCase() + rawBrand.slice(1));
-      const norm = correctFrenchSpelling(rawNorm);
+      const norm = sanitizeGenericDisplayName(rawNorm, brand) || correctFrenchSpelling(rawNorm);
       const qty = Math.max(1, Number(it.quantity) || 1);
       const weightOrVolume = rawFormat;
       const weightOrVolumeValue = typeof it.weightOrVolumeValue === 'number' ? it.weightOrVolumeValue : undefined;

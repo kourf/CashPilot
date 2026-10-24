@@ -41,7 +41,9 @@ import {
   type ProductComparisonRow,
   type StorePriceDetail,
   SUPERMARKET_AISLES,
-  correctFrenchSpelling
+  correctFrenchSpelling,
+  generateGenericNeedKey,
+  sanitizeGenericDisplayName
 } from '../../types/receipts';
 import { ReceiptHistoryView } from './components/ReceiptHistoryView';
 import { ReceiptValidationModal } from './components/ReceiptValidationModal';
@@ -292,16 +294,37 @@ export default function Receipts() {
       sampleRawRow?: ProductComparisonRow;
     }> = [];
 
-    // Priorité aux lignes de la matrice (enrichies avec historique, évolution et offres_magasins)
+    // 2. CONSOLIDATION EXTRÊME : Élimine les faux doublons en regroupant sous la Clé de Besoin Générique
     const allMatrixProducts = matrix.aisleGroups.flatMap(g => g.products);
+    const consolidatedMap = new Map<string, {
+      canonicalKey: string;
+      nomGenerique: string;
+      rayon: string;
+      storeOffers: Record<string, any>;
+      sampleBrands: Set<string>;
+      sampleRawRow?: ProductComparisonRow;
+    }>();
 
     allMatrixProducts.forEach(prod => {
       const lookupKey = prod.normalizedName.trim().toLowerCase();
       if (hiddenSet.has(lookupKey)) return;
 
-      const storeOffers: Record<string, any> = {};
+      const canonicalKey = generateGenericNeedKey(prod.normalizedName);
+      const cleanDisplayName = sanitizeGenericDisplayName(prod.normalizedName);
+
+      if (!consolidatedMap.has(canonicalKey)) {
+        consolidatedMap.set(canonicalKey, {
+          canonicalKey,
+          nomGenerique: cleanDisplayName,
+          rayon: prod.category,
+          storeOffers: {},
+          sampleBrands: new Set<string>(),
+          sampleRawRow: prod
+        });
+      }
+
+      const entry = consolidatedMap.get(canonicalKey)!;
       const presentStores = Object.keys(prod.storePrices);
-      const sampleBrands = new Set<string>();
 
       presentStores.forEach(sName => {
         const sp = prod.storePrices[sName];
@@ -315,36 +338,43 @@ export default function Receipts() {
           });
         }
 
-        storeOffers[sName] = {
-          prixUnitaire: sp.unitPrice,
-          unite: sp.unit || prod.unit || 'kg',
-          prixPaye: sp.pricePaid,
-          marque: sp.brand || 'Générique',
-          format: sp.weightOrVolume || '1 pièce',
-          date: sp.date
-        };
+        // Si l'offre existe déjà pour ce magasin, conserver la plus récente ou la plus avantageuse
+        const existingOffer = entry.storeOffers[sName];
+        if (!existingOffer || (sp.unitPrice > 0 && sp.unitPrice < existingOffer.prixUnitaire)) {
+          entry.storeOffers[sName] = {
+            prixUnitaire: sp.unitPrice,
+            unite: sp.unit || prod.unit || 'kg',
+            prixPaye: sp.pricePaid,
+            marque: sp.brand || 'Générique',
+            format: sp.weightOrVolume || '1 pièce',
+            date: sp.date
+          };
+        }
 
         if (sp.brand && sp.brand !== 'Générique') {
-          sampleBrands.add(sp.brand);
+          entry.sampleBrands.add(sp.brand);
         }
       });
+    });
 
-      const storeCount = presentStores.length;
+    // Transformer le dictionnaire consolidé en lignes prêtes pour l'affichage
+    consolidatedMap.forEach(entry => {
+      const storeCount = Object.keys(entry.storeOffers).length;
       const isComp = storeCount >= 2;
-      const unitPrices = Object.values(storeOffers).map((o: any) => o.prixUnitaire);
+      const unitPrices = Object.values(entry.storeOffers).map((o: any) => o.prixUnitaire);
       const lowestPrice = unitPrices.length > 0 ? Math.min(...unitPrices) : 0;
       const highestPrice = unitPrices.length > 0 ? Math.max(...unitPrices) : 0;
       const priceDiff = isComp ? Number((highestPrice - lowestPrice).toFixed(2)) : 0;
       const priceDiffPercent = isComp && highestPrice > 0 ? Math.round((priceDiff / highestPrice) * 100) : 0;
-      
-      const cheapestStoreEntry = Object.entries(storeOffers).find(([_, o]: any) => o.prixUnitaire === lowestPrice);
+
+      const cheapestStoreEntry = Object.entries(entry.storeOffers).find(([_, o]: any) => o.prixUnitaire === lowestPrice);
       const cheapestStore = cheapestStoreEntry ? cheapestStoreEntry[0] : '';
 
       rows.push({
-        cleBesoin: prod.normalizedName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-        nomGenerique: prod.normalizedName,
-        rayon: prod.category,
-        storeOffers,
+        cleBesoin: entry.canonicalKey,
+        nomGenerique: entry.nomGenerique,
+        rayon: entry.rayon,
+        storeOffers: entry.storeOffers,
         storeCount,
         isComparable: isComp,
         lowestPrice,
@@ -352,8 +382,8 @@ export default function Receipts() {
         priceDiff,
         priceDiffPercent,
         cheapestStore,
-        sampleBrands: Array.from(sampleBrands),
-        sampleRawRow: prod
+        sampleBrands: Array.from(entry.sampleBrands),
+        sampleRawRow: entry.sampleRawRow
       });
     });
 
@@ -394,6 +424,29 @@ export default function Receipts() {
       return true;
     });
   }, [crossTableRows, hideUncomparable, selectedAisleFilter, searchTerm]);
+
+  // RÈGLE 2 : REGROUPEMENT PAR EN-TÊTES DE SECTION TRANSVERSAUX (RAYONS EN MAJUSCULES)
+  const groupedAisles = useMemo(() => {
+    const map: Record<string, typeof filteredRows> = {};
+    SUPERMARKET_AISLES.forEach(a => {
+      map[a] = [];
+    });
+
+    filteredRows.forEach(row => {
+      const aisle = row.rayon || 'Autres / Divers';
+      if (!map[aisle]) {
+        map[aisle] = [];
+      }
+      map[aisle].push(row);
+    });
+
+    return SUPERMARKET_AISLES
+      .filter(aisle => map[aisle] && map[aisle].length > 0)
+      .map(aisle => ({
+        aisle,
+        rows: map[aisle].sort((a, b) => a.nomGenerique.localeCompare(b.nomGenerique, 'fr', { sensitivity: 'base' }))
+      }));
+  }, [filteredRows]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
@@ -844,7 +897,7 @@ export default function Receipts() {
                 </thead>
 
                 <tbody className="divide-y divide-border/50 text-xs">
-                  {filteredRows.length === 0 ? (
+                  {groupedAisles.length === 0 ? (
                     <tr>
                       <td colSpan={allStores.length + 3} className="py-12 text-center text-muted-foreground">
                         <Package size={28} className="mx-auto mb-2 opacity-40" />
@@ -855,27 +908,35 @@ export default function Receipts() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRows.map(row => (
-                      <tr key={row.nomGenerique} className="hover:bg-secondary/20 transition-colors group">
-                        
-                        {/* EN LIGNE (ORDONNÉE) : NOM GÉNÉRIQUE & RAYON ASSIGNÉ */}
-                        <td className="py-3 px-4 sticky left-0 bg-card/95 backdrop-blur-xs z-10 border-r border-border/40 max-w-[220px] align-top">
-                          <div className="flex flex-col space-y-1">
-                            <span className="font-extrabold text-foreground text-xs sm:text-sm tracking-tight leading-snug">
-                              {correctFrenchSpelling(row.nomGenerique)}
-                            </span>
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <span className="inline-flex items-center text-[9px] font-semibold px-1.5 py-0.2 rounded bg-secondary text-muted-foreground border border-border/60">
-                                {row.rayon}
+                    groupedAisles.map(group => (
+                      <React.Fragment key={`aisle-group-${group.aisle}`}>
+                        {/* EN-TÊTE DE SECTION TRANSVERSAL DU RAYON (RÈGLE 2 & DESIGN GOOGLE STITCH) */}
+                        <tr className="bg-secondary/70 dark:bg-muted/40 border-y-2 border-border/80 sticky top-0 z-10 backdrop-blur-md">
+                          <td colSpan={allStores.length + 3} className="py-2.5 px-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                                <span className="font-black text-xs uppercase tracking-wider text-primary">
+                                  {group.aisle}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-background/80 text-muted-foreground border border-border/50 font-mono">
+                                {group.rows.length} article{group.rows.length > 1 ? 's' : ''}
                               </span>
                             </div>
-                            {row.sampleBrands.length > 0 && (
-                              <span className="text-[9px] text-primary/80 font-medium truncate">
-                                Marque(s) : {row.sampleBrands.join(', ')}
+                          </td>
+                        </tr>
+
+                        {/* LISTE DES PRODUITS DU RAYON */}
+                        {group.rows.map(row => (
+                          <tr key={row.cleBesoin || row.nomGenerique} className="hover:bg-secondary/20 transition-colors group">
+                            
+                            {/* EN LIGNE (ORDONNÉE) : NOM GÉNÉRIQUE PUR (SANS RÉPÉTITION DU BADGE DE RAYON) */}
+                            <td className="py-3 px-4 sticky left-0 bg-card/95 backdrop-blur-xs z-1 border-r border-border/40 max-w-[220px] align-middle">
+                              <span className="font-extrabold text-foreground text-xs sm:text-sm tracking-tight leading-snug">
+                                {correctFrenchSpelling(row.nomGenerique)}
                               </span>
-                            )}
-                          </div>
-                        </td>
+                            </td>
 
                         {/* CELLULES CROISÉES : VUE ÉPURÉE (PRIX AU KILO/LITRE EN GRAND ET EN GRAS + INFOBULLE TOOLTIP) */}
                         {allStores.map(st => {
@@ -998,9 +1059,11 @@ export default function Receipts() {
                         </td>
 
                       </tr>
-                    ))
-                  )}
-                </tbody>
+                    ))}
+                  </React.Fragment>
+                ))
+              )}
+            </tbody>
               </table>
             </div>
           </div>
