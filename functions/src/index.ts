@@ -1430,6 +1430,7 @@ export const recalculerFriseBancaire = functions.region('europe-west1')
 // ============================================================================
 export {
   processReceiptWithSuperKeys,
+  generateGenericNeedKey,
   generateSuperKey,
   resolvePhysicalStore,
   normalizeLockedAisle,

@@ -1,5 +1,5 @@
 /**
- * MOTEUR D'AUDIT FINANCIER CASHPILOT - EXTRACTION, NORMALISATION ET GESTION DES SUPER CLÉS
+ * MOTEUR D'AUDIT FINANCIER CASHPILOT - EXTRACTION, NORMALISATION ET GESTION DES CLÉS DE BESOIN GÉNÉRIQUE
  * Architecture à coût 0 € (optimisation absolue des requêtes et stockage Firestore).
  */
 import * as functions from 'firebase-functions';
@@ -42,9 +42,6 @@ export const LOCKED_AISLE_SLUG_MAP: Record<string, { key: string; label: LockedS
   'autres_divers': { key: 'autres_divers', label: 'Autres / Divers' }
 };
 
-/**
- * Normalise l'affectation du rayon parmi les 14 catégories strictes avec fallback "Autres / Divers"
- */
 export function normalizeLockedAisle(rawCategory?: string): { key: string; label: LockedSupermarketAisle } {
   if (!rawCategory || typeof rawCategory !== 'string') {
     return { key: 'autres_divers', label: 'Autres / Divers' };
@@ -63,11 +60,10 @@ export function normalizeLockedAisle(rawCategory?: string): { key: string; label
     return LOCKED_AISLE_SLUG_MAP[clean];
   }
 
-  // Correspondances heuristiques fiables
   if (clean.includes('boucherie') || clean.includes('poisson') || clean.includes('volaille') || clean.includes('viande')) {
     return { key: 'boucherie_poissonnerie', label: 'Boucherie, Volaille & Poissonnerie' };
   }
-  if (clean.includes('epicerie_salee') || clean.includes('epice') || clean.includes('salee') || clean.includes('pates') || clean.includes('riz')) {
+  if (clean.includes('epicerie_salee') || clean.includes('epice') || clean.includes('salee') || clean.includes('pates') || clean.includes('riz') || clean.includes('sauce')) {
     return { key: 'epicerie_salee', label: 'Épicerie salée & Épices' };
   }
   if (clean.includes('fruit') || clean.includes('legume') || clean.includes('primeur') || clean.includes('salade')) {
@@ -107,13 +103,71 @@ export function normalizeLockedAisle(rawCategory?: string): { key: string; label
   return { key: 'autres_divers', label: 'Autres / Divers' };
 }
 
+export const KNOWN_BRANDS_AND_STORES = [
+  'super u', 'u', 'leclerc', 'e.leclerc', 'marque repere', 'carrefour', 'carrefour market',
+  'intermarche', 'lidl', 'aldi', 'auchan', 'monoprix', 'casino', 'cora', 'franprix',
+  'leader price', 'danone', 'barilla', 'panzani', 'heinz', 'amora', 'president', 
+  'cristaline', 'volvic', 'evian', 'coca cola', 'coca-cola', 'freeway', 'milka', 'nestle'
+] as const;
+
+export const KNOWN_PACKAGING_WORDS = [
+  'flacon', 'bouteille', 'brique', 'boite', 'sachet', 'pot', 'pack', 'filet', 
+  'barquette', 'lot', 'tube', 'etui', 'canette', 'portion', 'portions', 'souple', 
+  'verre', 'plastique', 'bocal', 'conserve', 'familial', 'eco', 'recharge', 'cuisson', 'rapide'
+] as const;
+
 /**
  * ============================================================================
- * RÈGLE 1 & 2 : LA "SUPER CLÉ" UNIVERSELLE (ID STANDARDISÉ FIRESTORE)
- * Format : [marque]_[nom_generique_nettoye]_[poids_ou_volume]
- * - Ignorer toutes les abréviations du ticket au profit d'un nom clair
- * - Si produit frais ou sans marque explicite -> marque = "generique"
+ * RÈGLE 1 : LA "CLÉ DE BESOIN GÉNÉRIQUE"
+ * Isole uniquement le besoin brut en éliminant la marque, le format et le conditionnement.
+ * Exemples :
+ * - "Sauce burger Super U" -> "sauce_burger"
+ * - "Sauce burger flacon souple 510g Leclerc" -> "sauce_burger"
+ * - "Lait demi-écrémé brique 1L" -> "lait_demi_ecreme"
  * ============================================================================
+ */
+export function generateGenericNeedKey(rawName?: string, brand?: string): string {
+  if (!rawName || typeof rawName !== 'string') {
+    return 'produit';
+  }
+
+  let s = rawName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (brand && typeof brand === 'string') {
+    const b = brand.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    if (b && b !== 'generique' && b !== 'générique') {
+      s = s.replace(new RegExp('\\b' + b.replace(/[^a-z0-9]/g, '\\s*') + '\\b', 'gi'), ' ');
+    }
+  }
+
+  // Suppression des formats et quantités numériques (ex: "500g", "510 g", "1.5l", "6x1l", "4x100g")
+  s = s.replace(/\b\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml|piece|pieces|unite|unites)\b/gi, ' ');
+  s = s.replace(/\b\d+\s*x\s*\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml)?\b/gi, ' ');
+  s = s.replace(/\bx\s*\d+\b/gi, ' ');
+
+  // Suppression des marques et enseignes courantes
+  for (const b of KNOWN_BRANDS_AND_STORES) {
+    s = s.replace(new RegExp('\\b' + b.replace(/[^a-z0-9]/g, '\\s*') + '\\b', 'gi'), ' ');
+  }
+
+  // Suppression des conditionnements
+  for (const w of KNOWN_PACKAGING_WORDS) {
+    s = s.replace(new RegExp('\\b' + w + '\\b', 'gi'), ' ');
+  }
+
+  // Caractères spéciaux vers underscore
+  s = s.replace(/[^a-z0-9]+/g, '_')
+       .replace(/_+/g, '_')
+       .replace(/^_|_$/g, '');
+
+  return s || 'produit';
+}
+
+/**
+ * Super Clé de compatibilité (marque + nom + format)
  */
 export function generateSuperKey(
   marque?: string,
@@ -124,17 +178,16 @@ export function generateSuperKey(
     return val
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Supprime les diacritiques
-      .replace(/[^a-z0-9]+/g, '_')     // Remplace tout caractère non-alphanumérique par _
-      .replace(/_+/g, '_')             // Évite les underscores successifs
-      .replace(/^_|_$/g, '');          // Supprime les underscores en bordure
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '');
   };
 
   const rawBrand = (marque || '').trim();
   const rawName = (nomGenerique || '').trim();
   const rawWeight = (poidsOuVolume || '').trim();
 
-  // Détection des produits génériques / sans marque explicite (Règle 2)
   const isGeneric = !rawBrand ||
     rawBrand.toLowerCase() === 'generique' ||
     rawBrand.toLowerCase() === 'générique' ||
@@ -273,7 +326,6 @@ export function resolvePhysicalStore(params: {
     };
   }
 
-  // Fallback propre
   const cleanName = (params.storeName || 'Magasin').trim();
   const cleanCity = (params.storeCity || '').trim();
   const slug = `${cleanName}_${cleanCity}`
@@ -296,64 +348,65 @@ export function resolvePhysicalStore(params: {
 }
 
 /**
- * Structure de l'article extrait via le format "JSON Strict" de Gemini (Règle 5)
+ * Structure de l'article extrait via le format "JSON Strict" de Gemini (Règle 4)
  */
 export interface StrictExtractedItem {
-  marque: string;
-  nom_generique: string;
-  poids_ou_volume: string;
+  nom_generique_nettoye: string; // Sans marque ni format (ex: "Sauce burger")
+  marque: string; // Marque du produit ou "generique"
+  format_exact: string; // Poids/volume lu (ex: "500g", "510g")
   prix_paye: number;
   prix_unitaire_calcule: number;
   unite_mesure: 'kg' | 'L' | 'piece';
   rayon_assigne: string;
+  // Rétrocompatibilité
+  nom_generique?: string;
+  poids_ou_volume?: string;
   quantite?: number;
   rawName?: string;
 }
 
 /**
- * Structure du document Produit Standardisé dans Firestore (Règle 6 : 100% Gratuit)
- * Chemin : users/{userId}/products/{superKey}
+ * Détail d'une offre pour un magasin physique dans Firestore
  */
-export interface StandardizedProductDocument {
-  superKey: string;
+export interface StoreOfferDetail {
+  prix_unitaire: number;
+  unite: string;
+  prix_paye: number;
   marque: string;
-  nom_generique: string;
-  poids_ou_volume: string;
-  unite_mesure: 'kg' | 'L' | 'piece';
-  rayon_assigne: LockedSupermarketAisle;
-  rayon_cle: string;
+  format: string;
+  date: string;
+  magasin_nom?: string;
+  magasin_id?: string;
+  receiptId?: string;
+  rawName?: string;
+}
 
-  // Dictionnaire des derniers prix connus par magasin physique (coût de lecture = 0)
-  prix_actuel: Record<string, {
-    prix_unitaire: number; // Prix au kilo, au litre ou à la pièce
-    prix_paye: number;
-    quantite: number;
-    date: string;
+/**
+ * Structure du document Firestore regroupant les offres par magasin sous la Clé de Besoin Générique (Règle 2)
+ * ID de document = Clé de Besoin Générique (ex: "sauce_burger")
+ * Collection : users/{userId}/products/{cle_besoin}
+ */
+export interface GenericProductDocument {
+  nom_generique: string;
+  rayon: LockedSupermarketAisle;
+  rayon_cle: string;
+  cle_besoin: string;
+  offres_magasins: Record<string, StoreOfferDetail>;
+  historique_offres?: Array<StoreOfferDetail & { magasin: string }>;
+  // Rétrocompatibilité
+  prix_actuel?: Record<string, any>;
+  historique_prix?: Array<any>;
+  meilleure_offre?: {
     magasin_id: string;
     magasin_nom: string;
-    receiptId: string;
-  }>;
-
-  // Historique ordonné chronologique des relevés passés
-  historique_prix: Array<{
-    date: string;
-    magasin: string; // storeId
+    prix_unitaire: number;
+    unite: string;
+  };
+  pire_offre?: {
+    magasin_id: string;
     magasin_nom: string;
     prix_unitaire: number;
-    prix_paye: number;
-    quantite: number;
-    receiptId: string;
-  }>;
-
-  meilleur_magasin?: {
-    storeId: string;
-    storeName: string;
-    prix_unitaire: number;
-  };
-  pire_magasin?: {
-    storeId: string;
-    storeName: string;
-    prix_unitaire: number;
+    unite: string;
   };
   ecart_prix_max?: number;
   derniere_mise_a_jour: string;
@@ -362,9 +415,10 @@ export interface StandardizedProductDocument {
 
 /**
  * ============================================================================
- * CLOUD FUNCTION : Traitement atomique du ticket & mise à jour des produits
- * Met à jour à la fois le ticket et la collection standardisée des produits
- * avec un coût d'infrastructure et de requêtes de 0 €.
+ * CLOUD FUNCTION (Livrable 1) :
+ * Reçoit le JSON de l'IA, crée la "Clé de Besoin Générique",
+ * et met à jour le dictionnaire offres_magasins dans Firestore.
+ * Coût = 0 € (Batch / Transaction atomique).
  * ============================================================================
  */
 export const processReceiptWithSuperKeys = functions.region('europe-west1')
@@ -395,7 +449,7 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
 
     const db = admin.firestore();
 
-    // 1. Résolution physique du magasin
+    // 1. Résolution physique du magasin (Intermarché Gaillard, Annemasse, Ville-la-Grand, etc.)
     const resolvedStore = resolvePhysicalStore({
       storeName,
       storeAddress,
@@ -411,26 +465,25 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
     const productsCollectionRef = db.collection(`users/${userId}/products`);
     const receiptDocRef = db.collection(`users/${userId}/receipts`).doc(receiptId);
 
-    const processedSuperKeys: string[] = [];
+    const processedKeys: string[] = [];
     const enrichedReceiptItems: any[] = [];
 
-    // 2. Traitement de chaque article et mise à jour des produits
+    // 2. Traitement de chaque article et mise à jour sous sa "Clé de Besoin Générique"
     for (const rawItem of items as StrictExtractedItem[]) {
       const marque = (rawItem.marque || '').trim();
-      const nomGenerique = (rawItem.nom_generique || '').trim();
-      const poidsOuVolume = (rawItem.poids_ou_volume || '').trim();
+      const nomGeneriqueNettoye = (rawItem.nom_generique_nettoye || rawItem.nom_generique || '').trim();
+      const formatExact = (rawItem.format_exact || rawItem.poids_ou_volume || '').trim();
       const prixPaye = Number(rawItem.prix_paye) || 0;
       const quantite = Math.max(1, Number(rawItem.quantite) || 1);
       
-      // Règle 3 : Prix unitaire de référence
       let prixUnitaire = Number(rawItem.prix_unitaire_calcule) || 0;
       if (prixUnitaire <= 0 && quantite > 0) {
         prixUnitaire = Number((prixPaye / quantite).toFixed(2));
       }
 
-      // Règle 1 : Super Clé universelle
-      const superKey = generateSuperKey(marque, nomGenerique, poidsOuVolume);
-      processedSuperKeys.push(superKey);
+      // RÈGLE 1 : Clé de Besoin Générique (ex: "sauce_burger")
+      const cleBesoin = generateGenericNeedKey(nomGeneriqueNettoye, marque);
+      processedKeys.push(cleBesoin);
 
       // Règle 4 : Rayon verrouillé
       const aisle = normalizeLockedAisle(rawItem.rayon_assigne);
@@ -445,14 +498,14 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
       }
 
       const receiptItemEnriched = {
-        id: `item-${superKey}-${receiptId.slice(-4)}`,
-        superKey,
-        rawName: rawItem.rawName || `${nomGenerique} ${poidsOuVolume}`,
-        normalizedName: nomGenerique.charAt(0).toUpperCase() + nomGenerique.slice(1),
+        id: `item-${cleBesoin}-${receiptId.slice(-4)}`,
+        cle_besoin: cleBesoin,
+        rawName: rawItem.rawName || `${nomGeneriqueNettoye} ${formatExact}`,
+        normalizedName: nomGeneriqueNettoye.charAt(0).toUpperCase() + nomGeneriqueNettoye.slice(1),
         brand: marque && marque.toLowerCase() !== 'generique' ? (marque.charAt(0).toUpperCase() + marque.slice(1)) : 'Générique',
         pricePaid: Number(prixPaye.toFixed(2)),
         quantity: quantite,
-        weightOrVolume: poidsOuVolume,
+        weightOrVolume: formatExact,
         unitPrice: Number(prixUnitaire.toFixed(2)),
         referenceUnitPrice: Number(prixUnitaire.toFixed(2)),
         unit: unitMeasure,
@@ -463,10 +516,23 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
       };
       enrichedReceiptItems.push(receiptItemEnriched);
 
-      // Transaction / mise à jour du document Produit Standardisé
-      const productRef = productsCollectionRef.doc(superKey);
+      // RÈGLE 2 : Mise à jour du document Firestore par Clé de Besoin Générique
+      const productRef = productsCollectionRef.doc(cleBesoin);
       await db.runTransaction(async (transaction) => {
         const productSnap = await transaction.get(productRef);
+
+        const offerDetail: StoreOfferDetail = {
+          prix_unitaire: Number(prixUnitaire.toFixed(2)),
+          unite: unitMeasure,
+          prix_paye: Number(prixPaye.toFixed(2)),
+          marque: receiptItemEnriched.brand,
+          format: formatExact || '1 piece',
+          date,
+          magasin_nom: storeDisplayName,
+          magasin_id: storeId,
+          receiptId,
+          rawName: receiptItemEnriched.rawName
+        };
 
         const priceRecord = {
           date,
@@ -479,10 +545,14 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
         };
 
         if (productSnap.exists) {
-          const prodData = productSnap.data() as StandardizedProductDocument;
-          const currentPrices = prodData.prix_actuel || {};
+          const prodData = productSnap.data() as GenericProductDocument;
+          const currentOffers = prodData.offres_magasins || {};
 
-          // Mise à jour du dictionnaire de prix actuel pour ce magasin
+          // Mise à jour de l'offre pour ce magasin exact
+          currentOffers[storeId] = offerDetail;
+
+          // Rétrocompatibilité prix_actuel
+          const currentPrices = prodData.prix_actuel || {};
           currentPrices[storeId] = {
             prix_unitaire: Number(prixUnitaire.toFixed(2)),
             prix_paye: Number(prixPaye.toFixed(2)),
@@ -493,52 +563,54 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
             receiptId
           };
 
-          // Ajout à l'historique chronologique
-          const existingHistory = Array.isArray(prodData.historique_prix) ? prodData.historique_prix : [];
-          // Évite l'insertion de doublons stricts pour le même ticket
+          // Historique chronologique
+          const existingHistory = Array.isArray(prodData.historique_offres) ? prodData.historique_offres : [];
           const filteredHistory = existingHistory.filter(h => !(h.receiptId === receiptId && h.magasin === storeId));
-          const updatedHistory = [...filteredHistory, priceRecord].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          const updatedHistory = [...filteredHistory, { ...offerDetail, magasin: storeId }].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-          // Recalcul du meilleur et pire magasin
-          const storeEntries = Object.entries(currentPrices);
-          let meilleur: { storeId: string; storeName: string; prix_unitaire: number } | undefined;
-          let pire: { storeId: string; storeName: string; prix_unitaire: number } | undefined;
+          // Recalcul de la meilleure et de la pire offre
+          const offerEntries = Object.entries(currentOffers);
+          let meilleure: { magasin_id: string; magasin_nom: string; prix_unitaire: number; unite: string } | undefined;
+          let pire: { magasin_id: string; magasin_nom: string; prix_unitaire: number; unite: string } | undefined;
 
-          if (storeEntries.length > 0) {
-            const sortedByPrice = [...storeEntries].sort((a, b) => a[1].prix_unitaire - b[1].prix_unitaire);
-            meilleur = {
-              storeId: sortedByPrice[0][0],
-              storeName: sortedByPrice[0][1].magasin_nom,
-              prix_unitaire: sortedByPrice[0][1].prix_unitaire
+          if (offerEntries.length > 0) {
+            const sortedByPrice = [...offerEntries].sort((a, b) => a[1].prix_unitaire - b[1].prix_unitaire);
+            meilleure = {
+              magasin_id: sortedByPrice[0][0],
+              magasin_nom: sortedByPrice[0][1].magasin_nom || sortedByPrice[0][0],
+              prix_unitaire: sortedByPrice[0][1].prix_unitaire,
+              unite: sortedByPrice[0][1].unite
             };
             pire = {
-              storeId: sortedByPrice[sortedByPrice.length - 1][0],
-              storeName: sortedByPrice[sortedByPrice.length - 1][1].magasin_nom,
-              prix_unitaire: sortedByPrice[sortedByPrice.length - 1][1].prix_unitaire
+              magasin_id: sortedByPrice[sortedByPrice.length - 1][0],
+              magasin_nom: sortedByPrice[sortedByPrice.length - 1][1].magasin_nom || sortedByPrice[sortedByPrice.length - 1][0],
+              prix_unitaire: sortedByPrice[sortedByPrice.length - 1][1].prix_unitaire,
+              unite: sortedByPrice[sortedByPrice.length - 1][1].unite
             };
           }
 
-          const diffMax = meilleur && pire ? Number((pire.prix_unitaire - meilleur.prix_unitaire).toFixed(2)) : 0;
+          const diffMax = meilleure && pire ? Number((pire.prix_unitaire - meilleure.prix_unitaire).toFixed(2)) : 0;
 
           transaction.update(productRef, {
+            offres_magasins: currentOffers,
             prix_actuel: currentPrices,
-            historique_prix: updatedHistory,
-            meilleur_magasin: meilleur || admin.firestore.FieldValue.delete(),
-            pire_magasin: pire || admin.firestore.FieldValue.delete(),
+            historique_offres: updatedHistory,
+            meilleure_offre: meilleure || admin.firestore.FieldValue.delete(),
+            pire_offre: pire || admin.firestore.FieldValue.delete(),
             ecart_prix_max: diffMax,
             derniere_mise_a_jour: nowIso,
             nombre_releves: updatedHistory.length
           });
         } else {
-          // Création à la volée du nouveau produit standardisé
-          const newDoc: StandardizedProductDocument = {
-            superKey,
-            marque: marque || 'generique',
-            nom_generique: nomGenerique,
-            poids_ou_volume: poidsOuVolume,
-            unite_mesure: unitMeasure,
-            rayon_assigne: aisle.label,
+          // RÈGLE 2 : Création à la volée du document structuré par Besoin Générique
+          const newDoc: GenericProductDocument = {
+            nom_generique: nomGeneriqueNettoye.charAt(0).toUpperCase() + nomGeneriqueNettoye.slice(1),
+            rayon: aisle.label,
             rayon_cle: aisle.key,
+            cle_besoin: cleBesoin,
+            offres_magasins: {
+              [storeId]: offerDetail
+            },
             prix_actuel: {
               [storeId]: {
                 prix_unitaire: Number(prixUnitaire.toFixed(2)),
@@ -550,11 +622,13 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
                 receiptId
               }
             },
+            historique_offres: [{ ...offerDetail, magasin: storeId }],
             historique_prix: [priceRecord],
-            meilleur_magasin: {
-              storeId,
-              storeName: storeDisplayName,
-              prix_unitaire: Number(prixUnitaire.toFixed(2))
+            meilleure_offre: {
+              magasin_id: storeId,
+              magasin_nom: storeDisplayName,
+              prix_unitaire: Number(prixUnitaire.toFixed(2)),
+              unite: unitMeasure
             },
             derniere_mise_a_jour: nowIso,
             nombre_releves: 1
@@ -582,7 +656,7 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
       totalDiscounts: totalDiscount > 0 ? Number(totalDiscount.toFixed(2)) : undefined,
       totalAmount: Number(totalAmount.toFixed(2)),
       items: enrichedReceiptItems,
-      superKeysCount: processedSuperKeys.length,
+      cleBesoinCount: processedKeys.length,
       createdAt: nowIso,
       updatedAt: nowIso
     };
@@ -595,6 +669,6 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
       storeId,
       storeName: storeDisplayName,
       processedItemsCount: enrichedReceiptItems.length,
-      superKeys: processedSuperKeys
+      cleBesoinList: processedKeys
     };
   });

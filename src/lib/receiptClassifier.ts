@@ -8,9 +8,12 @@ import {
   type ComparativeMatrix,
   type AisleGroup,
   type StandardizedProductDoc,
+  type GenericProductDoc,
   type StorePriceDetail,
   type PriceEvolutionInfo,
-  generateSuperKey
+  generateSuperKey,
+  generateGenericNeedKey,
+  KNOWN_BRANDS_AND_STORES
 } from '../types/receipts.ts';
 import { resolvePhysicalStore, TARGET_PHYSICAL_STORES, type PhysicalStoreDefinition } from './storeRegistry.ts';
 
@@ -740,14 +743,16 @@ export function buildComparativeMatrix(
     if (!receiptStore) return;
 
     receipt.items.forEach(item => {
-      const canonical = (item.normalizedName || item.rawName || 'Article').trim();
-      const lookupKey = canonical.toLowerCase();
+      // RÈGLE 1 : Clé de Besoin Générique (ex: "sauce_burger")
+      // Regroupe les produits répondant au même besoin indépendamment de la marque ou du format
+      const needKey = item.cle_besoin || generateGenericNeedKey(item.normalizedName || item.rawName, item.brand);
+      const lookupKey = needKey;
 
       // Respect de la règle d'audit : ignorer les produits supprimés de la matrice
-      if (hiddenSet.has(lookupKey)) return;
+      if (hiddenSet.has(lookupKey) || hiddenSet.has((item.normalizedName || '').toLowerCase())) return;
 
       const pricePaid = Number(item.pricePaid ?? item.price) || 0;
-      const weightOrVolume = String(item.weightOrVolume || '').trim();
+      const weightOrVolume = String(item.weightOrVolume || item.formatExact || '').trim();
       const quantity = Math.max(1, Number(item.quantity) || 1);
       const computed = computeUnitPrice(
         pricePaid, 
@@ -760,6 +765,13 @@ export function buildComparativeMatrix(
       const unit = item.unit || computed.unit;
       const brand = String(item.brand || '').trim();
 
+      // Nom générique propre en titre (ex: "Sauce Burger" ou "Lait demi-écrémé")
+      const rawNormalized = (item.nomGenerique || item.normalizedName || '').trim();
+      const hasBrandInName = item.brand && rawNormalized.toLowerCase().includes(item.brand.toLowerCase());
+      const hasKnownBrandInName = KNOWN_BRANDS_AND_STORES.some(b => rawNormalized.toLowerCase().includes(b));
+      const canonical = (rawNormalized && !hasBrandInName && !hasKnownBrandInName)
+        ? rawNormalized
+        : capitalizeWords(needKey.replace(/_/g, ' '));
       const normalizedCat = normalizeAisle(item.categoryKey || item.category || classifyItemAisle(canonical, item.rawName));
 
       if (!productMap.has(lookupKey)) {
@@ -1019,8 +1031,9 @@ export function buildComparativeMatrixFromProducts(
   const storeMap = new Map<string, { id: string; displayName: string; googleMapsUrl?: string; address?: string }>();
   
   products.forEach(p => {
-    if (p.prix_actuel) {
-      Object.values(p.prix_actuel).forEach(pa => {
+    const offers = (p as any).offres_magasins || p.prix_actuel;
+    if (offers) {
+      Object.values(offers).forEach((pa: any) => {
         const normName = normalizeStoreName(pa.magasin_nom);
         if (normName && !storeMap.has(normName)) {
           const resolved = resolvePhysicalStore({ storeName: normName });
@@ -1050,15 +1063,37 @@ export function buildComparativeMatrixFromProducts(
   stores.forEach(s => { storeWinCount[s] = 0; });
 
   products.forEach(p => {
-    const rawKey = p.superKey || `${p.marque}_${p.nom_generique}_${p.poids_ou_volume}`;
-    const lookupKey = (p.nom_generique || rawKey).trim().toLowerCase();
+    const rawKey = (p as any).cle_besoin || p.superKey || p.nom_generique;
+    const lookupKey = rawKey.trim().toLowerCase();
 
-    if (hiddenSet.has(lookupKey) || hiddenSet.has(p.superKey.toLowerCase())) {
+    if (hiddenSet.has(lookupKey) || hiddenSet.has(p.nom_generique.toLowerCase())) {
       return;
     }
 
     const storePrices: Record<string, StorePriceDetail> = {};
-    if (p.prix_actuel) {
+    const sampleBrands = new Set<string>();
+    if (p.marque && p.marque !== 'Générique') sampleBrands.add(p.marque);
+
+    if ((p as any).offres_magasins) {
+      Object.entries((p as any).offres_magasins).forEach(([stId, offer]: [string, any]) => {
+        const storeKey = normalizeStoreName(offer.magasin_nom || stId);
+        if (offer.marque && offer.marque !== 'Générique') sampleBrands.add(offer.marque);
+        storePrices[storeKey] = {
+          storeName: storeKey,
+          storeId: offer.magasin_id || stId,
+          googleMapsUrl: storeMetadata[storeKey]?.googleMapsUrl,
+          pricePaid: offer.prix_paye,
+          unitPrice: offer.prix_unitaire,
+          brand: offer.marque || 'Générique',
+          weightOrVolume: offer.format || '1 piece',
+          date: offer.date,
+          receiptId: offer.receiptId,
+          quantity: 1,
+          rawName: offer.rawName || p.nom_generique,
+          unit: offer.unite || p.unite_mesure || 'piece'
+        };
+      });
+    } else if (p.prix_actuel) {
       Object.values(p.prix_actuel).forEach(pa => {
         const storeKey = normalizeStoreName(pa.magasin_nom);
         storePrices[storeKey] = {
@@ -1083,20 +1118,21 @@ export function buildComparativeMatrixFromProducts(
     if (storeCount === 0) return;
 
     // Historique chronologique
-    const sortedHistory: StorePriceDetail[] = (p.historique_prix || []).map(h => ({
+    const historySource = (p as any).historique_offres || p.historique_prix || [];
+    const sortedHistory: StorePriceDetail[] = historySource.map((h: any) => ({
       storeName: normalizeStoreName(h.magasin_nom),
       storeId: h.magasin,
       googleMapsUrl: storeMetadata[normalizeStoreName(h.magasin_nom)]?.googleMapsUrl,
       pricePaid: h.prix_paye,
       unitPrice: h.prix_unitaire,
-      brand: p.marque,
-      weightOrVolume: p.poids_ou_volume,
+      brand: h.marque || p.marque,
+      weightOrVolume: h.format || p.poids_ou_volume,
       date: h.date,
       receiptId: h.receiptId,
-      quantity: h.quantite,
+      quantity: h.quantite || 1,
       rawName: p.nom_generique,
-      unit: p.unite_mesure
-    })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      unit: h.unite || p.unite_mesure
+    })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Évolution des prix
     let priceEvolution: PriceEvolutionInfo | undefined;
@@ -1178,17 +1214,15 @@ export function buildComparativeMatrixFromProducts(
       cheapestStore = presentStores[0];
     }
 
-    const aisle = normalizeAisle(p.rayon_cle || p.rayon_assigne);
-    const displayName = p.poids_ou_volume && p.poids_ou_volume !== '1_piece' 
-      ? `${p.nom_generique} (${p.poids_ou_volume})`
-      : p.nom_generique;
+    const aisle = normalizeAisle((p as any).rayon || p.rayon_cle || p.rayon_assigne);
+    const displayName = p.nom_generique;
 
     allRows.push({
       normalizedName: displayName,
       category: aisle.label,
       categoryKey: aisle.key,
       sampleRawNames: [p.nom_generique],
-      sampleBrands: [p.marque],
+      sampleBrands: sampleBrands.size > 0 ? Array.from(sampleBrands) : [p.marque || 'Générique'],
       storePrices,
       priceHistory: sortedHistory,
       priceEvolution,

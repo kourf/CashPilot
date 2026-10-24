@@ -17,6 +17,7 @@ import {
   CupSoda,
   MoreHorizontal,
   Eye,
+  EyeOff,
   RefreshCw,
   ShoppingBag,
   TrendingDown, 
@@ -534,20 +535,31 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
 
               {/* FILTRES COMPLÉMENTAIRES */}
               <div className="flex items-center gap-2 self-start sm:self-auto">
-                {/* TOGGLE UNIQUEMENT COMPARABLES (ACTIF UNIQUEMENT QUAND AU MOINS 2 ENSEIGNES EXISTENT) */}
-                {!matrix.isSingleReceipt && matrix.totalComparableProducts > 0 && (
+                {/* BONUS UI : BOUTON MASQUER LES PRODUITS SANS COMPARAISON */}
+                {!matrix.isSingleReceipt && (
                   <button
                     type="button"
                     onClick={() => setOnlyComparable(!onlyComparable)}
                     className={cn(
-                      "px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5",
+                      "px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs",
                       onlyComparable
-                        ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold"
-                        : "bg-secondary/60 hover:bg-secondary text-muted-foreground border-border/60"
+                        ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30"
+                        : "bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground border-border/70"
                     )}
+                    title={onlyComparable ? "Afficher tous les produits de la matrice" : "Masquer les produits sans comparaison (présents dans un seul magasin)"}
                   >
-                    <span className={cn("w-2 h-2 rounded-full", onlyComparable ? "bg-emerald-500" : "bg-muted-foreground/40")} />
-                    <span>Comparables uniquement ({matrix.totalComparableProducts})</span>
+                    {onlyComparable ? (
+                      <Eye size={13} className="text-emerald-500" />
+                    ) : (
+                      <EyeOff size={13} className="text-muted-foreground" />
+                    )}
+                    <span>{onlyComparable ? "Afficher tous les produits" : "Masquer les produits sans comparaison"}</span>
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.2 rounded-full font-mono font-semibold",
+                      onlyComparable ? "bg-emerald-500/30 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground"
+                    )}>
+                      {onlyComparable ? `${matrix.totalComparableProducts} comparables` : `${matrix.totalUniqueProducts - matrix.totalComparableProducts} sans comp.`}
+                    </span>
                   </button>
                 )}
 
@@ -759,19 +771,24 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                   key={product.normalizedName}
                                   className="hover:bg-secondary/20 dark:hover:bg-white/[0.02] transition-colors group"
                                 >
-                                  {/* 1. PRODUIT (FIXE / STICKY EN SCROLL MOBILE) */}
-                                  <td className="py-2.5 sm:py-3 px-3 sm:px-4 sticky left-0 bg-card/95 backdrop-blur-xs z-10 border-r border-border/40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] max-w-[140px] sm:max-w-[240px]">
-                                    <div className="flex flex-col">
-                                      <span className="font-bold text-foreground text-xs sm:text-sm tracking-tight leading-snug line-clamp-2">
+                                  {/* 1. PRODUIT (NOM GÉNÉRIQUE STANDARDISÉ ET RAYON) */}
+                                  <td className="py-2.5 sm:py-3 px-3 sm:px-4 sticky left-0 bg-card/95 backdrop-blur-xs z-10 border-r border-border/40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] max-w-[140px] sm:max-w-[240px] align-top">
+                                    <div className="flex flex-col space-y-1">
+                                      <span className="font-extrabold text-foreground text-xs sm:text-sm tracking-tight leading-snug line-clamp-2">
                                         {product.normalizedName}
                                       </span>
+                                      <div className="flex items-center gap-1 flex-wrap">
+                                        <span className="inline-flex items-center text-[9px] font-semibold px-1.5 py-0.2 rounded bg-secondary text-muted-foreground border border-border/60">
+                                          {product.category || group.aisle}
+                                        </span>
+                                      </div>
                                       {product.sampleBrands.length > 0 && product.sampleBrands[0] !== 'Générique' && (
-                                        <span className="text-[9px] sm:text-[10px] text-primary/80 font-medium mt-0.5 truncate">
+                                        <span className="text-[9px] sm:text-[10px] text-primary/80 font-medium truncate">
                                           Marque : {product.sampleBrands.join(', ')}
                                         </span>
                                       )}
                                       {product.sampleRawNames.length > 0 && product.sampleRawNames[0] !== product.normalizedName && (
-                                        <span className="text-[9px] sm:text-[10px] text-muted-foreground font-mono truncate mt-0.5">
+                                        <span className="text-[9px] sm:text-[10px] text-muted-foreground font-mono truncate">
                                           Ticket : {product.sampleRawNames[0]}
                                         </span>
                                       )}
@@ -784,7 +801,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                             setSelectedProductForEvolution(product);
                                           }}
                                           className={cn(
-                                            "text-left inline-flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-md mt-1.5 border transition-all hover:scale-[1.02] cursor-pointer shadow-xs",
+                                            "text-left inline-flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-md mt-1 border transition-all hover:scale-[1.02] cursor-pointer shadow-xs",
                                             (product.priceEvolution.status === 'HIKE' || product.priceEvolution.status === 'UP') && "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/25",
                                             (product.priceEvolution.status === 'DROP' || product.priceEvolution.status === 'DOWN') && "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25",
                                             product.priceEvolution.status === 'STABLE' && "bg-secondary text-muted-foreground border-border/80 hover:bg-secondary/80"
@@ -801,7 +818,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                     </div>
                                   </td>
 
-                                  {/* 2. COLONNES MAGASINS (PRIX RÉELS AUDITÉS AU KILO/LITRE) */}
+                                  {/* 2. COLONNES MAGASINS (PRIX AU KILO/LITRE EN GRAND & GRAS, DÉTAILS EN DESSOUS) */}
                                   {matrix.stores.map(store => {
                                     const priceInfo = product.storePrices[store];
                                     if (!priceInfo) {
@@ -820,48 +837,45 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                                       <td 
                                         key={store} 
                                         className={cn(
-                                          "py-3 px-3 text-center transition-colors",
+                                          "py-3 px-3 text-center transition-colors align-top",
                                           isCheapestInRow && "bg-emerald-500/[0.08] dark:bg-emerald-500/[0.12]"
                                         )}
                                       >
-                                        <div className="flex flex-col items-center justify-center">
-                                          {/* PRIX DE RÉFÉRENCE UNITAIRE STANDARDISÉ (€/KG OU €/L) */}
-                                          <span className={cn(
-                                            "font-bold font-mono text-sm flex items-baseline gap-0.5",
+                                        <div className="flex flex-col items-center justify-center space-y-1">
+                                          {/* PRIX AU KILO OU AU LITRE EN GRAS ET EN GRAND */}
+                                          <div className={cn(
+                                            "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight",
                                             isCheapestInRow 
-                                              ? "text-emerald-600 dark:text-emerald-400 font-extrabold" 
+                                              ? "text-emerald-600 dark:text-emerald-400" 
                                               : "text-foreground"
                                           )}>
                                             <span>{formatCurrency(unitPrice, { showSign: false })}</span>
-                                            <span className="text-[10px] font-normal text-muted-foreground">
-                                              /{priceInfo.unit || product.unit || 'u'}
+                                            <span className="text-[11px] font-bold text-muted-foreground">
+                                              /{priceInfo.unit || product.unit || 'kg'}
                                             </span>
-                                          </span>
+                                          </div>
 
-                                          {/* PRIX NET PAYÉ EN CAISSE & CONTENANCE */}
-                                          {(priceInfo.weightOrVolume || (priceInfo.pricePaid && priceInfo.pricePaid !== unitPrice)) && (
-                                            <span className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                                          {/* EN DESSOUS EN PLUS PETIT : Prix facial payé, Marque, Format/Quantité, Date */}
+                                          <div className="flex flex-col items-center justify-center text-[10px] leading-tight space-y-0.5">
+                                            <span className="font-semibold text-foreground/90 font-mono">
                                               {formatCurrency(priceInfo.pricePaid, { showSign: false })}
-                                              {priceInfo.weightOrVolume ? ` (${priceInfo.weightOrVolume})` : ''}
+                                              {priceInfo.weightOrVolume ? ` · ${priceInfo.weightOrVolume}` : ''}
                                             </span>
-                                          )}
-
-                                          {/* MARQUE CONSTATÉE SUR CE MAGASIN */}
-                                          {priceInfo.brand && priceInfo.brand !== 'Générique' && (
-                                            <span className="text-[9px] text-muted-foreground/80 font-medium truncate max-w-[100px] mt-0.5">
-                                              {priceInfo.brand}
+                                            {priceInfo.brand && priceInfo.brand !== 'Générique' && (
+                                              <span className="text-[9px] text-primary/90 font-medium truncate max-w-[110px]" title={priceInfo.brand}>
+                                                {priceInfo.brand}
+                                              </span>
+                                            )}
+                                            <span className="text-[9px] text-muted-foreground font-mono">
+                                              {formatDateFR(priceInfo.date)}
                                             </span>
-                                          )}
+                                          </div>
 
-                                          {/* BADGE "MOINS CHER" OU DATE D'ACHAT */}
-                                          {isCheapestInRow ? (
-                                            <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 mt-1 border border-emerald-500/30">
+                                          {/* BADGE "MOINS CHER" SI MEILLEURE OFFRE DE LA LIGNE */}
+                                          {isCheapestInRow && (
+                                            <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 mt-0.5 border border-emerald-500/30">
                                               <Check size={9} className="stroke-[3]" />
                                               Moins cher
-                                            </span>
-                                          ) : (
-                                            <span className="text-[9px] text-muted-foreground font-mono mt-0.5">
-                                              {formatDateFR(priceInfo.date)}
                                             </span>
                                           )}
                                         </div>

@@ -10,6 +10,7 @@ import {
   type SupermarketAisleKey,
   type StandardizedProductDoc,
   generateSuperKey,
+  generateGenericNeedKey,
   getReceiptUniqueKey
 } from '../types/receipts';
 import { 
@@ -410,8 +411,22 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     products.forEach(p => updatedProductsMap.set(p.superKey, { ...p }));
 
     for (const it of enrichedItems) {
-      const superKey = it.superKey || generateSuperKey(it.brand, it.normalizedName, it.weightOrVolume);
-      it.superKey = superKey;
+      // RÈGLE 1 & 2 : Clé de Besoin Générique et structure offres_magasins
+      const cleBesoin = it.cle_besoin || generateGenericNeedKey(it.normalizedName || it.rawName, it.brand);
+      it.cle_besoin = cleBesoin;
+      it.superKey = cleBesoin;
+
+      const offerRecord = {
+        prix_unitaire: it.unitPrice,
+        unite: it.unit || 'piece',
+        prix_paye: it.pricePaid,
+        marque: it.brand || 'Générique',
+        format: it.weightOrVolume || it.formatExact || '1 piece',
+        date: receiptData.date,
+        magasin_nom: normalizedStore,
+        magasin_id: storeId,
+        receiptId: docId
+      };
 
       const priceRecord = {
         date: receiptData.date,
@@ -423,9 +438,13 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         receiptId: docId
       };
 
-      const existingProd = updatedProductsMap.get(superKey);
+      const existingProd = updatedProductsMap.get(cleBesoin);
+      const nowIso = new Date().toISOString();
 
       if (existingProd) {
+        const currentOffers = { ...((existingProd as any).offres_magasins || {}) };
+        currentOffers[storeId] = offerRecord;
+
         const currentPrices = { ...(existingProd.prix_actuel || {}) };
         currentPrices[storeId] = {
           prix_unitaire: it.unitPrice,
@@ -437,40 +456,53 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           receiptId: docId
         };
 
-        const existingHist = Array.isArray(existingProd.historique_prix) ? existingProd.historique_prix : [];
-        const filteredHist = existingHist.filter(h => !(h.receiptId === docId && h.magasin === storeId));
-        const nextHist = [...filteredHist, priceRecord].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const existingHist = Array.isArray((existingProd as any).historique_offres) 
+          ? (existingProd as any).historique_offres 
+          : (existingProd.historique_prix || []);
+        const filteredHist = existingHist.filter((h: any) => !(h.receiptId === docId && (h.magasin === storeId || h.magasin_id === storeId)));
+        const nextHist = [...filteredHist, { ...offerRecord, magasin: storeId }].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        const sortedEntries = Object.entries(currentPrices).sort((a, b) => a[1].prix_unitaire - b[1].prix_unitaire);
-        const best = sortedEntries.length > 0 ? {
-          storeId: sortedEntries[0][0],
-          storeName: sortedEntries[0][1].magasin_nom,
-          prix_unitaire: sortedEntries[0][1].prix_unitaire
+        const sortedOffers = Object.entries(currentOffers).sort((a: any, b: any) => a[1].prix_unitaire - b[1].prix_unitaire);
+        const bestOffer = sortedOffers.length > 0 ? {
+          magasin_id: sortedOffers[0][0],
+          magasin_nom: sortedOffers[0][1].magasin_nom || sortedOffers[0][0],
+          prix_unitaire: sortedOffers[0][1].prix_unitaire,
+          unite: sortedOffers[0][1].unite
         } : undefined;
 
-        const updatedProd: StandardizedProductDoc = {
+        const updatedProd: any = {
           ...existingProd,
+          nom_generique: it.normalizedName,
+          rayon: it.category,
+          rayon_cle: it.categoryKey,
+          cle_besoin: cleBesoin,
+          offres_magasins: currentOffers,
           prix_actuel: currentPrices,
+          historique_offres: nextHist,
           historique_prix: nextHist,
-          meilleur_magasin: best,
+          meilleure_offre: bestOffer,
           derniere_mise_a_jour: nowIso,
           nombre_releves: nextHist.length
         };
-        updatedProductsMap.set(superKey, updatedProd);
+        updatedProductsMap.set(cleBesoin, updatedProd);
 
-        const prodDocRef = doc(db, `users/${accountId}/products/${superKey}`);
+        const prodDocRef = doc(db, `users/${accountId}/products/${cleBesoin}`);
         setDoc(prodDocRef, sanitizeForFirestore(updatedProd), { merge: true }).catch(err => {
-          console.warn(`Erreur sync produit Firestore ${superKey}:`, err);
+          console.warn(`Erreur sync produit Firestore ${cleBesoin}:`, err);
         });
       } else {
-        const newProd: StandardizedProductDoc = {
-          superKey,
-          marque: it.brand || 'generique',
+        const newProd: any = {
           nom_generique: it.normalizedName,
-          poids_ou_volume: it.weightOrVolume || '1 piece',
+          rayon: it.category || 'Autres / Divers',
+          rayon_cle: it.categoryKey || 'autres_divers',
+          cle_besoin: cleBesoin,
+          superKey: cleBesoin,
+          marque: it.brand || 'Générique',
+          poids_ou_volume: it.weightOrVolume || it.formatExact || '1 piece',
           unite_mesure: (it.unit as any) || 'piece',
-          rayon_assigne: (it.category as any) || 'Autres / Divers',
-          rayon_cle: (it.categoryKey as any) || 'autres_divers',
+          offres_magasins: {
+            [storeId]: offerRecord
+          },
           prix_actuel: {
             [storeId]: {
               prix_unitaire: it.unitPrice,
@@ -482,20 +514,22 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               receiptId: docId
             }
           },
-          historique_prix: [priceRecord],
-          meilleur_magasin: {
-            storeId,
-            storeName: normalizedStore,
-            prix_unitaire: it.unitPrice
+          historique_offres: [{ ...offerRecord, magasin: storeId }],
+          historique_prix: [{ ...offerRecord, magasin: storeId }],
+          meilleure_offre: {
+            magasin_id: storeId,
+            magasin_nom: normalizedStore,
+            prix_unitaire: it.unitPrice,
+            unite: it.unit || 'piece'
           },
           derniere_mise_a_jour: nowIso,
           nombre_releves: 1
         };
-        updatedProductsMap.set(superKey, newProd);
+        updatedProductsMap.set(cleBesoin, newProd);
 
-        const prodDocRef = doc(db, `users/${accountId}/products/${superKey}`);
+        const prodDocRef = doc(db, `users/${accountId}/products/${cleBesoin}`);
         setDoc(prodDocRef, sanitizeForFirestore(newProd)).catch(err => {
-          console.warn(`Erreur creation produit Firestore ${superKey}:`, err);
+          console.warn(`Erreur creation produit Firestore ${cleBesoin}:`, err);
         });
       }
     }

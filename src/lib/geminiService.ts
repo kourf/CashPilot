@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIES } from './bankParser.ts';
 import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from './receiptClassifier';
-import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey } from '../types/receipts';
+import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey, generateGenericNeedKey } from '../types/receipts';
 import { resolvePhysicalStore, TARGET_PHYSICAL_STORES } from './storeRegistry.ts';
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
@@ -1610,8 +1610,11 @@ export interface RawExtractedItem {
   unit: string;
   price?: number; // Rétrocompatibilité
   superKey?: string; // Super Clé universelle [marque]_[nom_generique]_[poids_ou_volume]
+  cle_besoin?: string; // Clé de Besoin Générique (ex: "sauce_burger")
+  format_exact?: string;
   marque?: string;
   nomGenerique?: string;
+  nom_generique_nettoye?: string;
   poidsOuVolume?: string;
   prixPaye?: number;
   prixUnitaireCalcule?: number;
@@ -1762,11 +1765,11 @@ Filet de sécurité :
 
 RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE AUTOUR, AUCUN MARKDOWN) :
 {
-  "storeName": "Intermarché",
-  "storeAddress": "5 Rue René Cassin",
-  "storePostalCode": "74240",
-  "storeCity": "Gaillard",
-  "storeRawHeader": "INTERMARCHE GAILLARD - 5 RUE RENE CASSIN - 74240 GAILLARD",
+  "storeName": "Super U",
+  "storeAddress": "Shopping Léman - 21 Chemin du Carre",
+  "storePostalCode": "74100",
+  "storeCity": "Étrembières",
+  "storeRawHeader": "SUPER U ETREMBIERES - SHOPPING LEMAN - 74100 ETREMBIERES",
   "date": "2026-10-18",
   "time": "14:32",
   "totalArticles": 31.25,
@@ -1776,25 +1779,25 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
   "totalAmount": 28.45,
   "items": [
     {
-      "marque": "generique",
-      "nom_generique": "Courgettes rondes",
-      "poids_ou_volume": "0.420 kg",
-      "prix_paye": 1.47,
-      "prix_unitaire_calcule": 3.49,
+      "nom_generique_nettoye": "Sauce burger",
+      "marque": "Super U",
+      "format_exact": "500g",
+      "prix_paye": 2.29,
+      "prix_unitaire_calcule": 4.58,
       "unite_mesure": "kg",
-      "rayon_assigne": "Fruits & Légumes",
-      "rawName": "COURGETTES RONDES",
+      "rayon_assigne": "Épicerie salée & Épices",
+      "rawName": "SAUCE BURGER 500G U",
       "quantity": 1
     },
     {
-      "marque": "Danone",
-      "nom_generique": "Actimel fraise",
-      "poids_ou_volume": "8x100g",
-      "prix_paye": 3.49,
-      "prix_unitaire_calcule": 4.36,
-      "unite_mesure": "kg",
+      "nom_generique_nettoye": "Lait demi-écrémé",
+      "marque": "generique",
+      "format_exact": "1L",
+      "prix_paye": 0.98,
+      "prix_unitaire_calcule": 0.98,
+      "unite_mesure": "L",
       "rayon_assigne": "Produits frais & Crèmerie",
-      "rawName": "ACTIMEL FRAISE 8X100G",
+      "rawName": "LAIT DEMI ECREME 1L",
       "quantity": 1
     }
   ]
@@ -1932,11 +1935,14 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         continue;
       }
 
-      // Règle 5 : Extraction champs JSON Strict & rétrocompatibilité
+      // Règle 4 : Extraction champs JSON Strict & Clé de Besoin Générique
       const rawBrand = String(it.marque || it.brand || '').trim();
-      const rawNorm = String(it.nom_generique || it.normalizedName || it.cleanName || raw).trim();
-      const rawWeight = String(it.poids_ou_volume || it.weightOrVolume || '').trim();
+      const rawNorm = String(it.nom_generique_nettoye || it.nom_generique || it.normalizedName || it.cleanName || raw).trim();
+      const rawFormat = String(it.format_exact || it.poids_ou_volume || it.weightOrVolume || '').trim();
       const rawAisle = String(it.rayon_assigne || it.categoryKey || it.category || classifyItemAisle(rawNorm, raw));
+
+      // Règle 1 : La "Clé de Besoin Générique" (ex: "sauce_burger")
+      const cleBesoin = generateGenericNeedKey(rawNorm, rawBrand);
 
       // Règle 2 : Gestion des produits génériques / frais sans marque
       const isGeneric = !rawBrand || 
@@ -1949,7 +1955,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
       const brand = isGeneric ? 'Générique' : (rawBrand.charAt(0).toUpperCase() + rawBrand.slice(1));
       const norm = rawNorm.charAt(0).toUpperCase() + rawNorm.slice(1);
       const qty = Math.max(1, Number(it.quantity) || 1);
-      const weightOrVolume = rawWeight;
+      const weightOrVolume = rawFormat;
       const weightOrVolumeValue = typeof it.weightOrVolumeValue === 'number' ? it.weightOrVolumeValue : undefined;
       const weightOrVolumeUnit = typeof it.weightOrVolumeUnit === 'string' ? it.weightOrVolumeUnit : undefined;
 
@@ -1970,7 +1976,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         unitPrice = comp.unitPrice;
       }
 
-      // Règle 1 : La "Super Clé" Universelle [marque]_[nom_generique]_[poids_ou_volume]
+      // Super Clé de compatibilité
       const superKey = generateSuperKey(brand, norm, weightOrVolume);
 
       validExtractedItems.push({
@@ -1989,8 +1995,11 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         unit,
         price: Number(pricePaid.toFixed(2)),
         superKey,
+        cle_besoin: cleBesoin,
+        format_exact: rawFormat,
         marque: brand,
         nomGenerique: norm,
+        nom_generique_nettoye: norm,
         poidsOuVolume: weightOrVolume,
         prixPaye: Number(pricePaid.toFixed(2)),
         prixUnitaireCalcule: Number(unitPrice.toFixed(2)),
@@ -1999,10 +2008,10 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
       });
     }
 
-    // Fusion stricte anti-doublon des articles identiques au sein du ticket via la Super Clé
+    // Fusion stricte anti-doublon des articles identiques au sein du ticket via la Clé de Besoin Générique
     const consolidatedMap = new Map<string, typeof validExtractedItems[0]>();
     validExtractedItems.forEach(item => {
-      const key = item.superKey || `${item.normalizedName.toLowerCase()}__${(item.unit || '').toLowerCase()}`;
+      const key = item.cle_besoin || item.superKey || `${item.normalizedName.toLowerCase()}__${(item.unit || '').toLowerCase()}`;
       if (consolidatedMap.has(key)) {
         const existing = consolidatedMap.get(key)!;
         existing.quantity += item.quantity;

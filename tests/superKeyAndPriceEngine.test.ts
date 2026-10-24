@@ -2,10 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { 
   generateSuperKey,
-  type StandardizedProductDoc
+  generateGenericNeedKey,
+  type StandardizedProductDoc,
+  type GenericProductDoc
 } from '../src/types/receipts.ts';
 import { 
   normalizeAisle,
+  buildComparativeMatrix,
   buildComparativeMatrixFromProducts
 } from '../src/lib/receiptClassifier.ts';
 
@@ -122,5 +125,84 @@ describe('Audit Financier : Super Clé Universelle & Matrice Comparative 0 €',
     assert.strictEqual(fruitsGroup.products[0].lowestUnitPrice, 0.79);
     assert.strictEqual(fruitsGroup.products[0].highestUnitPrice, 0.99);
     assert.strictEqual(fruitsGroup.products[0].cheapestStore, 'Lidl - Annemasse');
+  });
+
+  it('5. Clé de Besoin Générique : Isole le besoin brut et regroupe des marques/formats différents (ex: Sauce burger)', () => {
+    // "Sauce burger Super U" -> "sauce_burger"
+    const key1 = generateGenericNeedKey('Sauce burger Super U', 'Super U');
+    assert.strictEqual(key1, 'sauce_burger');
+
+    // "Sauce burger flacon souple 510g Leclerc" -> "sauce_burger"
+    const key2 = generateGenericNeedKey('Sauce burger flacon souple 510g Leclerc', 'Marque Repère');
+    assert.strictEqual(key2, 'sauce_burger');
+
+    // Sans paramètre de marque explicite
+    const key3 = generateGenericNeedKey('Sauce burger flacon souple 510g');
+    assert.strictEqual(key3, 'sauce_burger');
+
+    // Autre exemple : lait demi-écrémé brique 1L
+    const key4 = generateGenericNeedKey('Lait demi-écrémé brique 1L', 'Candia');
+    assert.strictEqual(key4, 'lait_demi_ecreme');
+  });
+
+  it('6. Matrice Comparative : Regroupe sous un document unique à Clé de Besoin Générique et structure offres_magasins', () => {
+    const genericDocs: any[] = [
+      {
+        nom_generique: 'Sauce Burger',
+        rayon: 'Épicerie salée & Épices',
+        rayon_cle: 'epicerie_salee',
+        cle_besoin: 'sauce_burger',
+        offres_magasins: {
+          super_u_etrembieres: {
+            prix_unitaire: 4.58,
+            unite: 'kg',
+            prix_paye: 2.29,
+            marque: 'Super U',
+            format: '500g',
+            date: '2026-10-18',
+            magasin_nom: 'Super U Étrembières',
+            magasin_id: 'super_u_etrembieres'
+          },
+          leclerc_ville_la_grand: {
+            prix_unitaire: 4.10,
+            unite: 'kg',
+            prix_paye: 2.09,
+            marque: 'Marque Repère',
+            format: '510g',
+            date: '2026-10-24',
+            magasin_nom: 'E.Leclerc Ville-la-Grand',
+            magasin_id: 'leclerc_ville_la_grand'
+          }
+        },
+        meilleure_offre: {
+          magasin_id: 'leclerc_ville_la_grand',
+          magasin_nom: 'E.Leclerc - Ville-la-Grand',
+          prix_unitaire: 4.10,
+          unite: 'kg'
+        },
+        derniere_mise_a_jour: '2026-10-24T18:00:00Z',
+        nombre_releves: 2
+      }
+    ];
+
+    const matrix = buildComparativeMatrixFromProducts(genericDocs, [], 2);
+
+    assert.strictEqual(matrix.stores.length, 2);
+    assert.strictEqual(matrix.totalUniqueProducts, 1);
+    assert.strictEqual(matrix.totalComparableProducts, 1);
+
+    const epicerieGroup = matrix.aisleGroups.find(g => g.key === 'epicerie_salee');
+    assert.ok(epicerieGroup, 'Groupe Épicerie salée présent');
+    assert.strictEqual(epicerieGroup.products.length, 1);
+
+    const row = epicerieGroup.products[0];
+    assert.strictEqual(row.normalizedName, 'Sauce Burger');
+    assert.strictEqual(row.status, 'COMPARABLE');
+    assert.strictEqual(row.lowestUnitPrice, 4.10);
+    assert.strictEqual(row.highestUnitPrice, 4.58);
+    // Écart de prix : 4.58 - 4.10 = 0.48 €/kg
+    assert.strictEqual(row.unitPriceDifference, 0.48);
+    assert.ok(row.sampleBrands.includes('Super U'));
+    assert.ok(row.sampleBrands.includes('Marque Repère'));
   });
 });

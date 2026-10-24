@@ -63,6 +63,8 @@ export interface ReceiptItem {
   storeId?: string; // Identifiant unique du magasin physique exact (ex: 'intermarche_gaillard', 'carrefour_market_annemasse')
   storeName?: string; // Nom officiel localisé du magasin (ex: 'Intermarché - Gaillard', 'Carrefour Market Annemasse')
   superKey?: string; // Super Clé standardisée ([marque]_[nom_generique]_[poids_ou_volume])
+  cle_besoin?: string; // Clé de Besoin Générique (ex: "sauce_burger")
+  formatExact?: string; // Format / contenance exacte lue sur le ticket (ex: "510g")
   marque?: string; // Alias vers brand
   nomGenerique?: string; // Alias vers normalizedName
 }
@@ -291,4 +293,110 @@ export interface StandardizedProductDoc {
   derniere_mise_a_jour: string;
   nombre_releves: number;
 }
+
+/**
+ * ============================================================================
+ * RÈGLE 2 : NOUVELLE STRUCTURE FIRESTORE (100% GRATUITE)
+ * Regroupe les offres par magasin sous la Clé de Besoin Générique
+ * ============================================================================
+ */
+export interface StoreOfferDetail {
+  prix_unitaire: number; // Prix au kilo, au litre ou à la pièce (€/kg, €/L, €/u)
+  unite: string; // "kg", "L", "piece"
+  prix_paye: number; // Prix facial payé en caisse
+  marque: string; // Marque du produit ("Super U", "Marque Repère", "Générique", etc.)
+  format: string; // Format / contenance lue ("500g", "510g", "1.5L", etc.)
+  date: string; // Date du relevé YYYY-MM-DD
+  magasin_nom?: string; // Nom officiel du magasin (ex: "Super U Étrembières")
+  magasin_id?: string; // ID physique (ex: "super_u_etrembieres")
+  receiptId?: string; // ID du ticket source
+  rawName?: string; // Nom brut sur le ticket
+}
+
+export interface GenericProductDoc {
+  nom_generique: string; // Nom générique propre (ex: "Sauce Burger")
+  rayon: SupermarketAisle | string; // Libellé officiel du rayon (ex: "Épicerie salée & Épices")
+  rayon_cle?: SupermarketAisleKey; // Clé normalisée (ex: "epicerie_salee")
+  cle_besoin?: string; // Clé normalisée unique (ex: "sauce_burger")
+  offres_magasins: Record<string, StoreOfferDetail>; // Magasin -> Offre la plus récente
+  historique_offres?: Array<StoreOfferDetail & { magasin: string }>;
+  derniere_mise_a_jour?: string;
+  meilleure_offre?: {
+    magasin_id: string;
+    magasin_nom: string;
+    prix_unitaire: number;
+    unite: string;
+  };
+  pire_offre?: {
+    magasin_id: string;
+    magasin_nom: string;
+    prix_unitaire: number;
+    unite: string;
+  };
+  ecart_prix_max?: number;
+}
+
+export const KNOWN_BRANDS_AND_STORES = [
+  'super u', 'u', 'leclerc', 'e.leclerc', 'marque repere', 'carrefour', 'carrefour market',
+  'intermarche', 'lidl', 'aldi', 'auchan', 'monoprix', 'casino', 'cora', 'franprix',
+  'leader price', 'danone', 'barilla', 'panzani', 'heinz', 'amora', 'president', 
+  'cristaline', 'volvic', 'evian', 'coca cola', 'coca-cola', 'freeway', 'milka', 'nestle'
+] as const;
+
+export const KNOWN_PACKAGING_WORDS = [
+  'flacon', 'bouteille', 'brique', 'boite', 'sachet', 'pot', 'pack', 'filet', 
+  'barquette', 'lot', 'tube', 'etui', 'canette', 'portion', 'portions', 'souple', 
+  'verre', 'plastique', 'bocal', 'conserve', 'familial', 'eco', 'recharge', 'cuisson', 'rapide'
+] as const;
+
+/**
+ * ============================================================================
+ * RÈGLE 1 : LA "CLÉ DE BESOIN GÉNÉRIQUE"
+ * Isole uniquement le besoin brut en éliminant la marque, le format et le conditionnement.
+ * Exemples :
+ * - "Sauce burger Super U" -> "sauce_burger"
+ * - "Sauce burger flacon souple 510g Leclerc" -> "sauce_burger"
+ * - "Lait demi-écrémé brique 1L" -> "lait_demi_ecreme"
+ * ============================================================================
+ */
+export function generateGenericNeedKey(rawName?: string, brand?: string): string {
+  if (!rawName || typeof rawName !== 'string') {
+    return 'produit';
+  }
+
+  let s = rawName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (brand && typeof brand === 'string') {
+    const b = brand.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    if (b && b !== 'generique' && b !== 'générique') {
+      s = s.replace(new RegExp('\\b' + b.replace(/[^a-z0-9]/g, '\\s*') + '\\b', 'gi'), ' ');
+    }
+  }
+
+  // Suppression des formats et quantités numériques (ex: "500g", "510 g", "1.5l", "6x1l", "4x100g")
+  s = s.replace(/\b\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml|piece|pieces|unite|unites)\b/gi, ' ');
+  s = s.replace(/\b\d+\s*x\s*\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml)?\b/gi, ' ');
+  s = s.replace(/\bx\s*\d+\b/gi, ' ');
+
+  // Suppression des marques et enseignes courantes
+  for (const b of KNOWN_BRANDS_AND_STORES) {
+    s = s.replace(new RegExp('\\b' + b.replace(/[^a-z0-9]/g, '\\s*') + '\\b', 'gi'), ' ');
+  }
+
+  // Suppression des conditionnements
+  for (const w of KNOWN_PACKAGING_WORDS) {
+    s = s.replace(new RegExp('\\b' + w + '\\b', 'gi'), ' ');
+  }
+
+  // Caractères spéciaux vers underscore
+  s = s.replace(/[^a-z0-9]+/g, '_')
+       .replace(/_+/g, '_')
+       .replace(/^_|_$/g, '');
+
+  return s || 'produit';
+}
+
 
