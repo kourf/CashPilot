@@ -24,11 +24,17 @@ import {
 } from '../../../types/receipts';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
 import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle, normalizeStoreName, reconcileStoreWithExisting } from '../../../lib/receiptClassifier';
+import { KNOWN_PHYSICAL_STORES_LIST, resolvePhysicalStore } from '../../../lib/storeRegistry';
 
 interface ReceiptValidationModalProps {
   isOpen: boolean;
   initialData: {
     storeName: string;
+    storeId?: string;
+    storeAddress?: string;
+    storeCity?: string;
+    storePostalCode?: string;
+    googleMapsUrl?: string;
     date: string;
     time?: string;
     totalArticles?: number;
@@ -57,6 +63,11 @@ interface ReceiptValidationModalProps {
   onCancel: () => void;
   onSave: (validatedData: {
     storeName: string;
+    storeId?: string;
+    storeAddress?: string;
+    storeCity?: string;
+    storePostalCode?: string;
+    googleMapsUrl?: string;
     date: string;
     time?: string;
     totalArticles?: number;
@@ -75,14 +86,22 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
   onCancel,
   onSave
 }) => {
-  const [storeName, setStoreName] = useState(normalizeStoreName(initialData.storeName || 'Supermarché'));
+  const initialResolved = resolvePhysicalStore({
+    storeName: initialData.storeName || 'Supermarché',
+    storeAddress: initialData.storeAddress,
+    storePostalCode: initialData.storePostalCode,
+    storeCity: initialData.storeCity
+  });
+  const [storeName, setStoreName] = useState(initialResolved.displayName);
   const [date, setDate] = useState(initialData.date || new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState(initialData.time || '');
   const [totalDiscounts, setTotalDiscounts] = useState(initialData.totalDiscounts || 0);
   const [totalAmount, setTotalAmount] = useState(initialData.totalAmount || 0);
 
   const existingStoreNames = React.useMemo(() => {
-    return Array.from(new Set(existingReceipts.map(r => normalizeStoreName(r.storeName)).filter(Boolean)));
+    const fromReceipts = existingReceipts.map(r => normalizeStoreName(r.storeName, r.storeAddress)).filter(Boolean);
+    const fromKnown = KNOWN_PHYSICAL_STORES_LIST.map(s => s.displayName);
+    return Array.from(new Set([...fromKnown, ...fromReceipts]));
   }, [existingReceipts]);
 
   const [items, setItems] = useState<ReceiptItem[]>(() => {
@@ -242,10 +261,22 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
       };
     });
 
+    const resolvedStore = resolvePhysicalStore({
+      storeName: cleanStore,
+      storeAddress: initialData.storeAddress,
+      storePostalCode: initialData.storePostalCode,
+      storeCity: initialData.storeCity
+    });
+
     try {
       setIsSaving(true);
       await onSave({
-        storeName: cleanStore,
+        storeName: resolvedStore.displayName,
+        storeId: resolvedStore.id,
+        storeAddress: resolvedStore.address,
+        storeCity: resolvedStore.city,
+        storePostalCode: resolvedStore.postalCode,
+        googleMapsUrl: resolvedStore.googleMapsUrl,
         date,
         time: time.trim() || undefined,
         totalArticles: Number(sumItems.toFixed(2)),

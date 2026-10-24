@@ -17,7 +17,9 @@ import {
   FileSpreadsheet,
   Info,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ExternalLink,
+  MapPin
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -31,6 +33,7 @@ import { ReceiptValidationModal } from './components/ReceiptValidationModal';
 import { ManualReceiptModal } from './components/ManualReceiptModal';
 import { SpendingChartsView } from './components/SpendingChartsView';
 import { WhereToBuySection } from './components/WhereToBuySection';
+import { TARGET_PHYSICAL_STORES } from '../../lib/storeRegistry';
 
 interface UploadedFilePreview {
   id: string;
@@ -164,6 +167,11 @@ export default function Receipts() {
    */
   const handleSaveValidatedReceipt = async (validatedData: {
     storeName: string;
+    storeId?: string;
+    storeAddress?: string;
+    storeCity?: string;
+    storePostalCode?: string;
+    googleMapsUrl?: string;
     date: string;
     time?: string;
     totalArticles?: number;
@@ -175,6 +183,11 @@ export default function Receipts() {
   }) => {
     await addReceipt({
       storeName: validatedData.storeName,
+      storeId: validatedData.storeId,
+      storeAddress: validatedData.storeAddress,
+      storeCity: validatedData.storeCity,
+      storePostalCode: validatedData.storePostalCode,
+      googleMapsUrl: validatedData.googleMapsUrl,
       date: validatedData.date,
       time: validatedData.time,
       totalArticles: validatedData.totalArticles,
@@ -193,6 +206,11 @@ export default function Receipts() {
    */
   const handleSaveManualReceipt = async (data: {
     storeName: string;
+    storeId?: string;
+    storeAddress?: string;
+    storeCity?: string;
+    storePostalCode?: string;
+    googleMapsUrl?: string;
     date: string;
     time?: string;
     totalArticles?: number;
@@ -203,6 +221,11 @@ export default function Receipts() {
   }) => {
     await addReceipt({
       storeName: data.storeName,
+      storeId: data.storeId,
+      storeAddress: data.storeAddress,
+      storeCity: data.storeCity,
+      storePostalCode: data.storePostalCode,
+      googleMapsUrl: data.googleMapsUrl,
       date: data.date,
       time: data.time,
       totalArticles: data.totalArticles,
@@ -376,6 +399,46 @@ export default function Receipts() {
           }}
         />
       )}
+
+      {/* ========================================================================= */}
+      {/* BANDEAU DES 3 MAGASINS INTERMARCHÉ CIBLÉS (DIFFÉRENCIATION GÉOGRAPHIQUE)  */}
+      {/* ========================================================================= */}
+      <div className="p-3 sm:p-3.5 rounded-2xl bg-card/80 dark:bg-card/50 backdrop-blur-md border border-border/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+            <Store size={16} />
+          </div>
+          <div>
+            <span className="text-xs font-black text-foreground block">
+              Comparateur Localisé des 3 Intermarché
+            </span>
+            <span className="text-[11px] text-muted-foreground block">
+              Chaque magasin physique est comparé dans une colonne distincte avec son lien Google Maps.
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {[
+            TARGET_PHYSICAL_STORES.intermarche_gaillard,
+            TARGET_PHYSICAL_STORES.intermarche_annemasse,
+            TARGET_PHYSICAL_STORES.intermarche_ville_la_grand
+          ].map(st => (
+            <a
+              key={st.id}
+              href={st.googleMapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-bold bg-secondary/80 hover:bg-secondary text-foreground border border-border/80 hover:border-primary/40 transition-all shadow-2xs group"
+              title={`Ouvrir ${st.googleMapsName} sur Google Maps (${st.address})`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+              <span>{st.displayName}</span>
+              <ExternalLink size={10} className="text-muted-foreground group-hover:text-primary transition-colors" />
+            </a>
+          ))}
+        </div>
+      </div>
 
       {/* NAVIGATION PAR ONGLETS (STYLE APPLE GLASS & HARMONYOS) */}
       <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-secondary/50 border border-border/70 w-full sm:w-fit overflow-x-auto no-scrollbar">

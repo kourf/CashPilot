@@ -21,6 +21,7 @@ import {
   getReceiptUniqueKey
 } from '../../../types/receipts';
 import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle, normalizeStoreName, reconcileStoreWithExisting } from '../../../lib/receiptClassifier';
+import { KNOWN_PHYSICAL_STORES_LIST, resolvePhysicalStore } from '../../../lib/storeRegistry';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
 
 interface ManualReceiptModalProps {
@@ -29,6 +30,11 @@ interface ManualReceiptModalProps {
   onClose: () => void;
   onSave: (data: {
     storeName: string;
+    storeId?: string;
+    storeAddress?: string;
+    storeCity?: string;
+    storePostalCode?: string;
+    googleMapsUrl?: string;
     date: string;
     time?: string;
     totalArticles?: number;
@@ -52,7 +58,12 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
   const [totalAmount, setTotalAmount] = useState<number>(0);
 
   const existingStoreNames = React.useMemo(() => {
-    return Array.from(new Set(existingReceipts.map(r => normalizeStoreName(r.storeName)).filter(Boolean)));
+    const list = new Set<string>();
+    KNOWN_PHYSICAL_STORES_LIST.forEach(s => list.add(s.displayName));
+    existingReceipts.forEach(r => {
+      if (r.storeName) list.add(normalizeStoreName(r.storeName, r.storeAddress));
+    });
+    return Array.from(list);
   }, [existingReceipts]);
   
   const [items, setItems] = useState<ReceiptItem[]>([
@@ -160,10 +171,17 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
       return;
     }
 
+    const resolvedStore = resolvePhysicalStore(cleanStore);
+
     try {
       setIsSaving(true);
       await onSave({
-        storeName: cleanStore,
+        storeName: resolvedStore.displayName,
+        storeId: resolvedStore.id,
+        storeAddress: resolvedStore.address,
+        storeCity: resolvedStore.city,
+        storePostalCode: resolvedStore.postalCode,
+        googleMapsUrl: resolvedStore.googleMapsUrl,
         date,
         time: time.trim() || undefined,
         totalArticles: Number(sumItems.toFixed(2)),
@@ -277,7 +295,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
                   list="manual-existing-stores"
-                  placeholder="ex: Lidl Annemasse, E.Leclerc Ville-la-Grand..."
+                  placeholder="ex: Intermarché - Gaillard, Intermarché - Annemasse, E.Leclerc - Ville-la-Grand..."
                   className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
                 />
                 <datalist id="manual-existing-stores">

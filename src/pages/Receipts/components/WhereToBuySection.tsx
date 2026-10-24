@@ -20,7 +20,8 @@ import {
   Flower2,
   Award,
   Layers,
-  ChevronRight
+  ChevronRight,
+  ExternalLink
 } from 'lucide-react';
 import { 
   type Receipt, 
@@ -32,6 +33,7 @@ import {
 } from '../../../types/receipts';
 import { cn } from '../../../lib/utils';
 import { normalizeStoreName } from '../../../lib/receiptClassifier';
+import { resolvePhysicalStore } from '../../../lib/storeRegistry.ts';
 
 interface WhereToBuySectionProps {
   receipts: Receipt[];
@@ -57,6 +59,9 @@ interface CategoryRecommendation {
 
 interface StoreRecommendationGroup {
   storeName: string;
+  storeId?: string;
+  googleMapsUrl?: string;
+  address?: string;
   ticketCount: number;
   totalItems: number;
   branding: {
@@ -391,11 +396,20 @@ export const WhereToBuySection: React.FC<WhereToBuySectionProps> = ({
     const storeMap = new Map<string, StoreRecommendationGroup>();
 
     receipts.forEach(r => {
-      const s = normalizeStoreName(r.storeName);
+      const resolved = resolvePhysicalStore({
+        storeName: r.storeName,
+        storeAddress: r.storeAddress,
+        storePostalCode: r.storePostalCode,
+        storeCity: r.storeCity
+      });
+      const s = resolved.displayName;
       if (!s) return;
       if (!storeMap.has(s)) {
         storeMap.set(s, {
           storeName: s,
+          storeId: resolved.id,
+          googleMapsUrl: resolved.googleMapsUrl,
+          address: resolved.address,
           ticketCount: 0,
           totalItems: 0,
           branding: getStoreBranding(s),
@@ -525,14 +539,33 @@ export const WhereToBuySection: React.FC<WhereToBuySectionProps> = ({
                         <Store size={22} />
                       </div>
                       <div>
-                        <h4 className="text-base sm:text-lg font-black text-foreground tracking-tight">
-                          {grp.storeName}
-                        </h4>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="text-base sm:text-lg font-black text-foreground tracking-tight">
+                            {grp.storeName}
+                          </h4>
+                          {grp.googleMapsUrl && (
+                            <a
+                              href={grp.googleMapsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-muted-foreground hover:text-primary transition-colors p-0.5 rounded"
+                              title={`Voir ${grp.storeName} sur Google Maps`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink size={12} className="text-primary/80" />
+                            </a>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-medium mt-0.5">
                           <span>{grp.ticketCount} ticket{grp.ticketCount > 1 ? 's' : ''}</span>
                           <span>•</span>
                           <span>{grp.totalItems} articles analysés</span>
                         </div>
+                        {grp.address && (
+                          <div className="text-[10px] text-muted-foreground/80 truncate max-w-[240px] font-sans">
+                            {grp.address}
+                          </div>
+                        )}
                       </div>
                     </div>
 

@@ -8,6 +8,7 @@ import {
   type ComparativeMatrix,
   type AisleGroup
 } from '../types/receipts.ts';
+import { resolvePhysicalStore, TARGET_PHYSICAL_STORES, type PhysicalStoreDefinition } from './storeRegistry.ts';
 
 export const AISLE_KEY_TO_LABEL: Record<SupermarketAisleKey, SupermarketAisle> = {
   boucherie_poissonnerie: 'Boucherie, Volaille & Poissonnerie',
@@ -573,9 +574,10 @@ function cleanCityLocation(rawCity: string): string {
 /**
  * Normalise rigoureusement le nom d'un magasin pour éviter les doublons dus à la casse,
  * aux adresses superflues, aux espaces multiples ou aux variations d'OCR.
- * Format canonique garanti : "[Enseigne] [Ville]" (ex: "E.Leclerc Ville-la-Grand", "Super U Etrembières").
+ * Format canonique garanti via le référentiel physique : "[Enseigne] - [Commune]"
+ * (ex: "Intermarché - Gaillard", "Intermarché - Annemasse", "Intermarché - Ville-la-Grand", "E.Leclerc - Ville-la-Grand").
  */
-export function normalizeStoreName(rawName?: string): string {
+export function normalizeStoreName(rawName?: string, rawAddress?: string): string {
   if (!rawName || typeof rawName !== 'string') return 'Supermarché';
 
   // 1. Nettoyage des espaces insécables, invisibles et multiples
@@ -586,84 +588,13 @@ export function normalizeStoreName(rawName?: string): string {
 
   if (!cleaned) return 'Supermarché';
 
-  const lower = cleaned.toLowerCase();
+  // Résolution via le référentiel de magasins physiques (0 € d'API externe)
+  const resolved = resolvePhysicalStore({
+    storeName: cleaned,
+    storeAddress: rawAddress
+  });
 
-  // E.Leclerc
-  if (lower.startsWith('e.leclerc') || lower.startsWith('leclerc')) {
-    const len = lower.startsWith('e.leclerc') ? 9 : 7;
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, len));
-    return cityPart ? `E.Leclerc ${cityPart}` : 'E.Leclerc';
-  }
-
-  // Lidl
-  if (lower.startsWith('lidl')) {
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 4));
-    return cityPart ? `Lidl ${cityPart}` : 'Lidl';
-  }
-
-  // Super U / Hyper U / U Express / U
-  if (lower.startsWith('super u') || lower.startsWith('hyper u') || lower.startsWith('u express') || lower.startsWith('u ')) {
-    let brand = 'Super U';
-    let len = 7;
-    if (lower.startsWith('hyper u')) { brand = 'Hyper U'; len = 7; }
-    else if (lower.startsWith('u express')) { brand = 'U Express'; len = 9; }
-    else if (lower.startsWith('u ')) { brand = 'Super U'; len = 2; }
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, len));
-    return cityPart ? `${brand} ${cityPart}` : brand;
-  }
-
-  // Carrefour / Carrefour Market / Carrefour Express / Carrefour City / Carrefour Contact
-  if (lower.startsWith('carrefour')) {
-    let brand = 'Carrefour';
-    if (lower.startsWith('carrefour market')) brand = 'Carrefour Market';
-    else if (lower.startsWith('carrefour express')) brand = 'Carrefour Express';
-    else if (lower.startsWith('carrefour city')) brand = 'Carrefour City';
-    else if (lower.startsWith('carrefour contact')) brand = 'Carrefour Contact';
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, brand.length));
-    return cityPart ? `${brand} ${cityPart}` : brand;
-  }
-
-  // Intermarché / Intermarche
-  if (lower.startsWith('intermarche') || lower.startsWith('intermarché')) {
-    let cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 11));
-    const norm = cityPart.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (norm.includes('annemasse') || norm.includes('vetraz') || norm.includes('monthoux') || norm.includes('gaillard')) {
-      cityPart = 'Annemasse';
-    }
-    return cityPart ? `Intermarché ${cityPart}` : 'Intermarché';
-  }
-
-  // Auchan
-  if (lower.startsWith('auchan')) {
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 6));
-    return cityPart ? `Auchan ${cityPart}` : 'Auchan';
-  }
-
-  // Aldi
-  if (lower.startsWith('aldi')) {
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 4));
-    return cityPart ? `Aldi ${cityPart}` : 'Aldi';
-  }
-
-  // Monoprix
-  if (lower.startsWith('monoprix')) {
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 8));
-    return cityPart ? `Monoprix ${cityPart}` : 'Monoprix';
-  }
-
-  // Casino
-  if (lower.startsWith('casino')) {
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 6));
-    return cityPart ? `Casino ${cityPart}` : 'Casino';
-  }
-
-  // Grand Frais
-  if (lower.startsWith('grand frais')) {
-    const cityPart = cleanCityLocation(stripBrandPrefix(cleaned, 11));
-    return cityPart ? `Grand Frais ${cityPart}` : 'Grand Frais';
-  }
-
-  return cleanCityLocation(cleaned);
+  return resolved.displayName;
 }
 
 /**
@@ -747,10 +678,24 @@ export function buildComparativeMatrix(
 
   // 1. Extraction de la liste unique des enseignes réelles présentes dans les tickets
   const storeSet = new Set<string>();
+  const storeMetadata: Record<string, { id: string; displayName: string; googleMapsUrl?: string; address?: string }> = {};
+
   receipts.forEach(r => {
-    const store = normalizeStoreName(r.storeName);
+    const resolved = resolvePhysicalStore({
+      storeName: r.storeName,
+      storeAddress: r.storeAddress,
+      storePostalCode: r.storePostalCode,
+      storeCity: r.storeCity
+    });
+    const store = resolved.displayName;
     if (store && Array.isArray(r.items) && r.items.length > 0) {
       storeSet.add(store);
+      storeMetadata[store] = {
+        id: resolved.id,
+        displayName: resolved.displayName,
+        googleMapsUrl: resolved.googleMapsUrl,
+        address: resolved.address
+      };
     }
   });
 
@@ -834,8 +779,10 @@ export function buildComparativeMatrix(
         acc.brands.add(brand);
       }
 
-      const priceDetail: import('../types/receipts').StorePriceDetail = {
+      const priceDetail: import('../types/receipts.ts').StorePriceDetail = {
         storeName: receiptStore,
+        storeId: storeMetadata[receiptStore]?.id,
+        googleMapsUrl: storeMetadata[receiptStore]?.googleMapsUrl,
         pricePaid,
         unitPrice,
         brand,
@@ -1041,6 +988,7 @@ export function buildComparativeMatrix(
 
   return {
     stores,
+    storeMetadata,
     receiptsCount,
     isSingleReceipt,
     aisleGroups,

@@ -29,7 +29,9 @@ import {
   ArrowRight,
   BookOpen,
   HeartPulse,
-  Flower2
+  Flower2,
+  ExternalLink,
+  MapPin
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { 
@@ -661,17 +663,43 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                               </th>
 
                               {/* COLONNES DYNAMIQUES : LES MAGASINS AUDITÉS */}
-                              {matrix.stores.map(store => (
-                                <th 
-                                  key={store} 
-                                  className="py-2.5 sm:py-3 px-2 sm:px-3 text-center font-bold text-foreground font-mono min-w-[95px] sm:min-w-[120px]"
-                                >
-                                  <div className="flex items-center justify-center gap-1">
-                                    <Store size={12} className="text-primary" />
-                                    <span>{store}</span>
-                                  </div>
-                                </th>
-                              ))}
+                              {matrix.stores.map(store => {
+                                const meta = matrix.storeMetadata?.[store];
+                                const isIntermarche = store.toLowerCase().includes('intermarch');
+                                return (
+                                  <th 
+                                    key={store} 
+                                    className={cn(
+                                      "py-2.5 sm:py-3 px-2 sm:px-3 text-center font-bold text-foreground font-mono min-w-[110px] sm:min-w-[145px] transition-colors",
+                                      isIntermarche && "bg-rose-500/[0.04] dark:bg-rose-500/[0.06]"
+                                    )}
+                                  >
+                                    <div className="flex flex-col items-center justify-center gap-1">
+                                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                        <Store size={12} className={isIntermarche ? "text-rose-500" : "text-primary"} />
+                                        <span className="font-extrabold text-xs tracking-tight" title={store}>{store}</span>
+                                        {meta?.googleMapsUrl && (
+                                          <a 
+                                            href={meta.googleMapsUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center text-muted-foreground hover:text-primary hover:scale-110 transition-all p-0.5 rounded"
+                                            title={`Ouvrir la fiche Google Maps de ${store}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <ExternalLink size={10} className="text-primary/80" />
+                                          </a>
+                                        )}
+                                      </div>
+                                      {meta?.address && (
+                                        <span className="text-[9px] font-normal text-muted-foreground truncate max-w-[135px] block font-sans" title={meta.address}>
+                                          {meta.address}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </th>
+                                );
+                              })}
 
                               {/* COLONNE STATUT & DÉTAILS */}
                               <th className="py-2.5 sm:py-3 px-3 sm:px-4 text-right w-[24%] font-semibold min-w-[110px] sm:min-w-[140px]">

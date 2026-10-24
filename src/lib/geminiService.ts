@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIES } from './bankParser.ts';
 import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from './receiptClassifier';
 import { type SupermarketAisle, type SupermarketAisleKey } from '../types/receipts';
+import { resolvePhysicalStore, TARGET_PHYSICAL_STORES } from './storeRegistry.ts';
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
   {
@@ -1611,7 +1612,12 @@ export interface RawExtractedItem {
 }
 
 export interface ExtractedReceiptResult {
-  storeName: string; // Enseigne ET Ville (ex: "E.Leclerc Ville-la-Grand")
+  storeName: string; // Nom canonique localisé (ex: "Intermarché - Gaillard", "E.Leclerc - Ville-la-Grand")
+  storeId?: string; // Identifiant physique unique (ex: "intermarche_gaillard", "intermarche_annemasse")
+  storeAddress?: string; // Adresse physique complète (ex: "5 Rue René Cassin")
+  storeCity?: string; // Commune (ex: "Gaillard")
+  storePostalCode?: string; // Code postal (ex: "74240")
+  googleMapsUrl?: string; // Lien direct Google Maps vérifié
   date: string;
   time?: string; // Heure au format HH:mm (ex: "14:32")
   totalArticles?: number; // Total des articles (sous-total brut avant remises)
@@ -1704,29 +1710,23 @@ RÈGLE 6 : DOUBLE BALAYAGE DES REMISES (DUAL SWEEP) & AUTO-CONTRÔLE
   (Somme de tous les pricePaid des items) - totalDiscount = totalAmount (Montant net payé en caisse).
 
 ================================================================================
-RÈGLE 7 : LOCALISATION DU MAGASIN & RAPPROCHEMENT GÉOGRAPHIQUE AVEC L'APPLICATION
+RÈGLE 7 : EN-TÊTE DU TICKET, ADRESSE COMPLÈTE & DIFFÉRENCIATION DU MAGASIN PHYSIQUE
 ================================================================================
-- "storeName" : Extraire obligatoirement le nom de l'enseigne ET la ville/commune (ex: "E.Leclerc Ville-la-Grand", "Super U Étrembières", "Lidl Annemasse", "Carrefour Market Antibes", "Intermarché Gaillard").
-- CONNAISSANCE GÉOGRAPHIQUE / RECONNAISSANCE D'ADRESSE :
-  Tu disposes d'une connaissance géographique exhaustive des adresses, rues, zones commerciales et enseignes de France.
-  Analyse l'adresse, la rue, la zone commerciale, le code postal ou la commune imprimés sur le ticket pour identifier avec certitude le magasin.
-${
-  existingStores && existingStores.length > 0
-    ? `
-- MAGASINS DÉJÀ ENREGISTRÉS DANS L'APPLICATION :
-${existingStores.map(s => `  * "${s}"`).join('\r\n')}
+- Tu dois obligatoirement lire avec la plus haute précision les 5 à 10 premières lignes du ticket (le bloc en-tête avant les articles) afin d'isoler l'adresse physique complète du magasin.
+- Tu dois extraire obligatoirement :
+  1. "storeName" : Le nom de l'enseigne mère (ex: "Intermarché", "E.Leclerc", "Lidl", "Super U", "Carrefour").
+  2. "storeAddress" : L'adresse complète imprimée (numéro de rue, voie, route, boulevard, zone d'activité, lieu-dit).
+     Exemples : "5 Rue René Cassin", "14 Rue de la Résistance", "17 Rue des Teppes", "Rue Albert Hénon", "14 Rue de Genève", "Shopping Léman - 21 Chemin du Carre".
+  3. "storePostalCode" : Le code postal à 5 chiffres (ex: "74240", "74100").
+  4. "storeCity" : Le nom exact de la commune imprimée (ex: "Gaillard", "Annemasse", "Vétraz-Monthoux", "Ville-la-Grand", "Étrembières").
+  5. "storeRawHeader" : La retranscription textuelle brute des premières lignes d'en-tête du ticket.
 
-- RÈGLE DE RAPPROCHEMENT STRICTE AVEC LES MAGASINS EXISTANTS :
-  1. Si l'adresse, la rue, le centre commercial ou l'enseigne du ticket correspond à l'un des magasins DÉJÀ ENREGISTRÉS ci-dessus (ex: "Rue Albert Hénon" = "E.Leclerc Ville-la-Grand", "Shopping Léman" = "Super U Étrembières"), tu DOIS OBLIGATOIREMENT réutiliser le libellé EXACT de cette liste (ex: "${existingStores[0]}").
-     Cela permet de rattacher directement le ticket à la colonne existante de ce magasin pour mettre à jour les prix sans créer de colonne doublon.
-  2. UNIQUEMENT si l'adresse et le magasin ne correspondent à AUCUN des magasins ci-dessus (véritable nouveau magasin ou nouvelle commune), génère alors un nouveau nom canonique au format [Enseigne] [Ville]. Une nouvelle colonne sera ainsi créée dans le comparateur.
-`
-    : `
-- RÈGLE DE NOMMAGE :
-  Attribue au magasin un nom canonique clair au format [Enseigne] [Ville] (ex: "E.Leclerc Ville-la-Grand", "Super U Étrembières").
-`
-}
-- INTERDICTION ABSOLUE DES RUES DANS LE NOM : Ne jamais inclure la mention de la rue ou de l'adresse dans la chaîne "storeName" (ex: interdiction formelle d'écrire "E.Leclerc Ville-la-Grand - Rue Albert Henon", écris STRICTEMENT "E.Leclerc Ville-la-Grand").
+ATTENTION PARTICULIÈRE POUR L'ENSEIGNE INTERMARCHÉ :
+Il existe 3 magasins Intermarché distincts ciblés dans la zone pour le comparateur de prix :
+- Intermarché Gaillard : Situé Rue René Cassin / ZAC de la Châtelaine à Gaillard (74240).
+- Intermarché Annemasse : Situé Rue de la Résistance / Route de Thonon / Centre commercial La Galerie à Annemasse (74100).
+- Intermarché Ville-la-Grand / Vétraz-Monthoux : Situé 17 Rue des Teppes / Chemin des Érables (74100 Vétraz-Monthoux / Ville-la-Grand).
+Tu DOIS IMPÉRATIVEMENT extraire l'adresse de rue et la ville avec exactitude pour permettre à l'application de savoir dans lequel des 3 magasins le ticket a été émis.
 
 ================================================================================
 NOMENCLATURE DES 13 CATÉGORIES (+ 1 FILET DE SÉCURITÉ)
@@ -1754,7 +1754,11 @@ Filet de sécurité :
 
 RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
 {
-  "storeName": "E.Leclerc Ville-la-Grand",
+  "storeName": "Intermarché",
+  "storeAddress": "5 Rue René Cassin",
+  "storePostalCode": "74240",
+  "storeCity": "Gaillard",
+  "storeRawHeader": "INTERMARCHE GAILLARD - 5 RUE RENE CASSIN - 74240 GAILLARD",
   "date": "2026-10-18",
   "time": "14:32",
   "totalArticles": 31.25,
@@ -1989,8 +1993,22 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
 
     const time = String(parsed.time || '12:00').slice(0, 5);
 
+    // Résolution précise du magasin physique exact (ex: Intermarché - Gaillard)
+    const resolvedStore = resolvePhysicalStore({
+      storeName: parsed.storeName,
+      storeAddress: parsed.storeAddress,
+      storePostalCode: parsed.storePostalCode,
+      storeCity: parsed.storeCity,
+      rawHeader: parsed.storeRawHeader
+    });
+
     return {
-      storeName: reconcileStoreWithExisting(parsed.storeName || 'Supermarché', existingStores),
+      storeName: resolvedStore.displayName,
+      storeId: resolvedStore.id,
+      storeAddress: parsed.storeAddress || resolvedStore.address,
+      storeCity: parsed.storeCity || resolvedStore.city,
+      storePostalCode: parsed.storePostalCode || resolvedStore.postalCode,
+      googleMapsUrl: resolvedStore.googleMapsUrl,
       date: parsed.date || new Date().toISOString().slice(0, 10),
       time,
       totalArticles,

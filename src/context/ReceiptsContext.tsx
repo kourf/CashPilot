@@ -12,6 +12,7 @@ import {
 } from '../types/receipts';
 import { buildComparativeMatrix, classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from '../lib/receiptClassifier';
 import { extractReceiptItemsFromFiles, type ExtractedReceiptResult } from '../lib/geminiService';
+import { resolvePhysicalStore } from '../lib/storeRegistry.ts';
 
 export interface ReceiptsContextType {
   receipts: Receipt[];
@@ -179,10 +180,22 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const totalCalculated = items.reduce((acc, it) => acc + (it.pricePaid ?? it.price ?? 0), 0);
           const totalAmount = Number(data.totalAmount ?? data.totalPaid ?? data.total) || Number(totalCalculated.toFixed(2));
 
+          const resolved = resolvePhysicalStore({
+            storeName: data.storeName,
+            storeAddress: data.storeAddress,
+            storePostalCode: data.storePostalCode,
+            storeCity: data.storeCity
+          });
+
           const r: Receipt = {
             id: d.id,
             userId: accountId,
-            storeName: normalizeStoreName(data.storeName),
+            storeName: data.storeName ? normalizeStoreName(data.storeName, data.storeAddress) : resolved.displayName,
+            storeId: data.storeId || resolved.id,
+            storeAddress: data.storeAddress || resolved.address,
+            storeCity: data.storeCity || resolved.city,
+            storePostalCode: data.storePostalCode || resolved.postalCode,
+            googleMapsUrl: data.googleMapsUrl || resolved.googleMapsUrl,
             date: String(data.date || new Date().toISOString().slice(0, 10)),
             time: data.time ? String(data.time).trim() : undefined,
             totalArticles: typeof data.totalArticles === 'number' ? Number(data.totalArticles.toFixed(2)) : (typeof data.subtotal === 'number' ? Number(data.subtotal.toFixed(2)) : undefined),
@@ -265,8 +278,15 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addReceipt = useCallback(async (
     receiptData: Omit<Receipt, 'id' | 'userId' | 'createdAt'>
   ): Promise<Receipt> => {
-    const knownStores = Array.from(new Set(receipts.map(r => normalizeStoreName(r.storeName)).filter(Boolean)));
-    const normalizedStore = reconcileStoreWithExisting(receiptData.storeName, knownStores);
+    const resolved = resolvePhysicalStore({
+      storeName: receiptData.storeName,
+      storeAddress: receiptData.storeAddress,
+      storePostalCode: receiptData.storePostalCode,
+      storeCity: receiptData.storeCity
+    });
+
+    const normalizedStore = resolved.displayName;
+    const storeId = receiptData.storeId || resolved.id;
 
     // Règle 4 : Clé Anti-Doublon stricte (Nom Magasin + Date + Heure/Minute + Montant)
     const currentKey = getReceiptUniqueKey(
@@ -276,7 +296,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       receiptData.totalAmount
     );
     const existing = receipts.find(r => 
-      getReceiptUniqueKey(normalizeStoreName(r.storeName), r.date, r.time, r.totalAmount) === currentKey
+      getReceiptUniqueKey(normalizeStoreName(r.storeName, r.storeAddress), r.date, r.time, r.totalAmount) === currentKey
     );
     if (existing) {
       throw new Error(`🚨 Ticket déjà importé : Ce ticket de caisse (${normalizedStore} le ${receiptData.date} pour ${receiptData.totalAmount} €) existe déjà dans votre historique. Importation bloquée pour éviter les doublons.`);
@@ -289,6 +309,11 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const fullReceipt: Receipt = {
       ...receiptData,
       storeName: normalizedStore,
+      storeId,
+      storeAddress: receiptData.storeAddress || resolved.address,
+      storeCity: receiptData.storeCity || resolved.city,
+      storePostalCode: receiptData.storePostalCode || resolved.postalCode,
+      googleMapsUrl: receiptData.googleMapsUrl || resolved.googleMapsUrl,
       id: docId,
       userId: accountId,
       createdAt: nowIso,

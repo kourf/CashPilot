@@ -68,7 +68,12 @@ export interface ReceiptItem {
 export interface Receipt {
   id: string;
   userId: string;
-  storeName: string; // Nom de l'enseigne ET ville/localisation (ex: "E.Leclerc Ville-la-Grand")
+  storeName: string; // Nom de l'enseigne ET ville/localisation (ex: "Intermarché - Gaillard", "E.Leclerc - Ville-la-Grand")
+  storeId?: string; // Identifiant physique unique (ex: "intermarche_gaillard", "intermarche_annemasse")
+  storeAddress?: string; // Adresse complète extraite de l'en-tête (ex: "5 Rue René Cassin")
+  storeCity?: string; // Ville (ex: "Gaillard")
+  storePostalCode?: string; // Code postal (ex: "74240")
+  googleMapsUrl?: string; // Lien direct Google Maps vérifié
   date: string; // Format ISO YYYY-MM-DD
   time?: string; // Heure de passage en caisse au format HH:mm (ex: "14:32")
   totalArticles?: number; // Total brut des articles TTC avant remises
@@ -86,6 +91,8 @@ export interface Receipt {
  */
 export interface StorePriceDetail {
   storeName: string;
+  storeId?: string;
+  googleMapsUrl?: string;
   pricePaid: number;
   unitPrice: number;
   brand: string;
@@ -155,6 +162,7 @@ export interface AisleGroup {
  */
 export interface ComparativeMatrix {
   stores: string[]; // Liste ordonnée des magasins réels audités
+  storeMetadata?: Record<string, { id: string; displayName: string; googleMapsUrl?: string; address?: string }>;
   receiptsCount: number; // Nombre total de tickets enregistrés
   isSingleReceipt: boolean; // Vrai si < 2 tickets (règle du ticket unique : comparaison désactivée)
   aisleGroups: AisleGroup[];
