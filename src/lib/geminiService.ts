@@ -1740,28 +1740,38 @@ Il existe 3 magasins Intermarché distincts ciblés dans la zone pour le compara
 Tu DOIS IMPÉRATIVEMENT extraire l'adresse de rue et la ville avec exactitude pour permettre à l'application de savoir dans lequel des 3 magasins le ticket a été émis.
 
 ================================================================================
-NOMENCLATURE DES 13 CATÉGORIES (+ 1 FILET DE SÉCURITÉ)
+RÈGLE D'ORTHOGRAPHE ET DE STANDARDISATION ABSOLUE (CORRECTION OCR IMPÉRATIVE)
 ================================================================================
-Pour chaque article, affecte obligatoirement "categoryKey" à l'une des 14 clés :
-8 Rayons Alimentaires standards :
-1. "boucherie_poissonnerie" : Boucherie, Volaille & Poissonnerie (viandes, volailles, charcuteries, poissons)
-2. "epicerie_salee" : Épicerie salée & Épices (pâtes, riz, huiles, conserves, sauces, sel, épices)
-3. "fruits_legumes" : Fruits & Légumes (primeur, salades, fruits, légumes frais)
-4. "frais_cremerie" : Produits frais & Crèmerie (laits, beurres, fromages, yaourts, œufs, crèmes)
-5. "epicerie_sucree" : Épicerie sucrée (cafés, thés, biscuits, chocolats, confitures, céréales, farines)
-6. "hygiene_beaute" : Hygiène, Beauté & Sanitaire (savons, shampoings, dentifrice, papier toilette, cotons)
-7. "entretien_maison" : Entretien & Maison (lessive, éponges, produits ménagers, liquide vaisselle)
-8. "boissons" : Boissons (eaux, sodas, jus, sirops, bières, vins)
+Tu DOIS OBLIGATOIREMENT corriger toutes les erreurs, coupures d'OCR, fautes de frappe et abréviations :
+- "B Uf" ou "B uf" -> "Bœuf"
+- "Steack" -> "Steak"
+- "Pomm terre" ou "Pomme terre" -> "Pommes de terre"
+- "Creme" -> "Crème"
+- "Pate" -> "Pâte"
+- "Oeuf" / "Oeufs" -> "Œuf" / "Œufs"
+- "Ecreme" -> "Écrémé"
+- Rétablis systématiquement tous les accents français manquants.
+- Supprime les codes internes de magasin (ex: "BIO ART", "PROMO").
+- Capitalise élégamment la première lettre pour un affichage irréprochable.
+- Pour tout produit frais (fruits, légumes, viande à la coupe, vrac) ou sans marque explicite, inscris OBLIGATOIREMENT "marque": "generique".
 
-5 Catégories Annexes (Dépollution stricte du budget alimentaire) :
-9. "maison_textile_culture" : Maison, Textile & Culture (vêtements, chaussettes, vaisselle, draps, électroménager, bazar, livres)
-10. "sante_pharmacie" : Santé & Pharmacie (parapharmacie, pansements, compléments alimentaires, doliprane, thermomètres)
-11. "papeterie_bureau" : Papeterie & Bureau (cahiers, stylos, fournitures scolaires, papier A4, classeurs, enveloppes, scotch)
-12. "fleurs_cadeaux" : Fleurs & Cadeaux (bouquets, plantes, fleurs coupées, emballages cadeaux, bougies décoratives, cartes)
-13. "sacs_consignes" : Sacs & Consignes (sacs cabas, sacs kraft, consignes de bouteilles et caisses)
-
-Filet de sécurité :
-14. "autres_divers" : Autres / Divers (articles inclassables)
+================================================================================
+NOMENCLATURE STRICTE DES 13 RAYONS OFFICIELS
+================================================================================
+Le champ "rayon_assigne" doit être choisi STRICTEMENT parmi cette liste des 13 rayons :
+1. Boucherie, Volaille & Poissonnerie
+2. Épicerie salée & Épices
+3. Fruits & Légumes
+4. Produits frais & Crèmerie
+5. Épicerie sucrée
+6. Hygiène, Beauté & Sanitaire
+7. Entretien & Maison
+8. Boissons
+9. Maison, Textile & Culture
+10. Santé & Pharmacie
+11. Papeterie & Bureau
+12. Fleurs & Cadeaux
+13. Sacs & Consignes
 
 RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE AUTOUR, AUCUN MARKDOWN) :
 {
@@ -1953,7 +1963,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         rawBrand.toLowerCase() === 'vrac';
 
       const brand = isGeneric ? 'Générique' : (rawBrand.charAt(0).toUpperCase() + rawBrand.slice(1));
-      const norm = rawNorm.charAt(0).toUpperCase() + rawNorm.slice(1);
+      const norm = correctFrenchSpelling(rawNorm);
       const qty = Math.max(1, Number(it.quantity) || 1);
       const weightOrVolume = rawFormat;
       const weightOrVolumeValue = typeof it.weightOrVolumeValue === 'number' ? it.weightOrVolumeValue : undefined;

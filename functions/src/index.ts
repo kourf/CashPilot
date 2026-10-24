@@ -40,33 +40,39 @@ export const analyzeDocument = functions.region('europe-west1')
     let schema: Schema;
 
     if (fileType === 'receipt') {
-      prompt = `Tu es l'analyste financier d'élite de CashPilot.
+      prompt = `Tu es l'analyste financier d'élite et auditeur de prix de CashPilot.
 Analyse rigoureusement ce ticket de caisse (photo, scan ou PDF).
-Extrais chaque article en JSON STRICT avec une fidélité absolue sans aucun texte libre, sans markdown ni backticks.
+Extrais chaque article en JSON STRICT avec une fidélité absolue, sans aucun texte introductif, sans markdown ni backticks.
 N'inclus AUCUNE information de TVA (ne pas analyser, extraire ou afficher la TVA).
 
 RÈGLES D'EXTRACTION STRICTES :
-1. "nom_generique_nettoye" : Nom du produit brut répondant au besoin, PURIFIÉ de toute marque, format ou type de conditionnement (ex: "Sauce Burger", "Lait demi-écrémé", "Pommes de terre").
-2. "marque" : Marque explicite ("Super U", "Marque Repère", "Heinz", "Candia") ou "Générique" pour les produits frais/vrac.
+1. "nom_generique_nettoye" : Nom du produit brut répondant au besoin générique purifié de toute marque, quantité, format ou conditionnement (ex: "Sauce burger", "Blanc de volaille", "Pommes de terre", "Lait demi-écrémé").
+2. "marque" : Marque explicite ("Super U", "Marque Repère", "Heinz", "Candia") ou obligatoirement "generique" pour les produits frais, fruits/légumes, viande à la coupe, vrac ou sans marque.
 3. "format_exact" : Poids, volume ou contenance nette lue sur le ticket (ex: "510g", "500g", "1.5L", "6x1L", "1 pièce").
-4. "prix_paye" : Prix net total payé en caisse pour la ligne.
-5. "prix_unitaire_calcule" : Prix au kilo (€/kg), au litre (€/L) ou à l'unité (€/pièce) calculé ou extrait.
+4. "prix_paye" : Prix net total payé en caisse pour la ligne (nombre décimal pur).
+5. "prix_unitaire_calcule" : Prix au kilo (€/kg), au litre (€/L) ou à l'unité (€/pièce) calculé ou extrait (ex: 4.58).
 6. "unite_mesure" : "kg", "L" ou "piece".
-7. "rayon_assigne" : Obligatoirement parmi les 14 rayons verrouillés :
-   - Boucherie, Volaille & Poissonnerie
-   - Épicerie salée & Épices
-   - Fruits & Légumes
-   - Produits frais & Crèmerie
-   - Épicerie sucrée
-   - Hygiène, Beauté & Sanitaire
-   - Entretien & Maison
-   - Boissons
-   - Maison, Textile & Culture
-   - Santé & Pharmacie
-   - Papeterie & Bureau
-   - Fleurs & Cadeaux
-   - Sacs & Consignes
-   - Autres / Divers`;
+7. "rayon_assigne" : Choisi STRICTEMENT parmi la liste des 13 rayons officiels suivants :
+   1. Boucherie, Volaille & Poissonnerie
+   2. Épicerie salée & Épices
+   3. Fruits & Légumes
+   4. Produits frais & Crèmerie
+   5. Épicerie sucrée
+   6. Hygiène, Beauté & Sanitaire
+   7. Entretien & Maison
+   8. Boissons
+   9. Maison, Textile & Culture
+   10. Santé & Pharmacie
+   11. Papeterie & Bureau
+   12. Fleurs & Cadeaux
+   13. Sacs & Consignes
+
+RÈGLE VITALE D'ORTHOGRAPHE ET DE STANDARDISATION :
+Corrige OBLIGATOIREMENT toutes les erreurs d'OCR, abréviations tronquées et fautes de frappe sur le nom générique :
+- Corrige les coquilles OCR : transforme par exemple "B Uf" ou "B uf" en "Bœuf", "Steack" en "Steak", "Pomm terre" en "Pommes de terre".
+- Rétablis impérativement tous les accents et caractères français manquants : "Creme" -> "Crème", "Pate" -> "Pâte", "Oeuf" -> "Œuf", "Ecreme" -> "Écrémé", "Roti" -> "Rôti".
+- Supprime tous les préfixes internes de caisse ou codes barres résiduels ("BIO ART", "PROMO", "ART.").
+- Capitalise la première lettre pour un affichage haut de gamme parfait (ex: "Sauce Burger", "Blanc de volaille").`;
 
       schema = {
         type: Type.OBJECT,

@@ -458,9 +458,21 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         const existingHist = Array.isArray((existingProd as any).historique_offres) 
           ? (existingProd as any).historique_offres 
-          : (existingProd.historique_prix || []);
+          : [];
         const filteredHist = existingHist.filter((h: any) => !(h.receiptId === docId && (h.magasin === storeId || h.magasin_id === storeId)));
         const nextHist = [...filteredHist, { ...offerRecord, magasin: storeId }].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        // RÈGLE 2 : Historique standardisé { date, magasin, prix_unitaire }
+        const existingHistPrix = Array.isArray((existingProd as any).historique_prix) ? (existingProd as any).historique_prix : [];
+        const filteredHistPrix = existingHistPrix.filter((h: any) => !(h.date === receiptData.date && h.magasin === storeId));
+        const nextHistPrix = [
+          ...filteredHistPrix,
+          {
+            date: receiptData.date,
+            magasin: storeId,
+            prix_unitaire: it.unitPrice
+          }
+        ].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
         const sortedOffers = Object.entries(currentOffers).sort((a: any, b: any) => a[1].prix_unitaire - b[1].prix_unitaire);
         const bestOffer = sortedOffers.length > 0 ? {
@@ -479,7 +491,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           offres_magasins: currentOffers,
           prix_actuel: currentPrices,
           historique_offres: nextHist,
-          historique_prix: nextHist,
+          historique_prix: nextHistPrix,
           meilleure_offre: bestOffer,
           derniere_mise_a_jour: nowIso,
           nombre_releves: nextHist.length
@@ -515,7 +527,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
           },
           historique_offres: [{ ...offerRecord, magasin: storeId }],
-          historique_prix: [{ ...offerRecord, magasin: storeId }],
+          historique_prix: [{ date: receiptData.date, magasin: storeId, prix_unitaire: it.unitPrice }],
           meilleure_offre: {
             magasin_id: storeId,
             magasin_nom: normalizedStore,

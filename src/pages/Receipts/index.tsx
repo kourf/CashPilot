@@ -40,7 +40,8 @@ import {
   type SupermarketAisle,
   type ProductComparisonRow,
   type StorePriceDetail,
-  SUPERMARKET_AISLES 
+  SUPERMARKET_AISLES,
+  correctFrenchSpelling
 } from '../../types/receipts';
 import { ReceiptHistoryView } from './components/ReceiptHistoryView';
 import { ReceiptValidationModal } from './components/ReceiptValidationModal';
@@ -110,6 +111,26 @@ export default function Receipts() {
   const [hideUncomparable, setHideUncomparable] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAisleFilter, setSelectedAisleFilter] = useState<string>('ALL');
+
+  // L'INFOBULLE FLOTTANTE (TOOLTIP) AU SURVOL DU PRIX (RÈGLE 3 & STITCH DESIGN DNA)
+  const [floatingTooltip, setFloatingTooltip] = useState<{
+    offer: StoreOfferDetail;
+    storeName: string;
+    isCheapest: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!floatingTooltip) return;
+    const handleDismiss = () => setFloatingTooltip(null);
+    window.addEventListener('scroll', handleDismiss, { passive: true });
+    window.addEventListener('resize', handleDismiss);
+    return () => {
+      window.removeEventListener('scroll', handleDismiss);
+      window.removeEventListener('resize', handleDismiss);
+    };
+  }, [floatingTooltip]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadSectionRef = useRef<HTMLDivElement>(null);
@@ -841,7 +862,7 @@ export default function Receipts() {
                         <td className="py-3 px-4 sticky left-0 bg-card/95 backdrop-blur-xs z-10 border-r border-border/40 max-w-[220px] align-top">
                           <div className="flex flex-col space-y-1">
                             <span className="font-extrabold text-foreground text-xs sm:text-sm tracking-tight leading-snug">
-                              {row.nomGenerique}
+                              {correctFrenchSpelling(row.nomGenerique)}
                             </span>
                             <div className="flex items-center gap-1 flex-wrap">
                               <span className="inline-flex items-center text-[9px] font-semibold px-1.5 py-0.2 rounded bg-secondary text-muted-foreground border border-border/60">
@@ -856,12 +877,12 @@ export default function Receipts() {
                           </div>
                         </td>
 
-                        {/* CELLULES CROISÉES : PRIX AU KILO/LITRE EN GRAND & GRAS, DÉTAILS EN DESSOUS */}
+                        {/* CELLULES CROISÉES : VUE ÉPURÉE (PRIX AU KILO/LITRE EN GRAND ET EN GRAS + INFOBULLE TOOLTIP) */}
                         {allStores.map(st => {
                           const offer = row.storeOffers[st.displayName];
                           if (!offer) {
                             return (
-                              <td key={st.displayName} className="py-3 px-3 text-center text-muted-foreground/40 font-mono text-xs align-top">
+                              <td key={st.displayName} className="py-3 px-3 text-center text-muted-foreground/30 font-mono text-xs align-middle">
                                 —
                               </td>
                             );
@@ -873,14 +894,40 @@ export default function Receipts() {
                             <td 
                               key={st.displayName}
                               className={cn(
-                                "py-3 px-3 text-center transition-colors align-top",
+                                "py-3 px-3 text-center transition-colors align-middle",
                                 isCheapestInRow && "bg-emerald-500/[0.08] dark:bg-emerald-500/[0.12]"
                               )}
                             >
-                              <div className="flex flex-col items-center justify-center space-y-1">
-                                {/* PRIX AU KILO OU AU LITRE EN GRAS ET EN GRAND */}
+                              <div
+                                className="flex flex-col items-center justify-center cursor-pointer py-1.5 px-2 rounded-xl transition-all hover:bg-secondary/40 select-none group focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                onMouseEnter={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setFloatingTooltip({
+                                    offer,
+                                    storeName: st.displayName,
+                                    isCheapest: isCheapestInRow,
+                                    x: rect.left + rect.width / 2,
+                                    y: rect.top
+                                  });
+                                }}
+                                onMouseLeave={() => setFloatingTooltip(null)}
+                                onClick={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setFloatingTooltip(prev => prev ? null : {
+                                    offer,
+                                    storeName: st.displayName,
+                                    isCheapest: isCheapestInRow,
+                                    x: rect.left + rect.width / 2,
+                                    y: rect.top
+                                  });
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                title="Survolez pour afficher les détails du relevé"
+                              >
+                                {/* VUE ÉPURÉE : UNIQUEMENT LE PRIX AU KILO/LITRE EN GRAS ET EN GRAND */}
                                 <div className={cn(
-                                  "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight",
+                                  "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight transition-transform duration-150 group-hover:scale-105",
                                   isCheapestInRow ? "text-emerald-600 dark:text-emerald-400 font-extrabold" : "text-foreground"
                                 )}>
                                   <span>{formatCurrency(offer.prixUnitaire, { showSign: false })}</span>
@@ -889,24 +936,9 @@ export default function Receipts() {
                                   </span>
                                 </div>
 
-                                {/* EN DESSOUS EN PLUS PETIT : PRIX FACIAL PAYÉ, MARQUE, FORMAT, DATE */}
-                                <div className="flex flex-col items-center justify-center text-[10px] leading-tight space-y-0.5">
-                                  <span className="font-semibold text-foreground/90 font-mono">
-                                    {formatCurrency(offer.prixPaye, { showSign: false })} · {offer.format}
-                                  </span>
-                                  {offer.marque && offer.marque !== 'Générique' && (
-                                    <span className="text-[9px] text-primary/90 font-medium truncate max-w-[110px]" title={offer.marque}>
-                                      {offer.marque}
-                                    </span>
-                                  )}
-                                  <span className="text-[9px] text-muted-foreground font-mono">
-                                    {formatDateFR(offer.date)}
-                                  </span>
-                                </div>
-
-                                {/* BADGE MOINS CHER */}
+                                {/* DISCRET BADGE MOINS CHER */}
                                 {isCheapestInRow && (
-                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 mt-0.5 border border-emerald-500/30">
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 mt-0.5">
                                     <Check size={9} className="stroke-[3]" />
                                     Moins cher
                                   </span>
@@ -982,6 +1014,68 @@ export default function Receipts() {
           onDeleteReceipt={deleteReceipt}
           onOpenUpload={scrollToUpload}
         />
+      )}
+
+      {/* ========================================================================= */}
+      {/* L'INFOBULLE FLOTTANTE (TOOLTIP) - STITCH DESIGN DNA                       */}
+      {/* ========================================================================= */}
+      {floatingTooltip && (
+        <div
+          className="fixed z-[9999] pointer-events-none -translate-x-1/2 -translate-y-full mb-2.5 w-56 p-3 rounded-2xl bg-popover/95 dark:bg-card/95 backdrop-blur-md border border-border/80 shadow-2xl shadow-black/25 text-xs animate-in fade-in zoom-in-95 duration-150 select-none"
+          style={{
+            left: `${floatingTooltip.x}px`,
+            top: `${floatingTooltip.y - 8}px`
+          }}
+        >
+          {/* En-tête : Nom du magasin & Badge Moins Cher */}
+          <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-border/60 gap-1.5">
+            <div className="flex items-center gap-1.5 truncate">
+              <Store size={12} className="text-primary shrink-0" />
+              <span className="font-extrabold text-[11px] text-foreground truncate" title={floatingTooltip.storeName}>
+                {floatingTooltip.storeName}
+              </span>
+            </div>
+            {floatingTooltip.isCheapest && (
+              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0">
+                ★ Moins cher
+              </span>
+            )}
+          </div>
+
+          {/* Corps de l'infobulle : Détails stricts stockés dans Firestore */}
+          <div className="space-y-1.5 text-[11px]">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground font-medium">Prix payé :</span>
+              <span className="font-mono font-bold text-foreground">
+                {formatCurrency(floatingTooltip.offer.prixPaye, { showSign: false })}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground font-medium">Quantité :</span>
+              <span className="font-mono font-semibold text-foreground">
+                {floatingTooltip.offer.format || '1 pièce'}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground font-medium">Marque :</span>
+              <span className="font-semibold text-foreground truncate max-w-[110px]" title={floatingTooltip.offer.marque}>
+                {floatingTooltip.offer.marque || 'Générique'}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between pt-1 border-t border-border/40">
+              <span className="text-muted-foreground font-medium">Date :</span>
+              <span className="font-mono text-muted-foreground">
+                {formatDateFR(floatingTooltip.offer.date)}
+              </span>
+            </div>
+          </div>
+
+          {/* Flèche pointant vers la cellule de prix */}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-border/80" />
+        </div>
       )}
 
       {/* MODALE DE VALIDATION DE TICKET */}

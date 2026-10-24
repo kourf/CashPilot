@@ -313,12 +313,19 @@ export interface StoreOfferDetail {
   rawName?: string; // Nom brut sur le ticket
 }
 
+export interface PriceHistoryItem {
+  date: string;
+  magasin: string;
+  prix_unitaire: number;
+}
+
 export interface GenericProductDoc {
   nom_generique: string; // Nom générique propre (ex: "Sauce Burger")
   rayon: SupermarketAisle | string; // Libellé officiel du rayon (ex: "Épicerie salée & Épices")
   rayon_cle?: SupermarketAisleKey; // Clé normalisée (ex: "epicerie_salee")
   cle_besoin?: string; // Clé normalisée unique (ex: "sauce_burger")
   offres_magasins: Record<string, StoreOfferDetail>; // Magasin -> Offre la plus récente
+  historique_prix?: PriceHistoryItem[]; // Historique strict des prix { date, magasin, prix_unitaire }
   historique_offres?: Array<StoreOfferDetail & { magasin: string }>;
   derniere_mise_a_jour?: string;
   meilleure_offre?: {
@@ -397,6 +404,55 @@ export function generateGenericNeedKey(rawName?: string, brand?: string): string
        .replace(/^_|_$/g, '');
 
   return s || 'produit';
+}
+
+/**
+ * RÈGLE D'ORTHOGRAPHE ET DE STANDARDISATION :
+ * Corrige les coquilles OCR ("B Uf" -> "Bœuf", accents manquants, abréviations).
+ */
+export function correctFrenchSpelling(str?: string): string {
+  if (!str || typeof str !== 'string') return '';
+  let s = str.trim();
+
+  const corrections: Array<[RegExp, string]> = [
+    [/\bb\s*u+f\b/gi, 'bœuf'],
+    [/\bboeuf\b/gi, 'bœuf'],
+    [/\bsteack\b/gi, 'steak'],
+    [/\bsteacks\b/gi, 'steaks'],
+    [/\bpomm?\s+terre\b/gi, 'pommes de terre'],
+    [/\bpomme\s+de\s+terre\b/gi, 'pommes de terre'],
+    [/\bcreme\b/gi, 'crème'],
+    [/\bfraiche\b/gi, 'fraîche'],
+    [/\bpate\b/gi, 'pâte'],
+    [/\bpates\b/gi, 'pâtes'],
+    [/\becreme\b/gi, 'écrémé'],
+    [/\becremee\b/gi, 'écrémée'],
+    [/\boeuf\b/gi, 'œuf'],
+    [/\boeufs\b/gi, 'œufs'],
+    [/\bhache\b/gi, 'haché'],
+    [/\bhachee\b/gi, 'hachée'],
+    [/\brot\b/gi, 'rôti'],
+    [/\broti\b/gi, 'rôti'],
+    [/\bglace\b/gi, 'glacée'],
+    [/\bvolaill\b/gi, 'volaille'],
+    [/\bpoiss\b/gi, 'poisson'],
+    [/\bfeuilletee\b/gi, 'feuilletée'],
+    [/\bbrisee\b/gi, 'brisée'],
+    [/\bsurgel\b/gi, 'surgelé'],
+    [/\bsurgele\b/gi, 'surgelé'],
+    [/\beleve\b/gi, 'élevé'],
+    [/\bfrancais\b/gi, 'français'],
+    [/\bfrancaise\b/gi, 'française']
+  ];
+
+  for (const [regex, replacement] of corrections) {
+    s = s.replace(regex, replacement);
+  }
+
+  if (s.length > 0) {
+    s = s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  return s;
 }
 
 

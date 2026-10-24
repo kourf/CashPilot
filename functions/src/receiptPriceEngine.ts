@@ -126,6 +126,56 @@ export const KNOWN_PACKAGING_WORDS = [
  * - "Lait demi-écrémé brique 1L" -> "lait_demi_ecreme"
  * ============================================================================
  */
+
+/**
+ * Correction orthographique et typographique stricte des libellés OCR (Règle 4)
+ * Élimine les coquilles OCR ("B Uf" -> "Bœuf", accents manquants, abréviations).
+ */
+export function correctFrenchSpelling(str?: string): string {
+  if (!str || typeof str !== 'string') return '';
+  let s = str.trim();
+
+  const corrections: Array<[RegExp, string]> = [
+    [/\bb\s*u+f\b/gi, 'bœuf'],
+    [/\bboeuf\b/gi, 'bœuf'],
+    [/\bsteack\b/gi, 'steak'],
+    [/\bsteacks\b/gi, 'steaks'],
+    [/\bpomm?\s+terre\b/gi, 'pommes de terre'],
+    [/\bpomme\s+de\s+terre\b/gi, 'pommes de terre'],
+    [/\bcreme\b/gi, 'crème'],
+    [/\bfraiche\b/gi, 'fraîche'],
+    [/\bpate\b/gi, 'pâte'],
+    [/\bpates\b/gi, 'pâtes'],
+    [/\becreme\b/gi, 'écrémé'],
+    [/\becremee\b/gi, 'écrémée'],
+    [/\boeuf\b/gi, 'œuf'],
+    [/\boeufs\b/gi, 'œufs'],
+    [/\bhache\b/gi, 'haché'],
+    [/\bhachee\b/gi, 'hachée'],
+    [/\brot\b/gi, 'rôti'],
+    [/\broti\b/gi, 'rôti'],
+    [/\bglace\b/gi, 'glacée'],
+    [/\bvolaill\b/gi, 'volaille'],
+    [/\bpoiss\b/gi, 'poisson'],
+    [/\bfeuilletee\b/gi, 'feuilletée'],
+    [/\bbrisee\b/gi, 'brisée'],
+    [/\bsurgel\b/gi, 'surgelé'],
+    [/\bsurgele\b/gi, 'surgelé'],
+    [/\beleve\b/gi, 'élevé'],
+    [/\bfrancais\b/gi, 'français'],
+    [/\bfrancaise\b/gi, 'française']
+  ];
+
+  for (const [regex, replacement] of corrections) {
+    s = s.replace(regex, replacement);
+  }
+
+  if (s.length > 0) {
+    s = s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  return s;
+}
+
 export function generateGenericNeedKey(rawName?: string, brand?: string): string {
   if (!rawName || typeof rawName !== 'string') {
     return 'produit';
@@ -386,6 +436,12 @@ export interface StoreOfferDetail {
  * ID de document = Clé de Besoin Générique (ex: "sauce_burger")
  * Collection : users/{userId}/products/{cle_besoin}
  */
+export interface PriceHistoryItem {
+  date: string;
+  magasin: string;
+  prix_unitaire: number;
+}
+
 export interface GenericProductDocument {
   nom_generique: string;
   rayon: LockedSupermarketAisle;
@@ -395,7 +451,7 @@ export interface GenericProductDocument {
   historique_offres?: Array<StoreOfferDetail & { magasin: string }>;
   // Rétrocompatibilité
   prix_actuel?: Record<string, any>;
-  historique_prix?: Array<any>;
+  historique_prix: PriceHistoryItem[];
   meilleure_offre?: {
     magasin_id: string;
     magasin_nom: string;
@@ -534,16 +590,6 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
           rawName: receiptItemEnriched.rawName
         };
 
-        const priceRecord = {
-          date,
-          magasin: storeId,
-          magasin_nom: storeDisplayName,
-          prix_unitaire: Number(prixUnitaire.toFixed(2)),
-          prix_paye: Number(prixPaye.toFixed(2)),
-          quantite,
-          receiptId
-        };
-
         if (productSnap.exists) {
           const prodData = productSnap.data() as GenericProductDocument;
           const currentOffers = prodData.offres_magasins || {};
@@ -563,10 +609,22 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
             receiptId
           };
 
-          // Historique chronologique
+          // Historique chronologique complet
           const existingHistory = Array.isArray(prodData.historique_offres) ? prodData.historique_offres : [];
           const filteredHistory = existingHistory.filter(h => !(h.receiptId === receiptId && h.magasin === storeId));
           const updatedHistory = [...filteredHistory, { ...offerDetail, magasin: storeId }].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+          // RÈGLE 2 : Historique des prix standardisé { date, magasin, prix_unitaire }
+          const existingPriceHistory = Array.isArray(prodData.historique_prix) ? prodData.historique_prix : [];
+          const filteredPriceHistory = existingPriceHistory.filter(h => !(h.date === date && h.magasin === storeId));
+          const updatedPriceHistory: PriceHistoryItem[] = [
+            ...filteredPriceHistory,
+            {
+              date,
+              magasin: storeId,
+              prix_unitaire: Number(prixUnitaire.toFixed(2))
+            }
+          ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
           // Recalcul de la meilleure et de la pire offre
           const offerEntries = Object.entries(currentOffers);
@@ -592,7 +650,9 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
           const diffMax = meilleure && pire ? Number((pire.prix_unitaire - meilleure.prix_unitaire).toFixed(2)) : 0;
 
           transaction.update(productRef, {
+            nom_generique: correctFrenchSpelling(nomGeneriqueNettoye) || prodData.nom_generique,
             offres_magasins: currentOffers,
+            historique_prix: updatedPriceHistory,
             prix_actuel: currentPrices,
             historique_offres: updatedHistory,
             meilleure_offre: meilleure || admin.firestore.FieldValue.delete(),
@@ -604,13 +664,20 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
         } else {
           // RÈGLE 2 : Création à la volée du document structuré par Besoin Générique
           const newDoc: GenericProductDocument = {
-            nom_generique: nomGeneriqueNettoye.charAt(0).toUpperCase() + nomGeneriqueNettoye.slice(1),
+            nom_generique: correctFrenchSpelling(nomGeneriqueNettoye),
             rayon: aisle.label,
             rayon_cle: aisle.key,
             cle_besoin: cleBesoin,
             offres_magasins: {
               [storeId]: offerDetail
             },
+            historique_prix: [
+              {
+                date,
+                magasin: storeId,
+                prix_unitaire: Number(prixUnitaire.toFixed(2))
+              }
+            ],
             prix_actuel: {
               [storeId]: {
                 prix_unitaire: Number(prixUnitaire.toFixed(2)),
@@ -623,7 +690,6 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
               }
             },
             historique_offres: [{ ...offerDetail, magasin: storeId }],
-            historique_prix: [priceRecord],
             meilleure_offre: {
               magasin_id: storeId,
               magasin_nom: storeDisplayName,
@@ -672,3 +738,7 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
       cleBesoinList: processedKeys
     };
   });
+
+
+// Alias strict selon les spécifications d'audit CashPilot
+export const updateGenericNeedOffers = processReceiptWithSuperKeys;

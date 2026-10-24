@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { 
   generateSuperKey,
   generateGenericNeedKey,
+  correctFrenchSpelling,
   type StandardizedProductDoc,
   type GenericProductDoc
 } from '../src/types/receipts.ts';
@@ -251,5 +252,68 @@ describe('Audit Financier : Super Clé Universelle & Matrice Comparative 0 €',
     assert.strictEqual(row.status, 'UNIQUE');
     assert.strictEqual(row.storePrices['Intermarché - Gaillard'].pricePaid, 1.15);
     assert.strictEqual(row.storePrices['Intermarché - Gaillard'].unitPrice, 1.15);
+  });
+
+  it('8. Règle vitale d\'orthographe : Corrige systématiquement les erreurs OCR et accents français', () => {
+    // "B Uf" -> "Bœuf"
+    assert.strictEqual(correctFrenchSpelling('b uf'), 'Bœuf');
+    assert.strictEqual(correctFrenchSpelling('B Uf'), 'Bœuf');
+    assert.strictEqual(correctFrenchSpelling('boeuf hache'), 'Bœuf haché');
+
+    // "Steack" -> "Steak"
+    assert.strictEqual(correctFrenchSpelling('steack'), 'Steak');
+
+    // "Pomm terre" -> "Pommes de terre"
+    assert.strictEqual(correctFrenchSpelling('pomm terre'), 'Pommes de terre');
+    assert.strictEqual(correctFrenchSpelling('pomme de terre'), 'Pommes de terre');
+
+    // Accents français manquants
+    assert.strictEqual(correctFrenchSpelling('creme fraiche'), 'Crème fraîche');
+    assert.strictEqual(correctFrenchSpelling('pate feuilletee'), 'Pâte feuilletée');
+    assert.strictEqual(correctFrenchSpelling('lait ecreme'), 'Lait écrémé');
+    assert.strictEqual(correctFrenchSpelling('poulet roti'), 'Poulet rôti');
+    assert.strictEqual(correctFrenchSpelling('oeufs bio'), 'Œufs bio');
+  });
+
+  it('9. Nouvelle Structure Firestore : Vérifie la structure historique_prix [{ date, magasin, prix_unitaire }]', () => {
+    const docWithPriceHistory: GenericProductDoc = {
+      nom_generique: 'Sauce Burger',
+      rayon: 'Épicerie salée & Épices',
+      cle_besoin: 'sauce_burger',
+      offres_magasins: {
+        super_u_etrembieres: {
+          prix_unitaire: 4.58,
+          unite: 'kg',
+          prix_paye: 2.29,
+          marque: 'Super U',
+          format: '500g',
+          date: '2026-10-18'
+        },
+        leclerc_ville_la_grand: {
+          prix_unitaire: 4.10,
+          unite: 'kg',
+          prix_paye: 2.09,
+          marque: 'Marque Repère',
+          format: '510g',
+          date: '2026-10-24'
+        }
+      },
+      historique_prix: [
+        { date: '2026-10-18', magasin: 'super_u_etrembieres', prix_unitaire: 4.58 },
+        { date: '2026-10-24', magasin: 'leclerc_ville_la_grand', prix_unitaire: 4.10 }
+      ]
+    };
+
+    assert.strictEqual(docWithPriceHistory.nom_generique, 'Sauce Burger');
+    assert.strictEqual(docWithPriceHistory.rayon, 'Épicerie salée & Épices');
+    assert.strictEqual(docWithPriceHistory.offres_magasins.super_u_etrembieres.prix_unitaire, 4.58);
+    assert.strictEqual(docWithPriceHistory.offres_magasins.leclerc_ville_la_grand.prix_unitaire, 4.10);
+
+    // Vérification stricte du tableau historique_prix
+    assert.ok(Array.isArray(docWithPriceHistory.historique_prix));
+    assert.strictEqual(docWithPriceHistory.historique_prix.length, 2);
+    assert.strictEqual(docWithPriceHistory.historique_prix[1].date, '2026-10-24');
+    assert.strictEqual(docWithPriceHistory.historique_prix[1].magasin, 'leclerc_ville_la_grand');
+    assert.strictEqual(docWithPriceHistory.historique_prix[1].prix_unitaire, 4.10);
   });
 });
