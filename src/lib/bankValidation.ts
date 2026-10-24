@@ -99,3 +99,76 @@ export function sanitizeImportErrorMessage(err: unknown, filename?: string): str
   }
   return `Impossible d'analyser le document${filePrefix}. Assurez-vous d'importer un relevé de compte bancaire valide (PDF ou CSV).`;
 }
+
+export interface StatementDisplayStatus {
+  isCsv: boolean;
+  hasVerifiedBalance: boolean;
+  kpiTitle: string; // 'Solde Vérifié' ou 'Flux Net'
+  kpiSubtitle: string; // 'Certifié relevé PDF' ou 'Total mouvements (CSV)'
+  kpiBadge: string | null; // null ou 'Solde non dispo'
+  displayAmount: number;
+  formattedAmount: string;
+  isPositive: boolean;
+  isNegative: boolean;
+  explanation: string;
+}
+
+function formatCurrencyAmount(amount: number, currency: 'EUR' | 'CHF' = 'EUR', showSign = false): string {
+  const isPos = amount > 0;
+  const isNeg = amount < 0;
+  const abs = Math.abs(amount);
+  const fixed = abs.toFixed(2);
+  const [intPart, decPart] = fixed.split('.');
+  const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const sign = showSign ? (isPos ? '+' : isNeg ? '-' : '') : (isNeg ? '-' : '');
+  const currSym = currency === 'CHF' ? 'CHF' : '€';
+  return `${sign}${intFormatted},${decPart} ${currSym}`;
+}
+
+/**
+ * RÈGLE FONDAMENTALE COMPTABLE :
+ * Un relevé CSV ne contenant ni solde initial ni solde final officiel, il ne doit JAMAIS afficher de "Solde" ou "Dispo".
+ * L'interface doit refléter fidèlement la réalité bancaire :
+ * - CSV sans ancre certifiée : affiche strictement le « Flux Net » (total des mouvements) et indique « Solde non disponible ».
+ * - PDF avec ancre vérifiée : affiche le « Solde Vérifié ».
+ */
+export function getStatementDisplayStatus(
+  transactions: { source_type?: string; sourceType?: string; importFormat?: string }[],
+  netCashFlow: number,
+  verifiedPdfBalance: number | null | undefined,
+  currency: 'EUR' | 'CHF' = 'EUR'
+): StatementDisplayStatus {
+  const hasPdfSource = transactions.some(
+    t => t.source_type === 'PDF' || t.sourceType === 'PDF' || t.importFormat === 'PDF'
+  );
+  const hasVerified = Boolean(hasPdfSource && verifiedPdfBalance !== null && verifiedPdfBalance !== undefined && verifiedPdfBalance !== 0);
+
+  if (hasVerified) {
+    const balance = verifiedPdfBalance!;
+    return {
+      isCsv: false,
+      hasVerifiedBalance: true,
+      kpiTitle: 'Solde Vérifié',
+      kpiSubtitle: 'Certifié relevé PDF',
+      kpiBadge: null,
+      displayAmount: balance,
+      formattedAmount: formatCurrencyAmount(balance, currency, false),
+      isPositive: balance >= 0,
+      isNegative: balance < 0,
+      explanation: 'Solde officiel et certifié issu du relevé bancaire PDF.'
+    };
+  }
+
+  return {
+    isCsv: true,
+    hasVerifiedBalance: false,
+    kpiTitle: 'Flux Net',
+    kpiSubtitle: 'Total mouvements (CSV)',
+    kpiBadge: 'Solde non dispo',
+    displayAmount: netCashFlow,
+    formattedAmount: formatCurrencyAmount(netCashFlow, currency, true),
+    isPositive: netCashFlow > 0,
+    isNegative: netCashFlow < 0,
+    explanation: "Relevé CSV : seules les opérations sont répertoriées. Aucun solde ni disponible certifié n'y figurant, seul le total des mouvements (flux net) est affiché."
+  };
+}

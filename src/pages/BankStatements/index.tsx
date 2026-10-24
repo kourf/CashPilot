@@ -33,7 +33,9 @@ import {
   Tag,
   Clock,
   CheckCircle2,
-  Zap
+  Zap,
+  Activity,
+  ShieldCheck
 } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -96,6 +98,8 @@ import {
   formatMonthLabel,
   formatDateFR,
   formatCurrency,
+  getStatementDisplayStatus,
+  type StatementDisplayStatus,
   extractCleanBankStatementRows,
   type CleanBankStatementRow,
   type FlowType, 
@@ -615,6 +619,7 @@ export const BankStatements: React.FC = () => {
         confidence: smart.confidence,
         status: isInternalTransfer ? 'Internal Transfer' : 'Reconciled',
         monthKey: t.monthKey || (t.date ? t.date.substring(0, 7) : undefined),
+        source_type: t.source_type || t.sourceType || t.importFormat || 'CSV',
         rawLabel: t.rawLabel || rawDesc,
         cleanLabel: cleanDesc
       };
@@ -675,6 +680,20 @@ export const BankStatements: React.FC = () => {
 
     return calculateBankMetrics(scopedTxs);
   }, [monthScopedTransactions, selectedAccount]);
+
+  // Détermination fidèle de la réalité du relevé bancaire (Règle stricte CSV sans Solde / Dispo)
+  const statementStatus: StatementDisplayStatus = useMemo(() => {
+    const scopedTxs = selectedAccount === 'ALL'
+      ? monthScopedTransactions
+      : monthScopedTransactions.filter(t => t.account === selectedAccount);
+
+    return getStatementDisplayStatus(
+      scopedTxs,
+      metrics.netCashFlow || 0,
+      currentMonthBalances.closing,
+      currency
+    );
+  }, [monthScopedTransactions, selectedAccount, metrics.netCashFlow, currentMonthBalances.closing, currency]);
 
   // Subscription & Recurring Charges Summary for the scoped view
   const subscriptionSummary: SubscriptionSummary = useMemo(() => {
@@ -1834,6 +1853,7 @@ export const BankStatements: React.FC = () => {
 
       // Sauvegarde des transactions uniques dans Firestore batch
       setFileStatusMessage(`Sauvegarde de ${uniqueTxs.length} opérations pour "${detectedAccountName}"...`);
+      const isPdfFile = file.name.toLowerCase().endsWith('.pdf') || file.type.includes('pdf');
       const batch = writeBatch(db);
       const txRef = collection(db, `users/${accountId}/transactions`);
 
@@ -1853,6 +1873,8 @@ export const BankStatements: React.FC = () => {
           category: tx.category,
           flowType: tx.flowType,
           nature: tx.flowType === 'FIXED_EXPENSE' ? 'fixe' : (tx.flowType === 'INCOME' ? 'revenu' : 'variable'),
+          source_type: isPdfFile ? 'PDF' : 'CSV',
+          importFormat: isPdfFile ? 'PDF' : 'CSV',
           isSubscription: Boolean(tx.isSubscription),
           subscriptionDay: tx.subscriptionDay || null,
           accountName: tx.account || detectedAccountName || 'Compte Principal',
@@ -1897,7 +1919,7 @@ export const BankStatements: React.FC = () => {
           const isPdfFile = file.name.toLowerCase().endsWith('.pdf') || file.type.includes('pdf');
 
           const releveRef = doc(collection(db, `users/${accountId}/comptes/compte_principal/releves`));
-          await setDoc(releveRef, {
+          const relevePayload = {
             id: releveRef.id,
             compteId: 'compte_principal',
             source_type: isPdfFile ? 'PDF' : 'CSV',
@@ -1908,7 +1930,15 @@ export const BankStatements: React.FC = () => {
             solde_final: null,
             transactions_count: uniqueTxs.length,
             createdAt: new Date().toISOString()
-          }, { merge: true });
+          };
+          await setDoc(releveRef, relevePayload, { merge: true });
+
+          try {
+            const nosqlReleveRef = doc(db, 'ComptesBancaires/compte_principal/RelevesImportes', releveRef.id);
+            await setDoc(nosqlReleveRef, relevePayload, { merge: true });
+          } catch {
+            // Ignorer si les règles d'écriture ComptesBancaires sont restreintes
+          }
         } catch (syncErr) {
           console.warn("Synchronisation ComptesBancaires différée :", syncErr);
         }
@@ -2047,7 +2077,7 @@ export const BankStatements: React.FC = () => {
           <Clock size={14} />
           <span>Frise Chronologique</span>
           <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            Soldes
+            Rapprochement
           </span>
         </button>
       </div>
@@ -2153,13 +2183,42 @@ export const BankStatements: React.FC = () => {
              <div className="font-bold text-lg text-red-600 dark:text-red-400">{formatBankAmount(metrics.realExpenses, currency)}</div>
            </div>
 
-           {/* Solde Disponible */}
+           {/* Solde Vérifié (PDF) OU Flux Net (CSV) - Respect strict de la réalité du relevé */}
            <div 
-             onClick={() => setSelectedFilter(selectedFilter === 'ALL' ? 'SAVINGS' : 'ALL')}
+             onClick={() => setSelectedFilter('ALL')}
              className={`snap-start min-w-[120px] flex-1 p-3 rounded-3xl border transition-all cursor-pointer ${selectedFilter === 'ALL' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md scale-[1.02]' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800'}`}
+             title={statementStatus.explanation}
            >
-             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center"><Wallet size={12} className="mr-1 text-blue-500"/> Dispo</div>
-             <div className="font-bold text-lg text-gray-900 dark:text-white">{formatBankAmount(metrics.netCashFlow || 0, currency)}</div>
+             {statementStatus.hasVerifiedBalance ? (
+               <>
+                 <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center">
+                   <ShieldCheck size={12} className="mr-1 text-emerald-500"/> {statementStatus.kpiTitle}
+                 </div>
+                 <div className="font-bold text-lg text-emerald-600 dark:text-emerald-400">
+                   {statementStatus.formattedAmount}
+                 </div>
+                 <div className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 font-medium truncate mt-0.5">
+                   {statementStatus.kpiSubtitle}
+                 </div>
+               </>
+             ) : (
+               <>
+                 <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center">
+                   <Activity size={12} className="mr-1 text-blue-500"/> {statementStatus.kpiTitle}
+                 </div>
+                 <div className={`font-bold text-lg ${statementStatus.isPositive ? 'text-emerald-600 dark:text-emerald-400' : statementStatus.isNegative ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                   {statementStatus.formattedAmount}
+                 </div>
+                 <div className="flex items-center gap-1 mt-0.5">
+                   <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium truncate">{statementStatus.kpiSubtitle}</span>
+                   {statementStatus.kpiBadge && (
+                     <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold shrink-0">
+                       {statementStatus.kpiBadge}
+                     </span>
+                   )}
+                 </div>
+               </>
+             )}
            </div>
         </div>
 

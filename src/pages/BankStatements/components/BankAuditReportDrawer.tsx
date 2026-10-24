@@ -435,7 +435,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                     <span className="font-mono font-bold text-gray-800 dark:text-gray-200">−{report.synthesis.dailyLivingOutflows.toFixed(2)} {currSym}</span>
                   </div>
                   <div className="pt-3 flex justify-between items-center text-sm">
-                    <span className="font-extrabold text-gray-900 dark:text-white">Solde Net Global</span>
+                    <span className="font-extrabold text-gray-900 dark:text-white">Flux Net Global (Mouvements)</span>
                     <span className={`font-mono font-black ${
                       report.synthesis.netBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
                     }`}>

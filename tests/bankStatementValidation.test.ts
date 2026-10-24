@@ -6,7 +6,8 @@ import { detectBankName } from '../src/lib/bankParser.ts';
 import { 
   validateBankStatementFile, 
   validateBankStatementCSVContent, 
-  sanitizeImportErrorMessage 
+  sanitizeImportErrorMessage,
+  getStatementDisplayStatus
 } from '../src/lib/bankValidation.ts';
 
 test('1. DÉTECTION DU NOM DE BANQUE (detectBankName)', () => {
@@ -124,4 +125,53 @@ test('4. ASSAINISSEMENT DES MESSAGES D\'ERREUR (sanitizeImportErrorMessage)', ()
   const networkErr = new TypeError("Failed to fetch");
   const msg3 = sanitizeImportErrorMessage(networkErr, 'releve.pdf');
   assert.match(msg3, /Erreur de connexion réseau/);
+});
+
+test('5. CONFORMITÉ AU FORMAT RB : RÈGLE STRICTE CSV SANS SOLDE NI DISPO (FIDÉLITÉ À LA RÉALITÉ)', () => {
+  // Cas 1 : Relevé CSV pur (opérations bancaires sans solde certifié)
+  const csvTransactions = [
+    { source_type: 'CSV', libelle: 'Salaire', montant: 3000 },
+    { source_type: 'CSV', libelle: 'Loyer', montant: -1200 },
+    { source_type: 'CSV', libelle: 'Courses', montant: -450 }
+  ];
+  const netFlow = 3000 - 1200 - 450; // +1350 €
+
+  const csvStatus = getStatementDisplayStatus(csvTransactions, netFlow, null, 'EUR');
+
+  // Doit être formellement identifié comme CSV
+  assert.equal(csvStatus.isCsv, true, 'Doit être identifié comme relevé CSV');
+  assert.equal(csvStatus.hasVerifiedBalance, false, 'Un CSV ne doit JAMAIS produire de solde vérifié');
+  
+  // RÈGLE MÉTIER : NE JAMAIS afficher "Solde" ou "Dispo" pour un CSV !
+  assert.notEqual(csvStatus.kpiTitle.toLowerCase(), 'dispo', 'Le titre ne doit JAMAIS être Dispo');
+  assert.notEqual(csvStatus.kpiTitle.toLowerCase(), 'solde', 'Le titre ne doit JAMAIS être Solde');
+  assert.equal(csvStatus.kpiTitle, 'Flux Net', 'Le KPI doit fidèlement afficher Flux Net');
+  
+  // Affiche le total signé des mouvements
+  assert.equal(csvStatus.kpiSubtitle, 'Total mouvements (CSV)');
+  assert.equal(csvStatus.kpiBadge, 'Solde non dispo');
+  assert.match(csvStatus.formattedAmount, /\+1 350,00 €/);
+  assert.equal(csvStatus.isPositive, true);
+  assert.match(csvStatus.explanation, /Relevé CSV/);
+
+  // Cas 2 : Relevé CSV avec flux négatif
+  const negativeNetFlow = -650.40;
+  const csvNegativeStatus = getStatementDisplayStatus(csvTransactions, negativeNetFlow, null, 'EUR');
+  assert.equal(csvNegativeStatus.isNegative, true);
+  assert.match(csvNegativeStatus.formattedAmount, /-650,40 €/);
+  assert.equal(csvNegativeStatus.kpiTitle, 'Flux Net');
+
+  // Cas 3 : Relevé bancaire officiel PDF avec solde vérifié
+  const pdfTransactions = [
+    { source_type: 'PDF', libelle: 'Virement reçu', montant: 1500 }
+  ];
+  const pdfVerifiedClosingBalance = 2450.75;
+  const pdfStatus = getStatementDisplayStatus(pdfTransactions, 1500, pdfVerifiedClosingBalance, 'EUR');
+
+  assert.equal(pdfStatus.isCsv, false);
+  assert.equal(pdfStatus.hasVerifiedBalance, true);
+  assert.equal(pdfStatus.kpiTitle, 'Solde Vérifié');
+  assert.equal(pdfStatus.kpiSubtitle, 'Certifié relevé PDF');
+  assert.equal(pdfStatus.kpiBadge, null);
+  assert.match(pdfStatus.formattedAmount, /2 450,75 €/);
 });
