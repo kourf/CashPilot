@@ -18,7 +18,9 @@ import {
   type ReceiptItem, 
   type SupermarketAisle, 
   SUPERMARKET_AISLES,
-  getReceiptUniqueKey
+  getReceiptUniqueKey,
+  generateGenericNeedKey,
+  generateSuperKey
 } from '../../../types/receipts';
 import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle, normalizeStoreName, reconcileStoreWithExisting } from '../../../lib/receiptClassifier';
 import { KNOWN_PHYSICAL_STORES_LIST, resolvePhysicalStore } from '../../../lib/storeRegistry';
@@ -195,6 +197,8 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
           const comp = computeUnitPrice(pricePaid, weightOrVolume, quantity);
           const aisle = normalizeAisle(it.category);
           const unitPrice = Number(it.unitPrice) > 0 ? Number(Number(it.unitPrice).toFixed(2)) : comp.unitPrice;
+          const cleBesoin = it.cle_besoin || generateGenericNeedKey(it.normalizedName || it.rawName, it.brand);
+          const superKey = it.superKey || generateSuperKey(it.brand || 'generique', it.normalizedName || it.rawName, weightOrVolume || '1_piece');
 
           return {
             ...it,
@@ -210,7 +214,10 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
             referenceUnitPrice: unitPrice,
             category: aisle.label,
             categoryKey: aisle.key,
-            unit: it.unit || comp.unit
+            unit: it.unit || comp.unit,
+            cle_besoin: cleBesoin,
+            formatExact: weightOrVolume,
+            superKey
           };
         })
       });

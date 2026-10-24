@@ -555,10 +555,66 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return fullReceipt;
   }, [products, receipts, setPendingValidationReceipt]);
 
-  // Action : Suppression d'un ticket complet
+  // Action : Suppression d'un ticket complet avec nettoyage cohérent des offres orphelines
   const deleteReceipt = useCallback(async (receiptId: string): Promise<void> => {
     const accountId = getActiveAccountId();
     await deleteDoc(doc(db, `users/${accountId}/receipts/${receiptId}`));
+
+    // Nettoyage des offres liées à ce ticket dans la collection produits standardisés
+    const updatedProducts: StandardizedProductDoc[] = [];
+    for (const prod of products) {
+      const prodKey = (prod as any).cle_besoin || prod.superKey;
+      let hasChanges = false;
+      const offers = { ...((prod as any).offres_magasins || {}) };
+      const prices = { ...(prod.prix_actuel || {}) };
+
+      for (const [sId, offer] of Object.entries(offers) as [string, any][]) {
+        if (offer.receiptId === receiptId) {
+          delete offers[sId];
+          delete prices[sId];
+          hasChanges = true;
+        }
+      }
+
+      const rawHist = (prod as any).historique_offres || prod.historique_prix || [];
+      const nextHist = rawHist.filter((h: any) => h.receiptId !== receiptId);
+      if (nextHist.length !== rawHist.length) {
+        hasChanges = true;
+      }
+
+      if (hasChanges) {
+        const remainingOffers = Object.entries(offers);
+        if (remainingOffers.length === 0) {
+          deleteDoc(doc(db, `users/${accountId}/products/${prodKey}`)).catch(e => console.warn(e));
+        } else {
+          const sorted = [...remainingOffers].sort((a: any, b: any) => a[1].prix_unitaire - b[1].prix_unitaire);
+          const best = {
+            magasin_id: sorted[0][0],
+            magasin_nom: sorted[0][1].magasin_nom || sorted[0][0],
+            prix_unitaire: sorted[0][1].prix_unitaire,
+            unite: sorted[0][1].unite
+          };
+          const updatedDoc: any = {
+            ...prod,
+            offres_magasins: offers,
+            prix_actuel: prices,
+            historique_offres: nextHist,
+            historique_prix: nextHist,
+            meilleure_offre: best,
+            nombre_releves: nextHist.length
+          };
+          updatedProducts.push(updatedDoc);
+          setDoc(doc(db, `users/${accountId}/products/${prodKey}`), updatedDoc, { merge: true }).catch(e => console.warn(e));
+        }
+      } else {
+        updatedProducts.push(prod);
+      }
+    }
+
+    setProducts(updatedProducts);
+    try {
+      localStorage.setItem(CACHE_KEY_PRODUCTS, JSON.stringify(updatedProducts));
+    } catch (e) {}
 
     // Mise à jour optimiste immédiate
     setReceipts(prev => {
@@ -568,7 +624,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } catch (e) {}
       return updated;
     });
-  }, []);
+  }, [products]);
 
   // Action : Suppression d'un produit de la matrice comparative (sans corrompre l'historique des tickets)
   const hideProductFromMatrix = useCallback(async (normalizedName: string): Promise<void> => {

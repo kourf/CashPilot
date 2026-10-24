@@ -205,4 +205,51 @@ describe('Audit Financier : Super Clé Universelle & Matrice Comparative 0 €',
     assert.ok(row.sampleBrands.includes('Super U'));
     assert.ok(row.sampleBrands.includes('Marque Repère'));
   });
+
+  it('7. Intégrité des offres : Recalcul de la meilleure offre lors de la mise à jour ou suppression d\'un ticket', () => {
+    const productDoc = {
+      nom_generique: 'Lait demi-écrémé',
+      rayon: 'Produits frais & Crèmerie',
+      rayon_cle: 'frais_cremerie',
+      cle_besoin: 'lait_demi_ecreme',
+      offres_magasins: {
+        intermarche_gaillard: {
+          prix_unitaire: 1.15,
+          unite: 'L',
+          prix_paye: 1.15,
+          marque: 'Candia',
+          format: '1L',
+          date: '2026-10-20',
+          magasin_nom: 'Intermarché - Gaillard',
+          magasin_id: 'intermarche_gaillard',
+          receiptId: 'rec-1'
+        },
+        leclerc_ville_la_grand: {
+          prix_unitaire: 1.05,
+          unite: 'L',
+          prix_paye: 1.05,
+          marque: 'Marque Repère',
+          format: '1L',
+          date: '2026-10-21',
+          magasin_nom: 'E.Leclerc Ville-la-Grand',
+          magasin_id: 'leclerc_ville_la_grand',
+          receiptId: 'rec-2'
+        }
+      }
+    };
+
+    // Initialement, Leclerc est le moins cher à 1.05 €/L
+    let matrix = buildComparativeMatrixFromProducts([productDoc as any], [], 2);
+    let row = matrix.aisleGroups.find(g => g.key === 'frais_cremerie')!.products[0];
+    assert.strictEqual(row.lowestUnitPrice, 1.05);
+    assert.strictEqual(row.cheapestStore, 'E.Leclerc - Ville-la-Grand');
+
+    // Si on supprime le ticket de Leclerc (rec-2), seule l'offre d'Intermarché subsiste
+    delete (productDoc.offres_magasins as any).leclerc_ville_la_grand;
+    matrix = buildComparativeMatrixFromProducts([productDoc as any], [], 1);
+    row = matrix.aisleGroups.find(g => g.key === 'frais_cremerie')!.products[0];
+    assert.strictEqual(row.status, 'UNIQUE');
+    assert.strictEqual(row.storePrices['Intermarché - Gaillard'].pricePaid, 1.15);
+    assert.strictEqual(row.storePrices['Intermarché - Gaillard'].unitPrice, 1.15);
+  });
 });

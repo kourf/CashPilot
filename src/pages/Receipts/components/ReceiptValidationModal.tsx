@@ -20,7 +20,9 @@ import {
   type SupermarketAisle, 
   type SupermarketAisleKey, 
   SUPERMARKET_AISLES,
-  getReceiptUniqueKey
+  getReceiptUniqueKey,
+  generateGenericNeedKey,
+  generateSuperKey
 } from '../../../types/receipts';
 import { formatCurrency, formatDateFR } from '../../../lib/bankUtils';
 import { AISLE_CONFIGS, computeUnitPrice, normalizeAisle, normalizeStoreName, reconcileStoreWithExisting } from '../../../lib/receiptClassifier';
@@ -241,6 +243,8 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
       const comp = computeUnitPrice(pricePaid, weightOrVolume, quantity, it.weightOrVolumeValue, it.weightOrVolumeUnit);
       const aisle = normalizeAisle(it.categoryKey || it.category);
       const unitPrice = Number(it.unitPrice) > 0 ? Number(Number(it.unitPrice).toFixed(2)) : (it.referenceUnitPrice || comp.unitPrice);
+      const cleBesoin = it.cle_besoin || generateGenericNeedKey(it.normalizedName || it.rawName, it.brand);
+      const superKey = it.superKey || generateSuperKey(it.brand || 'generique', it.normalizedName || it.rawName, weightOrVolume || '1_piece');
 
       return {
         id: it.id || `item-${Date.now()}-${idx}`,
@@ -257,7 +261,10 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
         referenceUnitPrice: unitPrice,
         category: aisle.label,
         categoryKey: aisle.key,
-        unit: it.unit || comp.unit
+        unit: it.unit || comp.unit,
+        cle_besoin: cleBesoin,
+        formatExact: it.formatExact || weightOrVolume,
+        superKey
       };
     });
 
