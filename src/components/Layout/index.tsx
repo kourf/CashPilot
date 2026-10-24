@@ -6,10 +6,12 @@ import {
   MessageSquareHeart, 
   Settings,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Loader2
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ThemeToggle } from '../ThemeToggle';
+import { useTransactions } from '../../context/TransactionsContext';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Accueil', path: '/' },
@@ -21,6 +23,7 @@ const navItems = [
 
 export default function Layout() {
   const location = useLocation();
+  const { importState, appNotification } = useTransactions();
 
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -178,6 +181,37 @@ export default function Layout() {
         </div>
       </nav>
       
+      {/* Badge Flottant Persistant : Indique l'avancement du relevé même en changeant d'onglet */}
+      {importState.isImporting && location.pathname !== '/releves' && (
+        <Link
+          to="/releves"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white backdrop-blur-xl shadow-xl shadow-indigo-500/25 border border-white/20 text-xs font-semibold hover:scale-105 active:scale-95 transition-all group animate-pulse"
+        >
+          <div className="relative flex items-center justify-center">
+            <Loader2 size={14} className="animate-spin text-white" />
+            <Sparkles size={8} className="absolute -top-1 -right-1 text-amber-300 animate-bounce" />
+          </div>
+          <span>Analyse du relevé en cours</span>
+          <span className="font-mono bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-bold">
+            {importState.aiAnalysisSeconds.toFixed(1)}s
+          </span>
+          <span className="text-[10px] bg-white/15 px-1.5 py-0.5 rounded-md text-indigo-100 group-hover:bg-white/25">
+            Voir →
+          </span>
+        </Link>
+      )}
+
+      {/* Toast Notification Persistant multi-onglets */}
+      {appNotification && location.pathname !== '/releves' && (
+        <div className={cn(
+          "fixed top-4 right-4 z-50 max-w-sm px-4 py-3 rounded-2xl shadow-luxury text-xs font-semibold flex items-center gap-3 backdrop-blur-xl border animate-in slide-in-from-top-4 fade-in duration-300",
+          appNotification.type === 'success' ? "bg-emerald-600/95 text-white border-emerald-400/30 shadow-emerald-500/20" :
+          appNotification.type === 'error' ? "bg-red-600/95 text-white border-red-400/30 shadow-red-500/20" :
+          "bg-blue-600/95 text-white border-blue-400/30 shadow-blue-500/20"
+        )}>
+          <span>{appNotification.message}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,19 @@ import { collection, query, onSnapshot, orderBy, doc, setDoc } from 'firebase/fi
 import { getAvailableMonths, type Transaction } from '../lib/kpiUtils';
 import { getActiveAccountId } from '../lib/userUtils';
 
+export interface ActiveImportState {
+  isImporting: boolean;
+  isAiAnalyzing: boolean;
+  aiAnalysisSeconds: number;
+  fileStatusMessage: string | null;
+  fileName: string | null;
+  aiAnalysisStats: {
+    totalCount: number;
+    executionTimeSeconds: string;
+    timestamp: Date;
+  } | null;
+}
+
 interface TransactionsContextType {
   transactions: Transaction[];
   loading: boolean;
@@ -73,6 +86,91 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   });
 
   const [isRealtimeSynced, setIsRealtimeSynced] = useState<boolean>(false);
+
+  // État persistant de l'import et du chronomètre IA (survit au changement d'onglet)
+  const [importState, setImportState] = useState<ActiveImportState>({
+    isImporting: false,
+    isAiAnalyzing: false,
+    aiAnalysisSeconds: 0,
+    fileStatusMessage: null,
+    fileName: null,
+    aiAnalysisStats: null
+  });
+
+  const [appNotification, setAppNotificationState] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const notificationTimeoutRef = useRef<any>(null);
+  const importTimerRef = useRef<any>(null);
+
+  const setAppNotification = (notif: { type: 'success' | 'error' | 'info'; message: string } | null) => {
+    if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
+    setAppNotificationState(notif);
+    if (notif) {
+      notificationTimeoutRef.current = setTimeout(() => {
+        setAppNotificationState(null);
+      }, 6000);
+    }
+  };
+
+  const startImportSession = (fileName: string) => {
+    if (importTimerRef.current) {
+      clearInterval(importTimerRef.current);
+      importTimerRef.current = null;
+    }
+    setImportState({
+      isImporting: true,
+      isAiAnalyzing: false,
+      aiAnalysisSeconds: 0,
+      fileStatusMessage: `Lecture de ${fileName}...`,
+      fileName,
+      aiAnalysisStats: null
+    });
+  };
+
+  const updateImportStatus = (message: string, isAiAnalyzing = true) => {
+    setImportState(prev => {
+      if (isAiAnalyzing && !importTimerRef.current) {
+        importTimerRef.current = setInterval(() => {
+          setImportState(curr => ({
+            ...curr,
+            aiAnalysisSeconds: parseFloat((curr.aiAnalysisSeconds + 0.1).toFixed(1))
+          }));
+        }, 100);
+      }
+      return {
+        ...prev,
+        isImporting: true,
+        isAiAnalyzing,
+        fileStatusMessage: message
+      };
+    });
+  };
+
+  const finishImportSession = (stats?: { totalCount: number; executionTimeSeconds: string; timestamp: Date }) => {
+    if (importTimerRef.current) {
+      clearInterval(importTimerRef.current);
+      importTimerRef.current = null;
+    }
+    setImportState(prev => ({
+      ...prev,
+      isImporting: false,
+      isAiAnalyzing: false,
+      fileStatusMessage: null,
+      aiAnalysisStats: stats || prev.aiAnalysisStats
+    }));
+  };
+
+  const cancelImportSession = () => {
+    if (importTimerRef.current) {
+      clearInterval(importTimerRef.current);
+      importTimerRef.current = null;
+    }
+    setImportState(prev => ({
+      ...prev,
+      isImporting: false,
+      isAiAnalyzing: false,
+      fileStatusMessage: null
+    }));
+  };
 
   // Mois disponibles calculés à partir des transactions en mémoire
   const availableMonths = useMemo(() => getAvailableMonths(transactions), [transactions]);

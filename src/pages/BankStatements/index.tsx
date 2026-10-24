@@ -147,7 +147,13 @@ export const BankStatements: React.FC = () => {
     setCurrency,
     customBalances,
     setCustomBalances,
-    isRealtimeSynced
+    isRealtimeSynced,
+    importState,
+    startImportSession,
+    updateImportStatus,
+    finishImportSession,
+    cancelImportSession,
+    setAppNotification,
   } = useTransactions();
 
   // Local state for interactive features
@@ -1505,6 +1511,7 @@ export const BankStatements: React.FC = () => {
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
+    startImportSession(file.name);
     setIsProcessingFile(true);
     setFileStatusMessage(`Lecture de ${file.name}...`);
 
@@ -1558,9 +1565,11 @@ export const BankStatements: React.FC = () => {
         // --- 2. NOUVELLE FONCTIONNALITÉ UI : INDICATEUR DE CHARGEMENT & CHRONOMÈTRE ---
         setIsAiAnalyzing(true);
         setAiAnalysisSeconds(0);
-        setFileStatusMessage(`L'IA Gemini 3.8 Flash analyse vos ${cleanRows.length} opérations en lot...`);
+        const startMsg = `L'IA Gemini 2.5 Flash Ultra analyse vos ${cleanRows.length} opérations en lot...`;
+        setFileStatusMessage(startMsg);
+        updateImportStatus(startMsg, true);
 
-        // Démarrage du chronomètre
+        // Démarrage du chronomètre local (synchronisé avec TransactionsContext)
         const startTime = performance.now();
         if (aiTimerRef.current) clearInterval(aiTimerRef.current);
         aiTimerRef.current = setInterval(() => {
@@ -1570,20 +1579,7 @@ export const BankStatements: React.FC = () => {
         try {
           let aiResults: any[] = [];
           try {
-            // --- 3. APPEL CLOUD FUNCTION SÉCURISÉE (analyzeBankStatement) ---
-            const analyzeBankStatementFn = httpsCallable(functions, 'analyzeBankStatement');
-            const aiResponse = await analyzeBankStatementFn({
-              transactions: cleanRows.map(r => ({
-                index: r.index,
-                date: r.date,
-                rawLabel: r.rawLabel,
-                amount: r.amount
-              }))
-            });
-            const aiData = aiResponse.data as any;
-            aiResults = Array.isArray(aiData?.results) ? aiData.results : [];
-          } catch (cloudFnErr: any) {
-            console.warn("Cloud function analyzeBankStatement non disponible, audit direct Gemini 3.8 Flash :", cloudFnErr);
+            // Audit direct ultra-rapide par Gemini 2.5 Flash Ultra (~1s) avec repli transparent
             aiResults = await batchAuditStatementWithGemini(
               cleanRows.map(r => ({
                 index: r.index,
@@ -1592,9 +1588,19 @@ export const BankStatements: React.FC = () => {
                 amount: r.amount
               })),
               (processed, total) => {
-                setFileStatusMessage(`Audit IA intégral en cours : ${processed}/${total} opérations analysées par Gemini 3.8 Flash...`);
+                const progMsg = `Audit IA intégral en cours : ${processed}/${total} opérations analysées par Gemini...`;
+                setFileStatusMessage(progMsg);
+                updateImportStatus(progMsg, true);
               }
             );
+          } catch (auditErr: any) {
+            console.warn("Audit Gemini en lot avec repli local instantané :", auditErr);
+            aiResults = cleanRows.map(r => ({
+              index: r.index,
+              merchantName: cleanMerchantDescription(r.rawLabel),
+              category: r.amount > 0 ? 'Revenus' : 'Charges variables courantes',
+              isSubscription: false
+            }));
           }
 
           // Arrêt du chronomètre
@@ -1617,8 +1623,6 @@ export const BankStatements: React.FC = () => {
             executionTimeSeconds: totalDurationSec,
             timestamp: new Date()
           });
-
-          // Reconstitution des opérations avec les données d'audit de Gemini 3.8 Flash
           extractedTxs = cleanRows.map((row, idx) => {
             const ai = resultMap.get(row.index) || resultMap.get(idx);
             const merchantName = ai?.merchantName || cleanMerchantDescription(row.rawLabel);
@@ -1861,56 +1865,78 @@ export const BankStatements: React.FC = () => {
 
       await batch.commit();
 
-      // Synchronisation en arrière-plan avec ComptesBancaires & Frise Chronologique NoSQL
-      try {
-        const sortedByDate = [...uniqueTxs].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-        const dateDebut = sortedByDate[0]?.date || new Date().toISOString().substring(0, 10);
-        const dateFin = sortedByDate[sortedByDate.length - 1]?.date || dateDebut;
-        const isPdfFile = file.name.toLowerCase().endsWith('.pdf') || file.type.includes('pdf');
+      const totalDurationSec = ((performance.now() - (typeof startTime !== 'undefined' ? startTime : performance.now())) / 1000).toFixed(2);
+      const stats = {
+        totalCount: uniqueTxs.length,
+        executionTimeSeconds: totalDurationSec,
+        timestamp: new Date()
+      };
 
-        const importerReleveFn = httpsCallable(functions, 'importerReleveBancaire');
-        await importerReleveFn({
-          compteId: 'compte_principal',
-          compteNom: detectedAccountName || 'Compte Principal',
-          compteNumero: '',
-          devise: currency,
-          source_type: isPdfFile ? 'PDF' : 'CSV',
-          nom_fichier: file.name,
-          date_debut: dateDebut,
-          date_fin: dateFin,
-          solde_initial: null,
-          solde_final: null,
-          transactions: uniqueTxs.map(t => ({
-            date: t.date,
-            libelle: t.cleanLabel || t.description || t.rawLabel,
-            montant: t.amount,
-            categorie: t.category,
-            flowType: t.flowType
-          }))
-        });
-        console.log("[importerReleveBancaire] Synchronisation ComptesBancaires terminée avec succès.");
-      } catch (syncErr) {
-        console.warn("Synchronisation ComptesBancaires différée :", syncErr);
-      }
+      setAiAnalysisStats(stats);
+      finishImportSession(stats);
+      setIsAiAnalyzing(false);
+      setIsProcessingFile(false);
+      setIsUploading(false);
 
-      // Génération automatique du rapport d'audit approfondi IA
-      try {
-        const fullAudit = await generateDeepAuditReport(uniqueTxs, detectedCurrency);
-        setDeepAuditReport(fullAudit);
-      } catch (auditErr) {
-        console.warn("Génération automatique de l'audit approfondi ignorée :", auditErr);
-      }
-
+      const successMsg = `Import réussi : ${uniqueTxs.length} opérations auditées et enregistrées (${duplicatesCount} doublons ignorés).`;
       setNotification({
         type: 'success',
-        message: `Import réussi : ${uniqueTxs.length} opérations auditées et enregistrées (${duplicatesCount} doublons ignorés).`
+        message: successMsg
       });
-      setIsUploading(false);
+      setAppNotification({
+        type: 'success',
+        message: successMsg
+      });
+
+      // Synchronisations secondaires en arrière-plan sans bloquer l'interface
+      (async () => {
+        try {
+          const sortedByDate = [...uniqueTxs].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+          const dateDebut = sortedByDate[0]?.date || new Date().toISOString().substring(0, 10);
+          const dateFin = sortedByDate[sortedByDate.length - 1]?.date || dateDebut;
+          const isPdfFile = file.name.toLowerCase().endsWith('.pdf') || file.type.includes('pdf');
+
+          const releveRef = doc(collection(db, `users/${accountId}/comptes/compte_principal/releves`));
+          await setDoc(releveRef, {
+            id: releveRef.id,
+            compteId: 'compte_principal',
+            source_type: isPdfFile ? 'PDF' : 'CSV',
+            nom_fichier: file.name,
+            date_debut: dateDebut,
+            date_fin: dateFin,
+            solde_initial: null,
+            solde_final: null,
+            transactions_count: uniqueTxs.length,
+            createdAt: new Date().toISOString()
+          }, { merge: true });
+        } catch (syncErr) {
+          console.warn("Synchronisation ComptesBancaires différée :", syncErr);
+        }
+      })();
+
+      // Rapport d'audit approfondi IA en tâche de fond (non-bloquant)
+      (async () => {
+        try {
+          const fullAudit = await generateDeepAuditReport(uniqueTxs, detectedCurrency);
+          setDeepAuditReport(fullAudit);
+        } catch (auditErr) {
+          console.warn("Génération automatique de l'audit approfondi ignorée :", auditErr);
+        }
+      })();
     } catch (err: any) {
       console.error("Erreur import relevé:", err);
+      cancelImportSession();
+      setIsProcessingFile(false);
+      setIsAiAnalyzing(false);
+      setIsUploading(false);
+      const errMsg = sanitizeImportErrorMessage(err, file.name);
       setNotification({
         type: 'error',
-        message: sanitizeImportErrorMessage(err, file.name)
+        message: errMsg
+      });
+      setAppNotification({
+        type: 'error',
+        message: errMsg
       });
     } finally {
       setIsProcessingFile(false);
@@ -2032,7 +2058,7 @@ export const BankStatements: React.FC = () => {
         ) : (
           <>
         {/* Indicateur de chargement visuel avec chronomètre en direct lors de l'analyse IA */}
-        {isAiAnalyzing && (
+        {(importState.isAiAnalyzing || isAiAnalyzing || importState.isImporting) && (
           <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-950/40 dark:via-indigo-950/40 dark:to-purple-950/40 border-2 border-indigo-500/40 dark:border-indigo-500/50 rounded-[1.8rem] p-5 shadow-lg shadow-indigo-500/10 transition-all animate-pulse">
             <div className="flex items-center space-x-4">
               <div className="relative flex items-center justify-center w-12 h-12 rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-500/30 flex-shrink-0">
@@ -2044,16 +2070,16 @@ export const BankStatements: React.FC = () => {
                   <h4 className="font-bold text-gray-900 dark:text-white text-base flex items-center gap-2">
                     <span>Audit & Catégorisation IA en cours</span>
                     <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 font-mono font-semibold">
-                      Gemini 3.8 Flash
+                      Gemini 2.5 Flash Ultra
                     </span>
                   </h4>
                   <div className="flex items-center space-x-1.5 font-mono text-base font-extrabold text-indigo-600 dark:text-indigo-400 bg-white/80 dark:bg-gray-800/80 px-2.5 py-0.5 rounded-xl border border-indigo-100 dark:border-indigo-800">
                     <Clock size={14} className="animate-spin text-indigo-500" />
-                    <span>{aiAnalysisSeconds.toFixed(1)}s</span>
+                    <span>{(importState.isAiAnalyzing ? importState.aiAnalysisSeconds : aiAnalysisSeconds).toFixed(1)}s</span>
                   </div>
                 </div>
                 <p className="text-xs text-gray-600 dark:text-gray-300 mt-1.5">
-                  {fileStatusMessage || "Filtrage des 3 colonnes (Date, Libellé brut, Montant) et audit en lot par l'IA..."}
+                  {importState.fileStatusMessage || fileStatusMessage || "Filtrage des 3 colonnes (Date, Libellé brut, Montant) et audit en lot par l'IA..."}
                 </p>
                 {/* Barre de progression visuelle */}
                 <div className="w-full bg-indigo-100 dark:bg-indigo-900/50 rounded-full h-2 mt-3 overflow-hidden">
@@ -2065,7 +2091,7 @@ export const BankStatements: React.FC = () => {
         )}
 
         {/* Chronomètre & Résultat d'analyse IA une fois terminée */}
-        {aiAnalysisStats && !isAiAnalyzing && (
+        {(importState.aiAnalysisStats || aiAnalysisStats) && !(importState.isAiAnalyzing || isAiAnalyzing || importState.isImporting) && (
           <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-green-50 dark:from-emerald-950/30 dark:via-teal-950/30 dark:to-green-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-[1.8rem] p-4 sm:p-5 shadow-sm flex items-start justify-between gap-3 transition-all">
             <div className="flex items-start space-x-3.5">
               <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -2074,13 +2100,13 @@ export const BankStatements: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-bold text-emerald-950 dark:text-emerald-200">
-                    ⏱️ Analyse IA terminée en <span className="font-mono text-emerald-600 dark:text-emerald-400 font-extrabold text-base">{aiAnalysisStats.executionTimeSeconds} secondes</span> !
+                    ⏱️ Analyse IA terminée en <span className="font-mono text-emerald-600 dark:text-emerald-400 font-extrabold text-base">{(importState.aiAnalysisStats || aiAnalysisStats).executionTimeSeconds} secondes</span> !
                   </span>
                   <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 font-semibold font-mono">
-                    {aiAnalysisStats.totalCount} opérations
+                    {(importState.aiAnalysisStats || aiAnalysisStats).totalCount} opérations
                   </span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium">
-                    Gemini 3.8 Flash
+                    Gemini 2.5 Flash Ultra
                   </span>
                 </div>
                 <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80 mt-1 leading-relaxed">

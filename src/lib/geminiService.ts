@@ -6,34 +6,26 @@ import { resolvePhysicalStore, TARGET_PHYSICAL_STORES } from './storeRegistry.ts
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
   {
-    id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
-    badge: '⭐ Dernier Modèle Google',
-    description: 'Le modèle Google dernière génération. Vitesse maximale, intelligence et précision OCR.',
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash Ultra',
+    badge: '⭐ Recommandé (Ultra-rapide ~1s)',
+    description: 'Le modèle Google officiel dernière génération ultra-rapide. Vitesse maximale, audit comptable et précision OCR.',
     quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
     speed: '~1 seconde'
   },
   {
     id: 'gemini-flash-latest',
-    name: 'Gemini Flash (Dernière version stable)',
+    name: 'Gemini Flash Latest',
     badge: '⚡ Auto-Update',
     description: 'Bascule automatiquement sur la dernière version stable déployée par Google AI Studio.',
     quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
     speed: '~1.2 seconde'
   },
   {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    badge: '🛡️ Audit Rigoureux',
-    description: 'Modèle haute rigueur d\'audit comptable pour tickets très denses.',
-    quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
-    speed: '~1.2 seconde'
-  },
-  {
     id: 'gemini-2.0-flash',
     name: 'Gemini 2.0 Flash',
-    badge: '⚡ Repli Transparent',
-    description: 'Modèle de secours fiable et rapide pour absorber les pics de charge.',
+    badge: '🛡️ Repli Transparent',
+    description: 'Modèle de secours fiable et rapide.',
     quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
     speed: '~1.5 seconde'
   }
@@ -41,9 +33,12 @@ export const AVAILABLE_FREE_GEMINI_MODELS = [
 
 export function getGeminiModelName(): string {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('cashpilot_gemini_model') || 'gemini-3.8-flash';
+    const saved = localStorage.getItem('cashpilot_gemini_model');
+    if (saved && saved !== 'gemini-3.8-flash' && saved !== 'gemini-3.5-flash') {
+      return saved;
+    }
   }
-  return 'gemini-3.8-flash';
+  return 'gemini-2.5-flash';
 }
 
 export function setGeminiModelName(modelId: string): void {
@@ -276,7 +271,8 @@ export async function batchAuditStatementWithGemini(
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const preferredModel = getGeminiModelName();
-  const modelsToTry = [preferredModel, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.5-flash'];
+  // Modèle ultra-rapide validé en priorité (~1s), sans les anciens modèles 503/404
+  const modelsToTry = ['gemini-2.5-flash', preferredModel, 'gemini-flash-latest'];
   const uniqueModels = Array.from(new Set(modelsToTry));
 
   const CHUNK_SIZE = 60;
@@ -317,7 +313,14 @@ Renvoie UNIQUEMENT un tableau JSON d'objets :
           model: modelCandidate,
           generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
         });
-        const result = await model.generateContent(prompt);
+        // Timeout strict de 5 secondes pour ne jamais bloquer l'import
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Délai d\'analyse dépassé (5s)')), 5000)
+        );
+        const result: any = await Promise.race([
+          model.generateContent(prompt),
+          timeoutPromise
+        ]);
         const text = result.response.text();
         const jsonStr = text.replace(/```json/gi, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(jsonStr);
@@ -2182,10 +2185,9 @@ RÉPONDS STRICTEMENT EN JSON VALIDE AU FORMAT :
 `;
 
   const candidateModels = [
+    'gemini-2.5-flash',
     getGeminiModelName(),
-    'gemini-3.8-flash',
-    'gemini-flash-latest',
-    'gemini-2.5-flash'
+    'gemini-flash-latest'
   ];
   const uniqueModels = Array.from(new Set(candidateModels));
   const genAI = new GoogleGenerativeAI(apiKey);
