@@ -1,3 +1,4 @@
+import { generateGenericNeedKey, resolvePhysicalStore, normalizeLockedAisle } from "./receiptPriceEngine";
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { GoogleGenAI, Type, Schema } from "@google/genai";
@@ -39,42 +40,62 @@ export const analyzeDocument = functions.region('europe-west1')
     let schema: Schema;
 
     if (fileType === 'receipt') {
-      prompt = `Tu es un expert en analyse de finances personnelles. 
-Analyse ce ticket de caisse ou cette facture. Extrais les informations prÃ©cisÃ©ment.
-N'inclus AUCUNE information de TVA (Ne pas analyser, extraire ou afficher la TVA).
-Standardise les noms de produits (ex: "COCA COLA 1L" devient "Coca-Cola â€” bouteille 1 L").`;
+      prompt = `Tu es l'analyste financier d'élite de CashPilot.
+Analyse rigoureusement ce ticket de caisse (photo, scan ou PDF).
+Extrais chaque article en JSON STRICT avec une fidélité absolue sans aucun texte libre, sans markdown ni backticks.
+N'inclus AUCUNE information de TVA (ne pas analyser, extraire ou afficher la TVA).
+
+RÈGLES D'EXTRACTION STRICTES :
+1. "nom_generique_nettoye" : Nom du produit brut répondant au besoin, PURIFIÉ de toute marque, format ou type de conditionnement (ex: "Sauce Burger", "Lait demi-écrémé", "Pommes de terre").
+2. "marque" : Marque explicite ("Super U", "Marque Repère", "Heinz", "Candia") ou "Générique" pour les produits frais/vrac.
+3. "format_exact" : Poids, volume ou contenance nette lue sur le ticket (ex: "510g", "500g", "1.5L", "6x1L", "1 pièce").
+4. "prix_paye" : Prix net total payé en caisse pour la ligne.
+5. "prix_unitaire_calcule" : Prix au kilo (€/kg), au litre (€/L) ou à l'unité (€/pièce) calculé ou extrait.
+6. "unite_mesure" : "kg", "L" ou "piece".
+7. "rayon_assigne" : Obligatoirement parmi les 14 rayons verrouillés :
+   - Boucherie, Volaille & Poissonnerie
+   - Épicerie salée & Épices
+   - Fruits & Légumes
+   - Produits frais & Crèmerie
+   - Épicerie sucrée
+   - Hygiène, Beauté & Sanitaire
+   - Entretien & Maison
+   - Boissons
+   - Maison, Textile & Culture
+   - Santé & Pharmacie
+   - Papeterie & Bureau
+   - Fleurs & Cadeaux
+   - Sacs & Consignes
+   - Autres / Divers`;
 
       schema = {
         type: Type.OBJECT,
         properties: {
-          storeName: { type: Type.STRING, description: "Nom du magasin" },
+          storeName: { type: Type.STRING, description: "Nom du magasin ou de l'enseigne" },
+          address: { type: Type.STRING, description: "Adresse physique complète et ville du magasin lue sur l'en-tête" },
           date: { type: Type.STRING, description: "Date au format YYYY-MM-DD" },
           time: { type: Type.STRING, description: "Heure au format HH:MM si disponible" },
-          address: { type: Type.STRING, description: "Adresse du magasin si disponible" },
-          total: { type: Type.NUMBER, description: "Total rÃ©el payÃ© (VÃ©rifie le total des produits vs le total affichÃ©)" },
-          discounts: { type: Type.NUMBER, description: "Total des remises/promotions dÃ©tectÃ©es sur le ticket" },
-          paymentMethod: { type: Type.STRING, description: "Moyen de paiement (CB, EspÃ¨ces, etc.)" },
-          category: { type: Type.STRING, description: "CatÃ©gorie globale du ticket (Alimentation, Bricolage, etc.)" },
-          confidenceLevel: { type: Type.STRING, description: "Niveau de confiance global de ton extraction (high, medium, low)" },
-          products: {
+          total: { type: Type.NUMBER, description: "Total réel payé en caisse" },
+          discounts: { type: Type.NUMBER, description: "Total des remises et promotions détectées" },
+          paymentMethod: { type: Type.STRING, description: "Moyen de paiement (CB, Espèces, etc.)" },
+          items: {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
               properties: {
-                rawName: { type: Type.STRING, description: "Nom brut dÃ©tectÃ© sur le ticket" },
-                standardName: { type: Type.STRING, description: "Nom nettoyÃ© et standardisÃ© (ex: Coca-Cola â€” bouteille 1 L)" },
-                brand: { type: Type.STRING, description: "Marque si dÃ©tectÃ©e" },
-                quantity: { type: Type.NUMBER, description: "QuantitÃ© achetÃ©e (dÃ©faut 1)" },
-                unit: { type: Type.STRING, description: "UnitÃ© (L, kg, g, unitÃ©)" },
-                category: { type: Type.STRING, description: "CatÃ©gorie du produit (boissons, produits frais, hygiÃ¨ne, etc.)" },
-                paidPrice: { type: Type.NUMBER, description: "Prix final payÃ© pour cette ligne" },
-                discount: { type: Type.NUMBER, description: "RÃ©duction appliquÃ©e Ã  ce produit si dÃ©tectÃ©e" },
-                pricePerUnit: { type: Type.NUMBER, description: "Prix au kilo ou au litre si pertinent" },
-                confidenceLevel: { type: Type.STRING, description: "Confiance (high, medium, low)" }
-              }
+                nom_generique_nettoye: { type: Type.STRING, description: "Nom du besoin générique sans marque ni format (ex: Sauce Burger)" },
+                marque: { type: Type.STRING, description: "Marque constatée ou Générique" },
+                format_exact: { type: Type.STRING, description: "Format/contenance exacte lue (ex: 510g, 500g, 1L)" },
+                prix_paye: { type: Type.NUMBER, description: "Prix total payé pour cette ligne" },
+                prix_unitaire_calcule: { type: Type.NUMBER, description: "Prix au kilo (€/kg), au litre (€/L) ou à la pièce" },
+                unite_mesure: { type: Type.STRING, description: "kg, L, ou piece" },
+                rayon_assigne: { type: Type.STRING, description: "Un des 14 rayons officiels verrouillés" }
+              },
+              required: ["nom_generique_nettoye", "marque", "format_exact", "prix_paye", "prix_unitaire_calcule", "unite_mesure", "rayon_assigne"]
             }
           }
         },
+        required: ["storeName", "total", "items"]
       };
     } else {
       // Relevé bancaire
@@ -1183,6 +1204,92 @@ import {
   FriseRecalculResult,
   SourceReleveType
 } from './bankTimelineEngine';
+
+
+
+/**
+ * ============================================================================
+ * CLOUD FUNCTION : MET À JOUR LE DICTIONNAIRE offres_magasins SOUS LA CLÉ DE BESOIN
+ * Reçoit le JSON de l'IA, crée la "Clé de Besoin Générique", et met à jour
+ * atomiquement le document Firestore users/{accountId}/products/{cle_besoin}
+ * avec un coût de fonctionnement de 0 € (1 seule écriture/lecture par besoin).
+ * ============================================================================
+ */
+export const updateGenericNeedOffers = functions.region('europe-west1')
+  .https.onCall(async (data, context) => {
+    const { accountId, receiptId, date, storeName, storeAddress, items } = data;
+    if (!accountId || !items || !Array.isArray(items)) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing accountId or items');
+    }
+
+    const db = admin.firestore();
+    const resolvedStore = resolvePhysicalStore({ storeName, storeAddress });
+    const storeId = resolvedStore.id;
+    const storeDisplayName = resolvedStore.displayName;
+    const receiptDate = date || new Date().toISOString().slice(0, 10);
+    const nowIso = new Date().toISOString();
+
+    const results: string[] = [];
+
+    for (const item of items) {
+      const nomGenerique = (item.nom_generique_nettoye || item.nom_generique || item.rawName || 'Produit').trim();
+      const marque = (item.marque || 'Générique').trim();
+      const format = (item.format_exact || item.poids_ou_volume || '1 pièce').trim();
+      const prixPaye = Number(Number(item.prix_paye).toFixed(2)) || 0;
+      const prixUnitaire = Number(Number(item.prix_unitaire_calcule).toFixed(2)) || prixPaye;
+      const unite = (item.unite_mesure || 'kg').trim();
+      const aisle = normalizeLockedAisle(item.rayon_assigne || item.rayon);
+
+      const cleBesoin = generateGenericNeedKey(nomGenerique, marque);
+      const productRef = db.collection('users').doc(accountId).collection('products').doc(cleBesoin);
+
+      const offerData = {
+        prix_unitaire: prixUnitaire,
+        unite,
+        prix_paye: prixPaye,
+        marque,
+        format,
+        date: receiptDate,
+        magasin_nom: storeDisplayName,
+        magasin_id: storeId,
+        receiptId
+      };
+
+      await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(productRef);
+        if (snap.exists) {
+          const prev = snap.data() || {};
+          const currentOffers = { ...(prev.offres_magasins || {}) };
+          currentOffers[storeId] = offerData;
+
+          transaction.update(productRef, {
+            nom_generique: nomGenerique,
+            rayon: aisle.label,
+            offres_magasins: currentOffers,
+            derniere_mise_a_jour: nowIso
+          });
+        } else {
+          transaction.set(productRef, {
+            nom_generique: nomGenerique,
+            rayon: aisle.label,
+            offres_magasins: {
+              [storeId]: offerData
+            },
+            derniere_mise_a_jour: nowIso
+          });
+        }
+      });
+
+      results.push(cleBesoin);
+    }
+
+    return {
+      success: true,
+      storeId,
+      storeDisplayName,
+      cle_besoin_list: results
+    };
+  });
 
 export {
   generateTransactionHash,
