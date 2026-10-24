@@ -39,14 +39,20 @@ describe('Audit & Différenciation des 3 Intermarché et Déduplication des Ense
     assert.strictEqual(normalizeStoreName('Super U Etrembi res'), 'Super U - Étrembières');
   });
 
-  it('5. Rapprochement avec magasins existants (reconcileStoreWithExisting)', () => {
+  it('5. Normalise canoniquement Carrefour Market Annemasse', () => {
+    assert.strictEqual(normalizeStoreName('Carrefour Market Annemasse'), 'Carrefour Market Annemasse');
+    assert.strictEqual(normalizeStoreName('CARREFOUR MARKET', '14 Rue du Faucigny 74100 Annemasse'), 'Carrefour Market Annemasse');
+  });
+
+  it('6. Rapprochement avec magasins existants (reconcileStoreWithExisting)', () => {
     const existing = [
       'E.Leclerc - Ville-la-Grand',
       'Lidl - Annemasse',
       'Intermarché - Annemasse',
       'Intermarché - Gaillard',
       'Intermarché - Ville-la-Grand',
-      'Super U - Étrembières'
+      'Super U - Étrembières',
+      'Carrefour Market Annemasse'
     ];
 
     assert.strictEqual(reconcileStoreWithExisting('intermarche gaillard', existing), 'Intermarché - Gaillard');
@@ -54,11 +60,12 @@ describe('Audit & Différenciation des 3 Intermarché et Déduplication des Ense
     assert.strictEqual(reconcileStoreWithExisting('LIDL', existing), 'Lidl - Annemasse');
     assert.strictEqual(reconcileStoreWithExisting('E.Leclerc Ville la Grand', existing), 'E.Leclerc - Ville-la-Grand');
     assert.strictEqual(reconcileStoreWithExisting('Super U Etrembieres', existing), 'Super U - Étrembières');
+    assert.strictEqual(reconcileStoreWithExisting('Carrefour Market Chablais', existing), 'Carrefour Market Annemasse');
     // Nouveau magasin réel hors référentiel
     assert.strictEqual(reconcileStoreWithExisting('Carrefour Market Annecy', existing), 'Carrefour Market Annecy');
   });
 
-  it('6. Matrice comparative : Génère des colonnes distinctes pour chaque Intermarché physique', () => {
+  it('7. Matrice comparative : Génère des colonnes distinctes pour chaque Intermarché physique', () => {
     const mockReceipts: Receipt[] = [
       {
         id: 'r1',

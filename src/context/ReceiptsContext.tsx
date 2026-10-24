@@ -175,11 +175,6 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
           });
 
-          const items: ReceiptItem[] = Array.from(consolidatedItemsMap.values());
-
-          const totalCalculated = items.reduce((acc, it) => acc + (it.pricePaid ?? it.price ?? 0), 0);
-          const totalAmount = Number(data.totalAmount ?? data.totalPaid ?? data.total) || Number(totalCalculated.toFixed(2));
-
           const resolved = resolvePhysicalStore({
             storeName: data.storeName,
             storeAddress: data.storeAddress,
@@ -187,11 +182,23 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             storeCity: data.storeCity
           });
 
+          const receiptStoreName = data.storeName ? normalizeStoreName(data.storeName, data.storeAddress) : resolved.displayName;
+          const receiptStoreId = data.storeId || resolved.id;
+
+          const items: ReceiptItem[] = Array.from(consolidatedItemsMap.values()).map(it => ({
+            ...it,
+            storeId: it.storeId || receiptStoreId,
+            storeName: it.storeName || receiptStoreName
+          }));
+
+          const totalCalculated = items.reduce((acc, it) => acc + (it.pricePaid ?? it.price ?? 0), 0);
+          const totalAmount = Number(data.totalAmount ?? data.totalPaid ?? data.total) || Number(totalCalculated.toFixed(2));
+
           const r: Receipt = {
             id: d.id,
             userId: accountId,
-            storeName: data.storeName ? normalizeStoreName(data.storeName, data.storeAddress) : resolved.displayName,
-            storeId: data.storeId || resolved.id,
+            storeName: receiptStoreName,
+            storeId: receiptStoreId,
             storeAddress: data.storeAddress || resolved.address,
             storeCity: data.storeCity || resolved.city,
             storePostalCode: data.storePostalCode || resolved.postalCode,
@@ -306,6 +313,12 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const docId = `receipt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const nowIso = new Date().toISOString();
 
+    const enrichedItems: ReceiptItem[] = (receiptData.items || []).map(it => ({
+      ...it,
+      storeId,
+      storeName: normalizedStore
+    }));
+
     const fullReceipt: Receipt = {
       ...receiptData,
       storeName: normalizedStore,
@@ -314,6 +327,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       storeCity: receiptData.storeCity || resolved.city,
       storePostalCode: receiptData.storePostalCode || resolved.postalCode,
       googleMapsUrl: receiptData.googleMapsUrl || resolved.googleMapsUrl,
+      items: enrichedItems,
       id: docId,
       userId: accountId,
       createdAt: nowIso,

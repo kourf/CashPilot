@@ -54,7 +54,7 @@ interface ComparisonMatrixViewProps {
   onHideProduct: (normalizedName: string) => Promise<void>;
   onRestoreProduct: (normalizedName: string) => Promise<void>;
   onOpenUpload: () => void;
-  selectedAisleFocus?: string | null;
+  selectedAisleFocus?: string | string[] | null;
 }
 
 const AISLE_ICONS: Record<SupermarketAisle, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -84,16 +84,24 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
   selectedAisleFocus
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedAisleFilter, setSelectedAisleFilter] = useState<string>(() => selectedAisleFocus || 'ALL');
+  const [selectedAisleFilter, setSelectedAisleFilter] = useState<string | string[]>(() => selectedAisleFocus || 'ALL');
   const [onlyComparable, setOnlyComparable] = useState(false);
 
   useEffect(() => {
     if (selectedAisleFocus) {
       setSelectedAisleFilter(selectedAisleFocus);
-      setOpenAccordions(prev => ({
-        ...prev,
-        [selectedAisleFocus]: true
-      }));
+      if (Array.isArray(selectedAisleFocus)) {
+        setOpenAccordions(prev => {
+          const next = { ...prev };
+          selectedAisleFocus.forEach(a => { next[a] = true; });
+          return next;
+        });
+      } else {
+        setOpenAccordions(prev => ({
+          ...prev,
+          [selectedAisleFocus]: true
+        }));
+      }
     }
   }, [selectedAisleFocus]);
   
@@ -143,9 +151,15 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
   // Filtrage réactif de la matrice en mémoire
   const filteredAisleGroups = useMemo(() => {
     return matrix.aisleGroups.map(group => {
-      // Filtre par rayon si un rayon spécifique est choisi
-      if (selectedAisleFilter !== 'ALL' && group.aisle !== selectedAisleFilter) {
-        return { ...group, products: [] };
+      // Filtre par rayon(s) si un ou plusieurs rayons spécifiques sont choisis
+      if (selectedAisleFilter !== 'ALL') {
+        const isMatch = Array.isArray(selectedAisleFilter)
+          ? selectedAisleFilter.includes(group.aisle)
+          : group.aisle === selectedAisleFilter;
+
+        if (!isMatch) {
+          return { ...group, products: [] };
+        }
       }
 
       const prods = group.products.filter(p => {
@@ -170,7 +184,11 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
         ...group,
         products: prods
       };
-    }).filter(group => selectedAisleFilter === 'ALL' || group.aisle === selectedAisleFilter);
+    }).filter(group => {
+      if (selectedAisleFilter === 'ALL') return true;
+      if (Array.isArray(selectedAisleFilter)) return selectedAisleFilter.includes(group.aisle);
+      return group.aisle === selectedAisleFilter;
+    });
   }, [matrix.aisleGroups, selectedAisleFilter, searchTerm, onlyComparable, matrix.isSingleReceipt]);
 
   const totalFilteredProducts = filteredAisleGroups.reduce((acc, g) => acc + g.products.length, 0);
@@ -327,7 +345,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
               className="h-8 text-xs font-bold gap-1.5 shadow-sm"
             >
               <Sparkles size={13} className="text-cyan-400" />
-              <span>+ Scanner un 2ᵉ ticket</span>
+              <span>+ Importer un 2ᵉ ticket de caisse</span>
             </Button>
           </div>
         </div>
@@ -548,6 +566,22 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
               </div>
             </div>
 
+            {/* BANNIÈRE SI MULTI-CATÉGORIES FILTRÉES (EXPLORATION DE TICKET) */}
+            {Array.isArray(selectedAisleFilter) && (
+              <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-xs animate-in fade-in">
+                <span className="font-bold text-primary">
+                  {selectedAisleFilter.length} catégories extraites affichées ({totalFilteredProducts} article{totalFilteredProducts > 1 ? 's' : ''})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAisleFilter('ALL')}
+                  className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                >
+                  Afficher tous les rayons ({matrix.totalUniqueProducts})
+                </button>
+              </div>
+            )}
+
             {/* PILLS DE FILTRE PAR RAYON */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 text-xs no-scrollbar">
               <button
@@ -566,6 +600,9 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                 const group = matrix.aisleGroups.find(g => g.aisle === aisle);
                 const count = group ? group.totalProducts : 0;
                 const Icon = AISLE_ICONS[aisle];
+                const isSelected = Array.isArray(selectedAisleFilter) 
+                  ? selectedAisleFilter.includes(aisle)
+                  : selectedAisleFilter === aisle;
 
                 return (
                   <button
@@ -573,7 +610,7 @@ export const ComparisonMatrixView: React.FC<ComparisonMatrixViewProps> = ({
                     onClick={() => setSelectedAisleFilter(aisle)}
                     className={cn(
                       "px-2.5 sm:px-3 py-1 rounded-lg sm:rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all border flex items-center gap-1.5 shrink-0",
-                      selectedAisleFilter === aisle
+                      isSelected
                         ? "bg-primary text-primary-foreground border-primary shadow-xs"
                         : "bg-secondary/50 hover:bg-secondary text-muted-foreground border-border/60"
                     )}

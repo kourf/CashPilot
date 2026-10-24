@@ -153,6 +153,28 @@ export const TARGET_PHYSICAL_STORES: Record<string, PhysicalStoreDefinition> = {
       'étrembières',
       'etrembiere'
     ]
+  },
+
+  // 7. CARREFOUR MARKET ANNEMASSE
+  carrefour_market_annemasse: {
+    id: 'carrefour_market_annemasse',
+    brand: 'Carrefour Market',
+    displayName: 'Carrefour Market Annemasse',
+    shortName: 'Annemasse',
+    googleMapsName: 'Carrefour Market Annemasse',
+    googleMapsUrl: 'https://www.google.com/maps/search/Carrefour+Market+Annemasse',
+    address: '14 Rue du Faucigny, Chablais Park, 74100 Annemasse',
+    city: 'Annemasse',
+    postalCode: '74100',
+    addressKeywords: [
+      'carrefour',
+      'carrefour market',
+      'faucigny',
+      'chablais',
+      'chablais park',
+      'annemasse',
+      '74100'
+    ]
   }
 };
 
@@ -300,7 +322,44 @@ export function resolvePhysicalStore(params: {
     };
   }
 
-  // 5. AUTRES ENSEIGNES (ex: Carrefour, Auchan, Monoprix, etc.)
+  // 5. CARREFOUR / CARREFOUR MARKET
+  if (rawLower.includes('carrefour') || combinedText.includes('carrefour')) {
+    const carrefour = TARGET_PHYSICAL_STORES.carrefour_market_annemasse;
+    if (
+      combinedText.includes('annemasse') || 
+      combinedText.includes('faucigny') || 
+      combinedText.includes('chablais') || 
+      combinedText.includes('74100')
+    ) {
+      return carrefour;
+    }
+
+    // Détection d'une autre commune (ex: "Carrefour Market Annecy")
+    const words = (params.storeName || '').trim().split(/[\s-]+/);
+    const lastWord = words[words.length - 1];
+    const candidateCity = params.storeCity || (words.length > 2 ? lastWord : '');
+    const cleanCity = candidateCity ? candidateCity.charAt(0).toUpperCase() + candidateCity.slice(1) : '';
+
+    if (cleanCity && cleanCity.toLowerCase() !== 'market' && cleanCity.toLowerCase() !== 'carrefour') {
+      const slug = `carrefour_${cleanCity.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      return {
+        id: slug,
+        brand: 'Carrefour Market',
+        displayName: `Carrefour Market ${cleanCity}`,
+        shortName: cleanCity,
+        googleMapsName: `Carrefour Market ${cleanCity}`,
+        googleMapsUrl: `https://www.google.com/maps/search/Carrefour+Market+${encodeURIComponent(cleanCity)}`,
+        address: params.storeAddress || '',
+        city: cleanCity,
+        postalCode: params.storePostalCode || '',
+        addressKeywords: [cleanCity.toLowerCase()]
+      };
+    }
+
+    return carrefour;
+  }
+
+  // 6. AUTRES ENSEIGNES (ex: Auchan, Monoprix, etc.)
   const rawClean = (params.storeName || 'Supermarché').trim();
   const city = params.storeCity ? params.storeCity.trim() : '';
   const displayName = city ? `${rawClean} - ${city}` : rawClean;

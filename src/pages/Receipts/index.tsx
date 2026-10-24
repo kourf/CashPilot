@@ -14,12 +14,11 @@ import {
   Smartphone, 
   Laptop, 
   Table, 
-  FileSpreadsheet,
-  Info,
-  CheckCircle2,
-  AlertCircle,
-  ExternalLink,
-  MapPin
+  FileSpreadsheet, 
+  Info, 
+  CheckCircle2, 
+  AlertCircle, 
+  ExternalLink 
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -34,6 +33,23 @@ import { ManualReceiptModal } from './components/ManualReceiptModal';
 import { SpendingChartsView } from './components/SpendingChartsView';
 import { WhereToBuySection } from './components/WhereToBuySection';
 import { TARGET_PHYSICAL_STORES } from '../../lib/storeRegistry';
+
+/**
+ * ============================================================================
+ * RÉFÉRENTIEL EN DUR (MAPPING) : MAGASINS PHYSIQUES & LIENS GOOGLE MAPS
+ * Relie sans AUCUNE API payante (0 € de coût) les adresses et en-têtes OCR
+ * aux fiches officielles Google Maps pour différencier les magasins physiques.
+ * ============================================================================
+ */
+export const STORE_PHYSICAL_MAPPING = {
+  intermarche_gaillard: TARGET_PHYSICAL_STORES.intermarche_gaillard,
+  intermarche_annemasse: TARGET_PHYSICAL_STORES.intermarche_annemasse,
+  intermarche_ville_la_grand: TARGET_PHYSICAL_STORES.intermarche_ville_la_grand,
+  carrefour_market_annemasse: TARGET_PHYSICAL_STORES.carrefour_market_annemasse,
+  leclerc_ville_la_grand: TARGET_PHYSICAL_STORES.leclerc_ville_la_grand,
+  lidl_annemasse: TARGET_PHYSICAL_STORES.lidl_annemasse,
+  super_u_etrembieres: TARGET_PHYSICAL_STORES.super_u_etrembieres
+} as const;
 
 interface UploadedFilePreview {
   id: string;
@@ -51,7 +67,6 @@ export default function Receipts() {
     hiddenProductNames,
     isAnalyzing,
     analysisProgress,
-    isRealtimeSynced,
     pendingValidationReceipt,
     activeTab,
     setPendingValidationReceipt,
@@ -68,18 +83,21 @@ export default function Receipts() {
   const [selectedFiles, setSelectedFiles] = useState<UploadedFilePreview[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Modale de saisie manuelle 100% hors-ligne
+  // Modales
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isValidationModalOpen, setIsValidationModalOpen] = useState(true);
-  const [selectedAisleFocus, setSelectedAisleFocus] = useState<string | null>(null);
+
+  // Focus dynamique des catégories sélectionnées (supporte une ou plusieurs catégories)
+  const [selectedAisleFocus, setSelectedAisleFocus] = useState<string | string[] | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (pendingValidationReceipt) {
       setIsValidationModalOpen(true);
     }
   }, [pendingValidationReceipt]);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Nettoyage des URL d'aperçu d'images lors du démontage
   useEffect(() => {
@@ -89,6 +107,13 @@ export default function Receipts() {
       });
     };
   }, [selectedFiles]);
+
+  const scrollToUpload = () => {
+    if (uploadSectionRef.current) {
+      uploadSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    fileInputRef.current?.click();
+  };
 
   const addFilesToSelection = (fileList: FileList | File[]) => {
     const incoming = Array.from(fileList);
@@ -145,8 +170,6 @@ export default function Receipts() {
 
   /**
    * Lance l'extraction IA via Google Gemini Flash (Palier 100% gratuit).
-   * À la fin de l'extraction, les données sont persistées dans le Context/LocalStorage
-   * garantissant zéro perte lors de la navigation entre onglets !
    */
   const handleLaunchExtraction = async () => {
     if (selectedFiles.length === 0) return;
@@ -198,7 +221,7 @@ export default function Receipts() {
       rawFileCount: validatedData.rawFileCount
     });
 
-    setActiveTab('matrix'); // Redirection immédiate vers la matrice comparative mise à jour
+    setActiveTab('matrix');
   };
 
   /**
@@ -287,11 +310,11 @@ export default function Receipts() {
 
           <Button
             size="sm"
-            onClick={() => setActiveTab('upload')}
+            onClick={scrollToUpload}
             className="text-xs font-bold gap-1.5 h-8 sm:h-9 shadow-md"
           >
             <Plus size={14} />
-            <span>Scanner un ticket</span>
+            <span>Importer un ticket de caisse</span>
           </Button>
         </div>
       </div>
@@ -380,6 +403,193 @@ export default function Receipts() {
       )}
 
       {/* ========================================================================= */}
+      {/* SECTION TÉLÉVERSEMENT DU TICKET DE CAISSE (PHOTO OU PDF)                   */}
+      {/* REMONTÉE TOUT EN HAUT DE PAGE AU-DESSUS DE L'AUDIT DES DÉPENSES            */}
+      {/* ========================================================================= */}
+      <div ref={uploadSectionRef} id="receipt-upload-section" className="space-y-4">
+        <Card className="glass-card overflow-hidden border-border/80 dark:border-white/[0.08] shadow-sm">
+          <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm sm:text-base font-bold flex items-center gap-2">
+                <Camera className="text-primary" size={18} />
+                Téléversement du ticket de caisse (Photo ou PDF)
+              </CardTitle>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                <Sparkles size={11} />
+                Google Gemini Flash (Gratuit)
+              </span>
+            </div>
+            <CardDescription className="text-xs">
+              Sélectionnez une ou plusieurs photos successives (pour les longs tickets) ou votre document PDF.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="p-4 sm:p-6 pt-0 space-y-4">
+            <div 
+              className={cn(
+                "flex flex-col items-center justify-center p-5 sm:p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-300 relative group text-center",
+                isDragging 
+                  ? "border-primary bg-primary/10 scale-[0.99]" 
+                  : "border-border/80 dark:border-white/[0.1] hover:border-primary/50 hover:bg-secondary/40 dark:hover:bg-white/[0.02]"
+              )}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input 
+                ref={fileInputRef}
+                type="file" 
+                id="receipt-file-input" 
+                className="hidden" 
+                accept="image/*,application/pdf" 
+                multiple
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    addFilesToSelection(e.target.files);
+                  }
+                }}
+              />
+
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-3 group-hover:scale-105 transition-transform duration-300">
+                <UploadCloud size={28} className="stroke-[2.2]" />
+              </div>
+              
+              <p className="text-sm font-bold text-foreground">
+                Glissez vos clichés ici ou touchez pour photographier / parcourir
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                Pour un ticket long, photographiez-le en 2 ou 3 parties de haut en bas. L'intelligence artificielle réassemble le tout sans doublon.
+              </p>
+
+              <div className="mt-4 flex items-center gap-2 flex-wrap justify-center">
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-secondary text-muted-foreground border border-border/60">
+                  JPG, PNG, WEBP, PDF
+                </span>
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold text-primary bg-primary/10">
+                  Multi-fragments supporté
+                </span>
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
+                  Audit & validation obligatoire
+                </span>
+              </div>
+            </div>
+
+            {/* MINIATURES DES FICHIERS SÉLECTIONNÉS */}
+            {selectedFiles.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layers size={14} className="text-primary" />
+                    <span className="text-xs font-bold text-foreground">
+                      Fragments à analyser ({selectedFiles.length} cliché{selectedFiles.length > 1 ? 's' : ''})
+                    </span>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={clearAllFiles}
+                    className="h-7 text-[11px] text-muted-foreground hover:text-red-500 hover:bg-red-500/10 px-2"
+                  >
+                    Tout effacer
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {selectedFiles.map((fileItem, index) => (
+                    <div 
+                      key={fileItem.id}
+                      className="group relative rounded-xl border border-border/80 dark:border-white/[0.08] bg-card overflow-hidden shadow-sm hover:border-primary/50 transition-all duration-200"
+                    >
+                      <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-md text-[10px] font-bold bg-background/90 backdrop-blur-sm text-foreground border border-border/60 shadow-xs">
+                        Partie {index + 1}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => removeFile(fileItem.id, e)}
+                        title="Supprimer cette photo"
+                        className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-background/90 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 flex items-center justify-center border border-border/60 shadow-xs transition-colors"
+                      >
+                        <X size={12} />
+                      </button>
+
+                      <div className="h-28 bg-muted/40 flex items-center justify-center overflow-hidden">
+                        {fileItem.isPdf ? (
+                          <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                            <FileText size={32} className="text-red-500" />
+                            <span className="text-[10px] font-mono uppercase font-bold">PDF</span>
+                          </div>
+                        ) : fileItem.previewUrl ? (
+                          <img 
+                            src={fileItem.previewUrl} 
+                            alt={`Partie ${index + 1}`} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                          />
+                        ) : (
+                          <ImageIcon size={28} className="text-muted-foreground" />
+                        )}
+                      </div>
+
+                      <div className="p-2 bg-card text-[11px] border-t border-border/60">
+                        <p className="font-medium text-foreground truncate" title={fileItem.name}>
+                          {fileItem.name}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground font-mono">
+                          {fileItem.sizeFormatted}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-full min-h-[140px] rounded-xl border border-dashed border-border/80 dark:border-white/[0.1] hover:border-primary/50 hover:bg-primary/5 flex flex-col items-center justify-center gap-2 p-4 text-muted-foreground hover:text-foreground transition-all duration-200"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-primary">
+                      <Plus size={16} />
+                    </div>
+                    <span className="text-xs font-semibold">Ajouter une photo</span>
+                    <span className="text-[10px] text-muted-foreground">Suite du ticket</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* BOUTON D'ACTION PRINCIPAL */}
+            <div className="pt-2">
+              <Button 
+                onClick={handleLaunchExtraction} 
+                disabled={selectedFiles.length === 0 || isAnalyzing}
+                className="w-full h-11 text-sm font-bold shadow-md transition-all duration-300"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 size={16} className="mr-2 animate-spin" />
+                    Extraction multimodale & classification des rayons en cours...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} className="mr-2 text-cyan-400" />
+                    Lancer l'extraction IA {selectedFiles.length > 0 ? `(${selectedFiles.length} fichier${selectedFiles.length > 1 ? 's' : ''})` : ''}
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* ASTUCE GUIDAGE AUDIT & PRÉ-VALIDATION */}
+            <div className="p-3.5 rounded-xl bg-secondary/50 border border-border/60 flex items-start gap-2.5 text-xs text-muted-foreground leading-relaxed">
+              <Info size={16} className="text-primary shrink-0 mt-0.5" />
+              <span>
+                <strong>Procédure d'audit rigoureuse :</strong> Dès l'extraction terminée, une fenêtre de validation apparaîtra pour vous permettre de contrôler chaque ligne (prix unitaire, libellé normalisé et rayon de grande surface assigné) avant d'enregistrer le ticket.
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ========================================================================= */}
       {/* AUDIT VISUEL DES DÉPENSES : GRAPHIQUE DONUT & BÂTONS (RÈGLE 6)            */}
       {/* ========================================================================= */}
       {receipts.length > 0 && (
@@ -397,11 +607,16 @@ export default function Receipts() {
             setSelectedAisleFocus(aisle);
             setActiveTab('matrix');
           }}
+          onExploreStoreCategories={(aisles, _storeName) => {
+            // Rend visible l'ensemble des catégories extraites du ticket
+            setSelectedAisleFocus(aisles);
+            setActiveTab('matrix');
+          }}
         />
       )}
 
       {/* ========================================================================= */}
-      {/* BANDEAU DES 3 MAGASINS INTERMARCHÉ CIBLÉS (DIFFÉRENCIATION GÉOGRAPHIQUE)  */}
+      {/* BANDEAU DES MAGASINS CIBLÉS (DIFFÉRENCIATION GÉOGRAPHIQUE SUR GOOGLE MAPS) */}
       {/* ========================================================================= */}
       <div className="p-3 sm:p-3.5 rounded-2xl bg-card/80 dark:bg-card/50 backdrop-blur-md border border-border/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
@@ -410,10 +625,10 @@ export default function Receipts() {
           </div>
           <div>
             <span className="text-xs font-black text-foreground block">
-              Comparateur Localisé des 3 Intermarché
+              Comparateur Localisé des Magasins Physiques
             </span>
             <span className="text-[11px] text-muted-foreground block">
-              Chaque magasin physique est comparé dans une colonne distincte avec son lien Google Maps.
+              Chaque magasin physique est comparé dans une colonne distincte avec sa localisation officielle.
             </span>
           </div>
         </div>
@@ -422,8 +637,9 @@ export default function Receipts() {
           {[
             TARGET_PHYSICAL_STORES.intermarche_gaillard,
             TARGET_PHYSICAL_STORES.intermarche_annemasse,
-            TARGET_PHYSICAL_STORES.intermarche_ville_la_grand
-          ].map(st => (
+            TARGET_PHYSICAL_STORES.intermarche_ville_la_grand,
+            TARGET_PHYSICAL_STORES.carrefour_market_annemasse
+          ].filter(Boolean).map(st => (
             <a
               key={st.id}
               href={st.googleMapsUrl}
@@ -432,7 +648,7 @@ export default function Receipts() {
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-bold bg-secondary/80 hover:bg-secondary text-foreground border border-border/80 hover:border-primary/40 transition-all shadow-2xs group"
               title={`Ouvrir ${st.googleMapsName} sur Google Maps (${st.address})`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
               <span>{st.displayName}</span>
               <ExternalLink size={10} className="text-muted-foreground group-hover:text-primary transition-colors" />
             </a>
@@ -445,7 +661,7 @@ export default function Receipts() {
         <button
           onClick={() => setActiveTab('matrix')}
           className={cn(
-            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
+            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer",
             activeTab === 'matrix'
               ? "bg-card text-foreground shadow-sm border border-border/70"
               : "text-muted-foreground hover:text-foreground hover:bg-card/40"
@@ -458,7 +674,7 @@ export default function Receipts() {
         <button
           onClick={() => setActiveTab('history')}
           className={cn(
-            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
+            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer",
             activeTab === 'history'
               ? "bg-card text-foreground shadow-sm border border-border/70"
               : "text-muted-foreground hover:text-foreground hover:bg-card/40"
@@ -466,19 +682,6 @@ export default function Receipts() {
         >
           <History size={14} className={activeTab === 'history' ? "text-primary" : ""} />
           <span>Historique des Tickets ({receipts.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('upload')}
-          className={cn(
-            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
-            activeTab === 'upload'
-              ? "bg-card text-foreground shadow-sm border border-border/70"
-              : "text-muted-foreground hover:text-foreground hover:bg-card/40"
-          )}
-        >
-          <Camera size={14} className={activeTab === 'upload' ? "text-primary" : ""} />
-          <span>Scanner / Importer</span>
         </button>
       </div>
 
@@ -492,7 +695,7 @@ export default function Receipts() {
           hiddenProductNames={hiddenProductNames}
           onHideProduct={hideProductFromMatrix}
           onRestoreProduct={restoreProductToMatrix}
-          onOpenUpload={() => setActiveTab('upload')}
+          onOpenUpload={scrollToUpload}
           selectedAisleFocus={selectedAisleFocus}
         />
       )}
@@ -504,196 +707,8 @@ export default function Receipts() {
         <ReceiptHistoryView
           receipts={receipts}
           onDeleteReceipt={deleteReceipt}
-          onOpenUpload={() => setActiveTab('upload')}
+          onOpenUpload={scrollToUpload}
         />
-      )}
-
-      {/* ========================================================================= */}
-      {/* VUE 3 : IMPORTATION / SCAN AVEC TÉLÉVERSEMENT MULTIPLE                   */}
-      {/* ========================================================================= */}
-      {activeTab === 'upload' && (
-        <div className="space-y-6 animate-in fade-in duration-300">
-          <Card className="glass-card overflow-hidden border-border/80 dark:border-white/[0.08] shadow-sm">
-            <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm sm:text-base font-bold flex items-center gap-2">
-                  <Camera className="text-primary" size={18} />
-                  Téléversement du ticket de caisse (Photo ou PDF)
-                </CardTitle>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
-                  <Sparkles size={11} />
-                  Google Gemini Flash (Gratuit)
-                </span>
-              </div>
-              <CardDescription className="text-xs">
-                Sélectionnez une ou plusieurs photos successives (pour les longs tickets) ou votre document PDF.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="p-4 sm:p-6 pt-0 space-y-4">
-              <div 
-                className={cn(
-                  "flex flex-col items-center justify-center p-5 sm:p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-300 relative group text-center",
-                  isDragging 
-                    ? "border-primary bg-primary/10 scale-[0.99]" 
-                    : "border-border/80 dark:border-white/[0.1] hover:border-primary/50 hover:bg-secondary/40 dark:hover:bg-white/[0.02]"
-                )}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input 
-                  ref={fileInputRef}
-                  type="file" 
-                  id="receipt-file-input" 
-                  className="hidden" 
-                  accept="image/*,application/pdf" 
-                  multiple
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0) {
-                      addFilesToSelection(e.target.files);
-                    }
-                  }}
-                />
-
-                <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-3 group-hover:scale-105 transition-transform duration-300">
-                  <UploadCloud size={28} className="stroke-[2.2]" />
-                </div>
-                
-                <p className="text-sm font-bold text-foreground">
-                  Glissez vos clichés ici ou touchez pour photographier / parcourir
-                </p>
-                <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-                  Pour un ticket long, photographiez-le en 2 ou 3 parties de haut en bas. L'intelligence artificielle réassemble le tout sans doublon.
-                </p>
-
-                <div className="mt-4 flex items-center gap-2 flex-wrap justify-center">
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-secondary text-muted-foreground border border-border/60">
-                    JPG, PNG, WEBP, PDF
-                  </span>
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold text-primary bg-primary/10">
-                    Multi-fragments supporté
-                  </span>
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
-                    Audit & validation obligatoire
-                  </span>
-                </div>
-              </div>
-
-              {/* MINIATURES DES FICHIERS SÉLECTIONNÉS */}
-              {selectedFiles.length > 0 && (
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Layers size={14} className="text-primary" />
-                      <span className="text-xs font-bold text-foreground">
-                        Fragments à analyser ({selectedFiles.length} cliché{selectedFiles.length > 1 ? 's' : ''})
-                      </span>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={clearAllFiles}
-                      className="h-7 text-[11px] text-muted-foreground hover:text-red-500 hover:bg-red-500/10 px-2"
-                    >
-                      Tout effacer
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {selectedFiles.map((fileItem, index) => (
-                      <div 
-                        key={fileItem.id}
-                        className="group relative rounded-xl border border-border/80 dark:border-white/[0.08] bg-card overflow-hidden shadow-sm hover:border-primary/50 transition-all duration-200"
-                      >
-                        <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-md text-[10px] font-bold bg-background/90 backdrop-blur-sm text-foreground border border-border/60 shadow-xs">
-                          Partie {index + 1}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={(e) => removeFile(fileItem.id, e)}
-                          title="Supprimer cette photo"
-                          className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-background/90 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 flex items-center justify-center border border-border/60 shadow-xs transition-colors"
-                        >
-                          <X size={12} />
-                        </button>
-
-                        <div className="h-28 bg-muted/40 flex items-center justify-center overflow-hidden">
-                          {fileItem.isPdf ? (
-                            <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                              <FileText size={32} className="text-red-500" />
-                              <span className="text-[10px] font-mono uppercase font-bold">PDF</span>
-                            </div>
-                          ) : fileItem.previewUrl ? (
-                            <img 
-                              src={fileItem.previewUrl} 
-                              alt={`Partie ${index + 1}`} 
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                            />
-                          ) : (
-                            <ImageIcon size={28} className="text-muted-foreground" />
-                          )}
-                        </div>
-
-                        <div className="p-2 bg-card text-[11px] border-t border-border/60">
-                          <p className="font-medium text-foreground truncate" title={fileItem.name}>
-                            {fileItem.name}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground font-mono">
-                            {fileItem.sizeFormatted}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="h-full min-h-[140px] rounded-xl border border-dashed border-border/80 dark:border-white/[0.1] hover:border-primary/50 hover:bg-primary/5 flex flex-col items-center justify-center gap-2 p-4 text-muted-foreground hover:text-foreground transition-all duration-200"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-primary">
-                        <Plus size={16} />
-                      </div>
-                      <span className="text-xs font-semibold">Ajouter une photo</span>
-                      <span className="text-[10px] text-muted-foreground">Suite du ticket</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* BOUTON D'ACTION PRINCIPAL */}
-              <div className="pt-2">
-                <Button 
-                  onClick={handleLaunchExtraction} 
-                  disabled={selectedFiles.length === 0 || isAnalyzing}
-                  className="w-full h-11 text-sm font-bold shadow-md transition-all duration-300"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Loader2 size={16} className="mr-2 animate-spin" />
-                      Extraction multimodale & classification des rayons en cours...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={16} className="mr-2 text-cyan-400" />
-                      Lancer l'extraction IA {selectedFiles.length > 0 ? `(${selectedFiles.length} fichier${selectedFiles.length > 1 ? 's' : ''})` : ''}
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* ASTUCE GUIDAGE AUDIT & PRÉ-VALIDATION */}
-              <div className="p-3.5 rounded-xl bg-secondary/50 border border-border/60 flex items-start gap-2.5 text-xs text-muted-foreground leading-relaxed">
-                <Info size={16} className="text-primary shrink-0 mt-0.5" />
-                <span>
-                  <strong>Procédure d'audit rigoureuse :</strong> Dès l'extraction terminée, une fenêtre de validation apparaîtra pour vous permettre de contrôler chaque ligne (prix unitaire, libellé normalisé et rayon de grande surface assigné) avant d'enregistrer le ticket.
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       )}
 
       {/* ========================================================================= */}

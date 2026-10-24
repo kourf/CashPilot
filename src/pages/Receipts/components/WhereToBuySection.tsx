@@ -33,12 +33,13 @@ import {
 } from '../../../types/receipts';
 import { cn } from '../../../lib/utils';
 import { normalizeStoreName } from '../../../lib/receiptClassifier';
-import { resolvePhysicalStore } from '../../../lib/storeRegistry.ts';
+import { resolvePhysicalStore } from '../../../lib/storeRegistry';
 
 interface WhereToBuySectionProps {
   receipts: Receipt[];
   matrix: ComparativeMatrix;
   onSelectAisle?: (aisle: SupermarketAisle) => void;
+  onExploreStoreCategories?: (aisles: SupermarketAisle[], storeName: string) => void;
 }
 
 interface CategoryRecommendation {
@@ -253,6 +254,16 @@ const getStoreBranding = (storeName: string) => {
       accentDot: 'bg-cyan-500'
     };
   }
+  if (lower.includes('carrefour')) {
+    return {
+      gradient: 'from-blue-600/10 via-red-500/5 to-transparent',
+      borderHover: 'hover:border-blue-500/50',
+      iconBg: 'bg-blue-500/15 dark:bg-blue-500/25',
+      iconColor: 'text-blue-600 dark:text-blue-400',
+      badgeBg: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20',
+      accentDot: 'bg-blue-600'
+    };
+  }
   return {
     gradient: 'from-primary/10 via-violet-500/5 to-transparent',
     borderHover: 'hover:border-primary/50',
@@ -266,7 +277,8 @@ const getStoreBranding = (storeName: string) => {
 export const WhereToBuySection: React.FC<WhereToBuySectionProps> = ({
   receipts,
   matrix,
-  onSelectAisle
+  onSelectAisle,
+  onExploreStoreCategories
 }) => {
   // Mode de vue : 'store' (Par Enseigne - ZÉRO DOUBLON) ou 'aisle' (Par Rayon - 13 Rayons)
   // Par défaut sur 'store' pour garantir qu'aucune enseigne ne soit dupliquée visuellement
@@ -631,8 +643,30 @@ export const WhereToBuySection: React.FC<WhereToBuySectionProps> = ({
                     </span>
                     <button
                       type="button"
-                      onClick={() => onSelectAisle?.(grp.wonAisles[0].aisle)}
-                      className="text-primary hover:underline flex items-center gap-1 text-[11px] font-bold"
+                      onClick={() => {
+                        // Correction de bug : extraction de l'ensemble des catégories extraites du ticket de ce magasin
+                        const storeAisles = Array.from(new Set([
+                          ...grp.wonAisles.map(w => w.aisle),
+                          ...receipts
+                            .filter(r => {
+                              const resolved = resolvePhysicalStore({
+                                storeName: r.storeName,
+                                storeAddress: r.storeAddress,
+                                storePostalCode: r.storePostalCode,
+                                storeCity: r.storeCity
+                              });
+                              return resolved.displayName === grp.storeName || resolved.id === grp.storeId;
+                            })
+                            .flatMap(r => (r.items || []).map(it => (it.category as SupermarketAisle) || 'Autres / Divers'))
+                        ]));
+
+                        if (onExploreStoreCategories) {
+                          onExploreStoreCategories(storeAisles, grp.storeName);
+                        } else if (onSelectAisle) {
+                          (onSelectAisle as any)(storeAisles);
+                        }
+                      }}
+                      className="text-primary hover:underline flex items-center gap-1 text-[11px] font-bold cursor-pointer"
                     >
                       <span>Explorer les prix</span>
                       <ArrowRight size={12} />

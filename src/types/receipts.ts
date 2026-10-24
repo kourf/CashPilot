@@ -60,6 +60,8 @@ export interface ReceiptItem {
   categoryKey?: SupermarketAisleKey; // Clé normalisée (ex: 'boissons')
   unit: string; // Unité standardisée ("L", "kg", "pièce")
   price?: number; // Alias rétrocompatible vers pricePaid
+  storeId?: string; // Identifiant unique du magasin physique exact (ex: 'intermarche_gaillard', 'carrefour_market_annemasse')
+  storeName?: string; // Nom officiel localisé du magasin (ex: 'Intermarché - Gaillard', 'Carrefour Market Annemasse')
 }
 
 /**

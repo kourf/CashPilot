@@ -174,7 +174,7 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
 
         <Button onClick={onOpenUpload} size="sm" className="text-xs font-bold gap-1.5 h-9 self-start sm:self-auto">
           <Plus size={14} />
-          <span>Scanner un ticket</span>
+          <span>Importer un ticket de caisse</span>
         </Button>
       </div>
 
