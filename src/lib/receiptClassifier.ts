@@ -6,7 +6,11 @@ import {
   type Receipt, 
   type ProductComparisonRow, 
   type ComparativeMatrix,
-  type AisleGroup
+  type AisleGroup,
+  type StandardizedProductDoc,
+  type StorePriceDetail,
+  type PriceEvolutionInfo,
+  generateSuperKey
 } from '../types/receipts.ts';
 import { resolvePhysicalStore, TARGET_PHYSICAL_STORES, type PhysicalStoreDefinition } from './storeRegistry.ts';
 
@@ -998,3 +1002,263 @@ export function buildComparativeMatrix(
     bestStoreGlobal: isSingleReceipt ? undefined : bestStoreGlobal
   };
 }
+
+/**
+ * Construit la matrice comparative directement à partir de la collection standardisée des produits
+ * (users/{userId}/products) selon la règle 6 (100% Gratuit).
+ * Coût Firestore = 0 (1 seule lecture par produit fournit instantanément prix actuels de toutes les enseignes et historique).
+ */
+export function buildComparativeMatrixFromProducts(
+  products: StandardizedProductDoc[],
+  hiddenProductNames: string[] = [],
+  receiptsCount: number = 0
+): ComparativeMatrix {
+  const hiddenSet = new Set(hiddenProductNames.map(n => n.trim().toLowerCase()));
+
+  // 1. Détermination de la liste ordonnée des magasins réels audités
+  const storeMap = new Map<string, { id: string; displayName: string; googleMapsUrl?: string; address?: string }>();
+  
+  products.forEach(p => {
+    if (p.prix_actuel) {
+      Object.values(p.prix_actuel).forEach(pa => {
+        const normName = normalizeStoreName(pa.magasin_nom);
+        if (normName && !storeMap.has(normName)) {
+          const resolved = resolvePhysicalStore({ storeName: normName });
+          storeMap.set(normName, {
+            id: pa.magasin_id || resolved.id,
+            displayName: normName,
+            googleMapsUrl: resolved.googleMapsUrl,
+            address: resolved.address
+          });
+        }
+      });
+    }
+  });
+
+  const stores = Array.from(storeMap.keys());
+  const storeMetadata: Record<string, { id: string; displayName: string; googleMapsUrl?: string; address?: string }> = {};
+  storeMap.forEach((meta, k) => {
+    storeMetadata[k] = meta;
+  });
+
+  const isSingleReceipt = receiptsCount === 1;
+
+  // 2. Construction des lignes de comparaison
+  const allRows: ProductComparisonRow[] = [];
+  let totalPotentialSavings = 0;
+  const storeWinCount: Record<string, number> = {};
+  stores.forEach(s => { storeWinCount[s] = 0; });
+
+  products.forEach(p => {
+    const rawKey = p.superKey || `${p.marque}_${p.nom_generique}_${p.poids_ou_volume}`;
+    const lookupKey = (p.nom_generique || rawKey).trim().toLowerCase();
+
+    if (hiddenSet.has(lookupKey) || hiddenSet.has(p.superKey.toLowerCase())) {
+      return;
+    }
+
+    const storePrices: Record<string, StorePriceDetail> = {};
+    if (p.prix_actuel) {
+      Object.values(p.prix_actuel).forEach(pa => {
+        const storeKey = normalizeStoreName(pa.magasin_nom);
+        storePrices[storeKey] = {
+          storeName: storeKey,
+          storeId: pa.magasin_id,
+          googleMapsUrl: storeMetadata[storeKey]?.googleMapsUrl,
+          pricePaid: pa.prix_paye,
+          unitPrice: pa.prix_unitaire,
+          brand: p.marque,
+          weightOrVolume: p.poids_ou_volume,
+          date: pa.date,
+          receiptId: pa.receiptId,
+          quantity: pa.quantite,
+          rawName: p.nom_generique,
+          unit: p.unite_mesure
+        };
+      });
+    }
+
+    const presentStores = Object.keys(storePrices);
+    const storeCount = presentStores.length;
+    if (storeCount === 0) return;
+
+    // Historique chronologique
+    const sortedHistory: StorePriceDetail[] = (p.historique_prix || []).map(h => ({
+      storeName: normalizeStoreName(h.magasin_nom),
+      storeId: h.magasin,
+      googleMapsUrl: storeMetadata[normalizeStoreName(h.magasin_nom)]?.googleMapsUrl,
+      pricePaid: h.prix_paye,
+      unitPrice: h.prix_unitaire,
+      brand: p.marque,
+      weightOrVolume: p.poids_ou_volume,
+      date: h.date,
+      receiptId: h.receiptId,
+      quantity: h.quantite,
+      rawName: p.nom_generique,
+      unit: p.unite_mesure
+    })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Évolution des prix
+    let priceEvolution: PriceEvolutionInfo | undefined;
+    if (sortedHistory.length >= 2) {
+      const latest = sortedHistory[sortedHistory.length - 1];
+      const sameStoreRecords = sortedHistory.filter(r => r.storeName === latest.storeName);
+      const comparisonTarget = sameStoreRecords.length >= 2
+        ? sameStoreRecords[sameStoreRecords.length - 2]
+        : sortedHistory[sortedHistory.length - 2];
+
+      const diff = Number((latest.unitPrice - comparisonTarget.unitPrice).toFixed(2));
+      const targetDate = new Date(comparisonTarget.date);
+      let previousMonth = 'le dernier achat';
+      try {
+        const monthName = new Intl.DateTimeFormat('fr-FR', { month: 'long' }).format(targetDate);
+        previousMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+      } catch {}
+
+      const unitLabel = latest.unit ? `€/${latest.unit}` : '€';
+      if (diff > 0.01) {
+        priceEvolution = {
+          status: 'HIKE',
+          message: `🚨 Attention : Prix en hausse (+${diff.toFixed(2).replace('.', ',')} ${unitLabel} depuis le dernier achat)`,
+          diffUnitPrice: diff,
+          currentUnitPrice: latest.unitPrice,
+          previousDate: comparisonTarget.date,
+          previousUnitPrice: comparisonTarget.unitPrice,
+          previousStore: comparisonTarget.storeName
+        };
+      } else if (diff < -0.01) {
+        priceEvolution = {
+          status: 'DROP',
+          message: `✅ Bonne affaire : Moins cher qu'en ${previousMonth} (-${Math.abs(diff).toFixed(2).replace('.', ',')} ${unitLabel})`,
+          diffUnitPrice: diff,
+          currentUnitPrice: latest.unitPrice,
+          previousDate: comparisonTarget.date,
+          previousUnitPrice: comparisonTarget.unitPrice,
+          previousStore: comparisonTarget.storeName
+        };
+      } else {
+        priceEvolution = {
+          status: 'STABLE',
+          message: `Prix stable (${latest.unitPrice.toFixed(2).replace('.', ',')} ${unitLabel})`,
+          diffUnitPrice: 0,
+          currentUnitPrice: latest.unitPrice,
+          previousDate: comparisonTarget.date,
+          previousUnitPrice: comparisonTarget.unitPrice,
+          previousStore: comparisonTarget.storeName
+        };
+      }
+    }
+
+    const isComparable = storeCount >= 2;
+    const unitPrices = Object.values(storePrices).map(sp => sp.unitPrice);
+    let lowestUnitPrice: number | undefined;
+    let highestUnitPrice: number | undefined;
+    let cheapestStore: string | undefined;
+    let unitPriceDifference = 0;
+    let unitPriceDifferencePercent = 0;
+
+    if (isComparable) {
+      lowestUnitPrice = Math.min(...unitPrices);
+      highestUnitPrice = Math.max(...unitPrices);
+      const cheapestEntry = Object.entries(storePrices).find(([_, sp]) => sp.unitPrice === lowestUnitPrice);
+      if (cheapestEntry) {
+        cheapestStore = cheapestEntry[0];
+      }
+      unitPriceDifference = Math.max(0, Number((highestUnitPrice - lowestUnitPrice).toFixed(2)));
+      unitPriceDifferencePercent = highestUnitPrice > 0 ? Math.round((unitPriceDifference / highestUnitPrice) * 100) : 0;
+      if (unitPriceDifference > 0) {
+        totalPotentialSavings += unitPriceDifference;
+      }
+      if (cheapestStore) {
+        storeWinCount[cheapestStore] = (storeWinCount[cheapestStore] || 0) + 1;
+      }
+    } else if (unitPrices.length > 0 && !isSingleReceipt) {
+      lowestUnitPrice = unitPrices[0];
+      highestUnitPrice = unitPrices[0];
+      cheapestStore = presentStores[0];
+    }
+
+    const aisle = normalizeAisle(p.rayon_cle || p.rayon_assigne);
+    const displayName = p.poids_ou_volume && p.poids_ou_volume !== '1_piece' 
+      ? `${p.nom_generique} (${p.poids_ou_volume})`
+      : p.nom_generique;
+
+    allRows.push({
+      normalizedName: displayName,
+      category: aisle.label,
+      categoryKey: aisle.key,
+      sampleRawNames: [p.nom_generique],
+      sampleBrands: [p.marque],
+      storePrices,
+      priceHistory: sortedHistory,
+      priceEvolution,
+      storeCount,
+      status: isComparable ? 'COMPARABLE' : 'UNIQUE',
+      lowestUnitPrice,
+      highestUnitPrice,
+      cheapestStore,
+      unitPriceDifference,
+      unitPriceDifferencePercent,
+      unit: p.unite_mesure,
+      lowestPrice: lowestUnitPrice,
+      highestPrice: highestUnitPrice,
+      priceDifference: unitPriceDifference,
+      priceDifferencePercent: unitPriceDifferencePercent
+    });
+  });
+
+  // Regroupement par Rayons
+  const aisleGroups: AisleGroup[] = SUPERMARKET_AISLES.map(aisle => {
+    const key = AISLE_LABEL_TO_KEY[aisle];
+    const productsInAisle = allRows
+      .filter(r => r.categoryKey === key || r.category === aisle)
+      .sort((a, b) => {
+        if (a.status === 'COMPARABLE' && b.status !== 'COMPARABLE') return -1;
+        if (b.status === 'COMPARABLE' && a.status !== 'COMPARABLE') return 1;
+        return a.normalizedName.localeCompare(b.normalizedName, 'fr', { sensitivity: 'base' });
+      });
+
+    return {
+      aisle,
+      key,
+      products: productsInAisle,
+      totalProducts: productsInAisle.length,
+      comparableCount: productsInAisle.filter(p => p.status === 'COMPARABLE').length
+    };
+  });
+
+  const totalComparable = allRows.filter(r => r.status === 'COMPARABLE').length;
+  let bestStoreGlobal: ComparativeMatrix['bestStoreGlobal'] = undefined;
+
+  if (totalComparable > 0 && !isSingleReceipt) {
+    let bestStoreName = '';
+    let maxWins = -1;
+    Object.entries(storeWinCount).forEach(([store, wins]) => {
+      if (wins > maxWins) {
+        maxWins = wins;
+        bestStoreName = store;
+      }
+    });
+
+    if (bestStoreName && maxWins > 0) {
+      bestStoreGlobal = {
+        storeName: bestStoreName,
+        cheapestCount: maxWins,
+        percentage: Math.round((maxWins / totalComparable) * 100)
+      };
+    }
+  }
+
+  return {
+    stores,
+    storeMetadata,
+    receiptsCount,
+    isSingleReceipt,
+    aisleGroups,
+    totalUniqueProducts: allRows.length,
+    totalComparableProducts: isSingleReceipt ? 0 : totalComparable,
+    totalPotentialSavings: isSingleReceipt ? 0 : Number(totalPotentialSavings.toFixed(2)),
+    bestStoreGlobal: isSingleReceipt ? undefined : bestStoreGlobal
+  };
+}
+

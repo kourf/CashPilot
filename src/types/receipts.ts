@@ -62,6 +62,9 @@ export interface ReceiptItem {
   price?: number; // Alias rétrocompatible vers pricePaid
   storeId?: string; // Identifiant unique du magasin physique exact (ex: 'intermarche_gaillard', 'carrefour_market_annemasse')
   storeName?: string; // Nom officiel localisé du magasin (ex: 'Intermarché - Gaillard', 'Carrefour Market Annemasse')
+  superKey?: string; // Super Clé standardisée ([marque]_[nom_generique]_[poids_ou_volume])
+  marque?: string; // Alias vers brand
+  nomGenerique?: string; // Alias vers normalizedName
 }
 
 /**
@@ -194,3 +197,98 @@ export function getReceiptUniqueKey(
   const cleanAmount = Number(totalAmount || 0).toFixed(2);
   return `${cleanStore}__${cleanDate}__${cleanTime}__${cleanAmount}`;
 }
+
+/**
+ * ============================================================================
+ * LA "SUPER CLÉ" UNIVERSELLE (ID STANDARDISÉ FIRESTORE)
+ * Format : [marque]_[nom_generique_nettoye]_[poids_ou_volume]
+ * - Ignorer toutes les abréviations du ticket au profit d'un nom clair
+ * - Si produit frais ou sans marque explicite -> marque = "generique"
+ * ============================================================================
+ */
+export function generateSuperKey(
+  marque?: string,
+  nomGenerique?: string,
+  poidsOuVolume?: string
+): string {
+  const sanitize = (val: string): string => {
+    return val
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Supprime les diacritiques
+      .replace(/[^a-z0-9]+/g, '_')     // Remplace tout caractère non-alphanumérique par _
+      .replace(/_+/g, '_')             // Évite les underscores successifs
+      .replace(/^_|_$/g, '');          // Supprime les underscores en bordure
+  };
+
+  const rawBrand = (marque || '').trim();
+  const rawName = (nomGenerique || '').trim();
+  const rawWeight = (poidsOuVolume || '').trim();
+
+  // Règle 2 : Produits frais ou sans marque explicite -> marque = "generique"
+  const isGeneric = !rawBrand ||
+    rawBrand.toLowerCase() === 'generique' ||
+    rawBrand.toLowerCase() === 'générique' ||
+    rawBrand.toLowerCase() === 'sans marque' ||
+    rawBrand.toLowerCase() === 'primeur' ||
+    rawBrand.toLowerCase() === 'rayon frais' ||
+    rawBrand.toLowerCase() === 'boucherie' ||
+    rawBrand.toLowerCase() === 'vrac';
+
+  const brandClean = isGeneric ? 'generique' : (sanitize(rawBrand) || 'generique');
+  const nameClean = sanitize(rawName) || 'produit';
+  const weightClean = sanitize(rawWeight) || '1_piece';
+
+  return `${brandClean}_${nameClean}_${weightClean}`;
+}
+
+/**
+ * Document Produit Standardisé dans Firestore (Règle 6 : 100% Gratuit)
+ * Collection : users/{userId}/products/{superKey}
+ */
+export interface StandardizedProductDoc {
+  superKey: string;
+  marque: string;
+  nom_generique: string;
+  poids_ou_volume: string;
+  unite_mesure: 'kg' | 'L' | 'piece';
+  rayon_assigne: SupermarketAisle;
+  rayon_cle: SupermarketAisleKey;
+
+  // Dictionnaire des derniers prix connus par magasin physique (coût de lecture = 0)
+  prix_actuel: Record<string, {
+    prix_unitaire: number; // Prix au kilo, au litre ou à la pièce
+    prix_paye: number;
+    quantite: number;
+    date: string;
+    magasin_id: string;
+    magasin_nom: string;
+    receiptId: string;
+  }>;
+
+  // Historique ordonné chronologique des relevés passés
+  historique_prix: Array<{
+    date: string;
+    magasin: string; // storeId
+    magasin_nom: string;
+    prix_unitaire: number;
+    prix_paye: number;
+    quantite: number;
+    receiptId: string;
+  }>;
+
+  meilleur_magasin?: {
+    storeId: string;
+    storeName: string;
+    prix_unitaire: number;
+  };
+  pire_magasin?: {
+    storeId: string;
+    storeName: string;
+    prix_unitaire: number;
+  };
+  ecart_prix_max?: number;
+  derniere_mise_a_jour: string;
+  nombre_releves: number;
+}
+

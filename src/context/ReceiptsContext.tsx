@@ -8,14 +8,25 @@ import {
   type ComparativeMatrix,
   type SupermarketAisle,
   type SupermarketAisleKey,
+  type StandardizedProductDoc,
+  generateSuperKey,
   getReceiptUniqueKey
 } from '../types/receipts';
-import { buildComparativeMatrix, classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from '../lib/receiptClassifier';
+import { 
+  buildComparativeMatrix, 
+  buildComparativeMatrixFromProducts, 
+  classifyItemAisle, 
+  normalizeAisle, 
+  computeUnitPrice, 
+  normalizeStoreName, 
+  reconcileStoreWithExisting 
+} from '../lib/receiptClassifier';
 import { extractReceiptItemsFromFiles, type ExtractedReceiptResult } from '../lib/geminiService';
 import { resolvePhysicalStore } from '../lib/storeRegistry.ts';
 
 export interface ReceiptsContextType {
   receipts: Receipt[];
+  products: StandardizedProductDoc[];
   matrix: ComparativeMatrix;
   hiddenProductNames: string[];
   isAnalyzing: boolean;
@@ -36,6 +47,7 @@ export interface ReceiptsContextType {
 }
 
 const CACHE_KEY_RECEIPTS = 'cashpilot_receipts_v2_cache';
+const CACHE_KEY_PRODUCTS = 'cashpilot_standardized_products_cache';
 const CACHE_KEY_HIDDEN = 'cashpilot_receipts_hidden_products';
 const CACHE_KEY_PENDING_RECEIPT = 'cashpilot_pending_receipt_validation';
 const CACHE_KEY_ACTIVE_TAB = 'cashpilot_receipts_active_tab';
@@ -53,6 +65,19 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } catch (e) {
       console.warn("Erreur lecture cache local tickets:", e);
+    }
+    return [];
+  });
+
+  const [products, setProducts] = useState<StandardizedProductDoc[]>(() => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY_PRODUCTS);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed as StandardizedProductDoc[];
+      }
+    } catch (e) {
+      console.warn("Erreur lecture cache local produits:", e);
     }
     return [];
   });
@@ -246,6 +271,31 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
+  // 2.5 Écouteur Firestore pour la collection standardisée des produits (Règle 6 : 100% Gratuit)
+  useEffect(() => {
+    let unsubProducts: (() => void) | undefined;
+    try {
+      const accountId = getActiveAccountId();
+      const productsColRef = collection(db, `users/${accountId}/products`);
+
+      unsubProducts = onSnapshot(productsColRef, (snapshot) => {
+        const list: StandardizedProductDoc[] = snapshot.docs.map(d => d.data() as StandardizedProductDoc);
+        setProducts(list);
+        try {
+          localStorage.setItem(CACHE_KEY_PRODUCTS, JSON.stringify(list));
+        } catch (e) {}
+      }, (err) => {
+        console.warn("Écouteur Firestore produits standardisés:", err);
+      });
+    } catch (e) {
+      console.warn("Erreur écouteur produits:", e);
+    }
+
+    return () => {
+      if (unsubProducts) unsubProducts();
+    };
+  }, []);
+
   // 3. Écouteur Firestore pour les exclusions de la matrice (produits supprimés du comparatif)
   useEffect(() => {
     let unsubExclusions: (() => void) | undefined;
@@ -276,10 +326,14 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   // 4. Calcul de la matrice comparative Magasins vs Produits en mémoire
-  // Zéro coût Firestore : calcul instantané et réactif à chaque changement
+  // Si la collection standardisée des produits est peuplée, calcul direct en O(1)
+  // Sinon repli transparent sur la matrice calculée depuis les tickets
   const matrix = useMemo<ComparativeMatrix>(() => {
+    if (products.length > 0) {
+      return buildComparativeMatrixFromProducts(products, hiddenProductNames, receipts.length);
+    }
     return buildComparativeMatrix(receipts, hiddenProductNames);
-  }, [receipts, hiddenProductNames]);
+  }, [products, receipts, hiddenProductNames]);
 
   // Action : Enregistrement d'un ticket validé par l'utilisateur
   const addReceipt = useCallback(async (
@@ -351,6 +405,107 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const docRef = doc(db, `users/${accountId}/receipts/${docId}`);
     await setDoc(docRef, sanitizeForFirestore(fullReceipt));
 
+    // Mise à jour de la collection standardisée des produits (Règle 6 : 100% Gratuit)
+    const updatedProductsMap = new Map<string, StandardizedProductDoc>();
+    products.forEach(p => updatedProductsMap.set(p.superKey, { ...p }));
+
+    for (const it of enrichedItems) {
+      const superKey = it.superKey || generateSuperKey(it.brand, it.normalizedName, it.weightOrVolume);
+      it.superKey = superKey;
+
+      const priceRecord = {
+        date: receiptData.date,
+        magasin: storeId,
+        magasin_nom: normalizedStore,
+        prix_unitaire: it.unitPrice,
+        prix_paye: it.pricePaid,
+        quantite: it.quantity,
+        receiptId: docId
+      };
+
+      const existingProd = updatedProductsMap.get(superKey);
+
+      if (existingProd) {
+        const currentPrices = { ...(existingProd.prix_actuel || {}) };
+        currentPrices[storeId] = {
+          prix_unitaire: it.unitPrice,
+          prix_paye: it.pricePaid,
+          quantite: it.quantity,
+          date: receiptData.date,
+          magasin_id: storeId,
+          magasin_nom: normalizedStore,
+          receiptId: docId
+        };
+
+        const existingHist = Array.isArray(existingProd.historique_prix) ? existingProd.historique_prix : [];
+        const filteredHist = existingHist.filter(h => !(h.receiptId === docId && h.magasin === storeId));
+        const nextHist = [...filteredHist, priceRecord].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        const sortedEntries = Object.entries(currentPrices).sort((a, b) => a[1].prix_unitaire - b[1].prix_unitaire);
+        const best = sortedEntries.length > 0 ? {
+          storeId: sortedEntries[0][0],
+          storeName: sortedEntries[0][1].magasin_nom,
+          prix_unitaire: sortedEntries[0][1].prix_unitaire
+        } : undefined;
+
+        const updatedProd: StandardizedProductDoc = {
+          ...existingProd,
+          prix_actuel: currentPrices,
+          historique_prix: nextHist,
+          meilleur_magasin: best,
+          derniere_mise_a_jour: nowIso,
+          nombre_releves: nextHist.length
+        };
+        updatedProductsMap.set(superKey, updatedProd);
+
+        const prodDocRef = doc(db, `users/${accountId}/products/${superKey}`);
+        setDoc(prodDocRef, sanitizeForFirestore(updatedProd), { merge: true }).catch(err => {
+          console.warn(`Erreur sync produit Firestore ${superKey}:`, err);
+        });
+      } else {
+        const newProd: StandardizedProductDoc = {
+          superKey,
+          marque: it.brand || 'generique',
+          nom_generique: it.normalizedName,
+          poids_ou_volume: it.weightOrVolume || '1 piece',
+          unite_mesure: (it.unit as any) || 'piece',
+          rayon_assigne: (it.category as any) || 'Autres / Divers',
+          rayon_cle: (it.categoryKey as any) || 'autres_divers',
+          prix_actuel: {
+            [storeId]: {
+              prix_unitaire: it.unitPrice,
+              prix_paye: it.pricePaid,
+              quantite: it.quantity,
+              date: receiptData.date,
+              magasin_id: storeId,
+              magasin_nom: normalizedStore,
+              receiptId: docId
+            }
+          },
+          historique_prix: [priceRecord],
+          meilleur_magasin: {
+            storeId,
+            storeName: normalizedStore,
+            prix_unitaire: it.unitPrice
+          },
+          derniere_mise_a_jour: nowIso,
+          nombre_releves: 1
+        };
+        updatedProductsMap.set(superKey, newProd);
+
+        const prodDocRef = doc(db, `users/${accountId}/products/${superKey}`);
+        setDoc(prodDocRef, sanitizeForFirestore(newProd)).catch(err => {
+          console.warn(`Erreur creation produit Firestore ${superKey}:`, err);
+        });
+      }
+    }
+
+    const nextProductsList = Array.from(updatedProductsMap.values());
+    setProducts(nextProductsList);
+    try {
+      localStorage.setItem(CACHE_KEY_PRODUCTS, JSON.stringify(nextProductsList));
+    } catch (e) {}
+
     // Effacer le ticket en attente puisqu'il est validé et enregistré
     setPendingValidationReceipt(null);
 
@@ -364,7 +519,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     return fullReceipt;
-  }, [setPendingValidationReceipt]);
+  }, [products, receipts, setPendingValidationReceipt]);
 
   // Action : Suppression d'un ticket complet
   const deleteReceipt = useCallback(async (receiptId: string): Promise<void> => {
@@ -438,6 +593,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const value: ReceiptsContextType = {
     receipts,
+    products,
     matrix,
     hiddenProductNames,
     isAnalyzing,

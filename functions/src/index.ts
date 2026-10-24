@@ -1424,3 +1424,14 @@ export const recalculerFriseBancaire = functions.region('europe-west1')
       throw new functions.https.HttpsError('internal', err.message || 'Erreur recalcul frise');
     }
   });
+
+// ============================================================================
+// EXPORT DU MOTEUR COMPARATIF & GESTION DES SUPER CLÉS CASHPILOT (0 € COÛT)
+// ============================================================================
+export {
+  processReceiptWithSuperKeys,
+  generateSuperKey,
+  resolvePhysicalStore,
+  normalizeLockedAisle,
+  LOCKED_SUPERMARKET_AISLES
+} from './receiptPriceEngine';

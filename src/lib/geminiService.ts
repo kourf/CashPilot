@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIES } from './bankParser.ts';
 import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from './receiptClassifier';
-import { type SupermarketAisle, type SupermarketAisleKey } from '../types/receipts';
+import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey } from '../types/receipts';
 import { resolvePhysicalStore, TARGET_PHYSICAL_STORES } from './storeRegistry.ts';
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
@@ -1609,6 +1609,14 @@ export interface RawExtractedItem {
   categoryKey?: SupermarketAisleKey;
   unit: string;
   price?: number; // Rétrocompatibilité
+  superKey?: string; // Super Clé universelle [marque]_[nom_generique]_[poids_ou_volume]
+  marque?: string;
+  nomGenerique?: string;
+  poidsOuVolume?: string;
+  prixPaye?: number;
+  prixUnitaireCalcule?: number;
+  uniteMesure?: string;
+  rayonAssigne?: string;
 }
 
 export interface ExtractedReceiptResult {
@@ -1752,7 +1760,7 @@ Pour chaque article, affecte obligatoirement "categoryKey" à l'une des 14 clés
 Filet de sécurité :
 14. "autres_divers" : Autres / Divers (articles inclassables)
 
-RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
+RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE AUTOUR, AUCUN MARKDOWN) :
 {
   "storeName": "Intermarché",
   "storeAddress": "5 Rue René Cassin",
@@ -1768,18 +1776,26 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
   "totalAmount": 28.45,
   "items": [
     {
+      "marque": "generique",
+      "nom_generique": "Courgettes rondes",
+      "poids_ou_volume": "0.420 kg",
+      "prix_paye": 1.47,
+      "prix_unitaire_calcule": 3.49,
+      "unite_mesure": "kg",
+      "rayon_assigne": "Fruits & Légumes",
       "rawName": "COURGETTES RONDES",
-      "normalizedName": "Courgettes rondes",
-      "brand": "Primeur",
-      "categoryKey": "fruits_legumes",
-      "quantity": 1,
-      "unitPrice": 3.49,
-      "pricePaid": 1.47,
-      "weightOrVolume": "0.420 kg",
-      "weightOrVolumeValue": 0.42,
-      "weightOrVolumeUnit": "kg",
-      "referenceUnitPrice": 3.49,
-      "unit": "kg"
+      "quantity": 1
+    },
+    {
+      "marque": "Danone",
+      "nom_generique": "Actimel fraise",
+      "poids_ou_volume": "8x100g",
+      "prix_paye": 3.49,
+      "prix_unitaire_calcule": 4.36,
+      "unite_mesure": "kg",
+      "rayon_assigne": "Produits frais & Crèmerie",
+      "rawName": "ACTIMEL FRAISE 8X100G",
+      "quantity": 1
     }
   ]
 }
@@ -1916,34 +1932,51 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
         continue;
       }
 
-      const norm = String(it.normalizedName || it.cleanName || raw).trim();
-      const brand = String(it.brand || '').trim();
+      // Règle 5 : Extraction champs JSON Strict & rétrocompatibilité
+      const rawBrand = String(it.marque || it.brand || '').trim();
+      const rawNorm = String(it.nom_generique || it.normalizedName || it.cleanName || raw).trim();
+      const rawWeight = String(it.poids_ou_volume || it.weightOrVolume || '').trim();
+      const rawAisle = String(it.rayon_assigne || it.categoryKey || it.category || classifyItemAisle(rawNorm, raw));
+
+      // Règle 2 : Gestion des produits génériques / frais sans marque
+      const isGeneric = !rawBrand || 
+        rawBrand.toLowerCase() === 'generique' || 
+        rawBrand.toLowerCase() === 'générique' || 
+        rawBrand.toLowerCase() === 'sans marque' || 
+        rawBrand.toLowerCase() === 'primeur' ||
+        rawBrand.toLowerCase() === 'vrac';
+
+      const brand = isGeneric ? 'Générique' : (rawBrand.charAt(0).toUpperCase() + rawBrand.slice(1));
+      const norm = rawNorm.charAt(0).toUpperCase() + rawNorm.slice(1);
       const qty = Math.max(1, Number(it.quantity) || 1);
-      const weightOrVolume = String(it.weightOrVolume || '').trim();
+      const weightOrVolume = rawWeight;
       const weightOrVolumeValue = typeof it.weightOrVolumeValue === 'number' ? it.weightOrVolumeValue : undefined;
       const weightOrVolumeUnit = typeof it.weightOrVolumeUnit === 'string' ? it.weightOrVolumeUnit : undefined;
 
-      let pricePaid = cleanNumericPrice(it.pricePaid ?? it.price ?? it.paidPrice);
-      const parsedUnitP = cleanNumericPrice(it.unitPrice);
+      let pricePaid = cleanNumericPrice(it.prix_paye ?? it.pricePaid ?? it.price ?? it.paidPrice);
+      const parsedUnitP = cleanNumericPrice(it.prix_unitaire_calcule ?? it.unitPrice);
       if (pricePaid <= 0 && parsedUnitP > 0) {
         pricePaid = parsedUnitP * qty;
       }
 
-      // Classification rigoureuse dans les 13 rayons ou Autres / Divers
-      const aisle = normalizeAisle(it.categoryKey || it.category || classifyItemAisle(norm, raw));
+      // Classification rigoureuse dans les 14 rayons verrouillés (Règle 4)
+      const aisle = normalizeAisle(rawAisle);
 
-      // Calcul standardisé du prix unitaire
+      // Règle 3 : Calcul standardisé du prix unitaire de référence (€/kg, €/L ou €/pièce)
       const comp = computeUnitPrice(pricePaid, weightOrVolume, qty, weightOrVolumeValue, weightOrVolumeUnit);
-      let unitPrice = cleanNumericPrice(it.referenceUnitPrice || it.unitPrice);
-      const unit = it.unit || comp.unit;
+      let unitPrice = cleanNumericPrice(it.prix_unitaire_calcule ?? it.referenceUnitPrice ?? it.unitPrice);
+      const unit = String(it.unite_mesure || it.unit || comp.unit).toLowerCase().trim() || 'piece';
       if (unitPrice <= 0) {
         unitPrice = comp.unitPrice;
       }
 
+      // Règle 1 : La "Super Clé" Universelle [marque]_[nom_generique]_[poids_ou_volume]
+      const superKey = generateSuperKey(brand, norm, weightOrVolume);
+
       validExtractedItems.push({
         rawName: raw,
-        normalizedName: norm.charAt(0).toUpperCase() + norm.slice(1),
-        brand: brand ? (brand.charAt(0).toUpperCase() + brand.slice(1)) : 'Générique',
+        normalizedName: norm,
+        brand,
         pricePaid: Number(pricePaid.toFixed(2)),
         quantity: qty,
         weightOrVolume,
@@ -1954,14 +1987,22 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
         category: aisle.label,
         categoryKey: aisle.key,
         unit,
-        price: Number(pricePaid.toFixed(2)) // rétrocompatibilité
+        price: Number(pricePaid.toFixed(2)),
+        superKey,
+        marque: brand,
+        nomGenerique: norm,
+        poidsOuVolume: weightOrVolume,
+        prixPaye: Number(pricePaid.toFixed(2)),
+        prixUnitaireCalcule: Number(unitPrice.toFixed(2)),
+        uniteMesure: unit,
+        rayonAssigne: aisle.label
       });
     }
 
-    // Fusion stricte anti-doublon des articles identiques au sein du ticket
+    // Fusion stricte anti-doublon des articles identiques au sein du ticket via la Super Clé
     const consolidatedMap = new Map<string, typeof validExtractedItems[0]>();
     validExtractedItems.forEach(item => {
-      const key = `${item.normalizedName.toLowerCase()}__${(item.unit || '').toLowerCase()}`;
+      const key = item.superKey || `${item.normalizedName.toLowerCase()}__${(item.unit || '').toLowerCase()}`;
       if (consolidatedMap.has(key)) {
         const existing = consolidatedMap.get(key)!;
         existing.quantity += item.quantity;

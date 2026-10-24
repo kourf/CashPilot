@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node --test tests/bankTimelineEngine.test.ts tests/bankStatementValidation.test.ts tests/storeDeduplication.test.ts"
+    "test": "node --test tests/bankTimelineEngine.test.ts tests/bankStatementValidation.test.ts tests/storeDeduplication.test.ts tests/superKeyAndPriceEngine.test.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
