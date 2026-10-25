@@ -6,6 +6,7 @@ import {
   cleanGenericEssence,
   sanitizeGenericDisplayName,
   correctFrenchSpelling,
+  normalizeProductNeed,
   type StandardizedProductDoc,
   type GenericProductDoc
 } from '../src/types/receipts.ts';
@@ -361,5 +362,145 @@ describe('Audit Financier : Super Clé Universelle & Matrice Comparative 0 €',
     const h2 = generateGenericNeedKey('Haricots verts');
     assert.strictEqual(h1, 'haricots_verts');
     assert.strictEqual(h2, 'haricots_verts');
+  });
+
+  it('11. Couche 1 (Empreinte Pure) : Suppression des mots de liaison, ponctuation, mots coupés et passage au singulier', () => {
+    // 1. Mots de liaison et ponctuation
+    assert.strictEqual(normalizeProductNeed('Delice de dinde halal').id, normalizeProductNeed('Delice dinde halal').id);
+    assert.strictEqual(normalizeProductNeed('Confiture de fraise').id, normalizeProductNeed('Confiture fraise').id);
+    assert.strictEqual(normalizeProductNeed('Lait demi écrémé').id, normalizeProductNeed('Lait demi-écrémé').id);
+    assert.strictEqual(normalizeProductNeed('Jus d orange sans pulpe').id, normalizeProductNeed("Jus d'orange").id);
+
+    // 2. Singulier / Pluriel
+    assert.strictEqual(normalizeProductNeed('Carotte rapee').id, normalizeProductNeed('Carottes rapees').id);
+    assert.strictEqual(normalizeProductNeed('Beignet chocolat').id, normalizeProductNeed('Beignets chocolat').id);
+    assert.strictEqual(normalizeProductNeed('Yaourt vanille bio').id, normalizeProductNeed('Yaourts vanille').id);
+
+    // 3. Mots coupés en début ou fin de phrase
+    assert.strictEqual(normalizeProductNeed('Baguette la').nom_affichage, 'Baguette');
+    assert.strictEqual(normalizeProductNeed('Basilic en').nom_affichage, 'Basilic');
+    assert.strictEqual(normalizeProductNeed('Mouchoirs blancs en').nom_affichage, 'Mouchoirs en papier');
+    assert.strictEqual(normalizeProductNeed('De colin d alaska meuniere').nom_affichage, "Filet de colin d'Alaska");
+    assert.strictEqual(normalizeProductNeed('Pommes de terre 1er prix').nom_affichage, 'Pommes de terre');
+    assert.strictEqual(normalizeProductNeed('De articles').isInvalidArtifact, true);
+  });
+
+  it('12. Couche 2 (Familles Canoniques) : Regroupement des synonymes, abréviations et erreurs OCR', () => {
+    // Œufs tronqués par l'OCR
+    const oeufVariants = ['Ufs b', 'Ufs boulanger', 'Ufs sol', 'Œufs', 'Œufs cage', 'Œufs dates', 'Œufs label rouge'];
+    for (const v of oeufVariants) {
+      const res = normalizeProductNeed(v);
+      assert.strictEqual(res.id, 'oeufs', `Variant "${v}" should have id "oeufs"`);
+      assert.strictEqual(res.nom_affichage, 'Œufs', `Variant "${v}" should display "Œufs"`);
+      assert.strictEqual(res.rayon, 'Produits frais & Crèmerie');
+    }
+
+    // Abréviations de jus de fruits
+    assert.strictEqual(normalizeProductNeed('Pj orange sp p').nom_affichage, "Jus d'orange");
+    assert.strictEqual(normalizeProductNeed('Pj pomme').nom_affichage, 'Jus de pomme');
+    assert.strictEqual(normalizeProductNeed('Pj multi').nom_affichage, 'Jus multifruits');
+    assert.strictEqual(normalizeProductNeed('Abc multi bk').nom_affichage, 'Jus multifruits');
+
+    // Mots isolés
+    assert.strictEqual(normalizeProductNeed('Mie').nom_affichage, 'Pain de mie');
+    assert.strictEqual(normalizeProductNeed('Regular').nom_affichage, 'Coca-Cola / Cola standard');
+    assert.strictEqual(normalizeProductNeed('Zero').nom_affichage, 'Coca-Cola Zéro / Sans sucre');
+
+    // Familles similaires
+    assert.strictEqual(normalizeProductNeed('Delice poulet dinde fume').nom_affichage, 'Blanc & Délice de volaille');
+    assert.strictEqual(normalizeProductNeed('Lardon poulet gout fume').id, normalizeProductNeed('Lardon volaille fumee').id);
+    assert.strictEqual(normalizeProductNeed('Crevette deco cuite').id, normalizeProductNeed('Crevettes decortiquees').id);
+    assert.strictEqual(normalizeProductNeed('Thon entier listao').id, normalizeProductNeed('Thon listao au naturel').id);
+    assert.strictEqual(normalizeProductNeed('Thon entier listao').rayon, 'Épicerie salée & Épices');
+    assert.strictEqual(normalizeProductNeed('Frites allumette kg').id, normalizeProductNeed('Pommes de terre frites').id);
+    assert.strictEqual(normalizeProductNeed('Mais doux').id, normalizeProductNeed('Mais grain sucre').id);
+    assert.strictEqual(normalizeProductNeed('Oignons eminces').id, normalizeProductNeed('Oignons eminces kg').id);
+    assert.strictEqual(normalizeProductNeed('Shaker ananas').id, normalizeProductNeed('Shaker d ananas decoupe').id);
+    assert.strictEqual(normalizeProductNeed('Batavia').id, normalizeProductNeed('Laitue batavia blonde').id);
+    assert.strictEqual(normalizeProductNeed('Batavia').id, normalizeProductNeed('Salade batavia blonde').id);
+    assert.strictEqual(normalizeProductNeed('Concombre').id, normalizeProductNeed('Concombre piece').id);
+    assert.strictEqual(normalizeProductNeed('Concombre').id, normalizeProductNeed('Concombre tranches').id);
+    assert.strictEqual(normalizeProductNeed('Melon piece').id, normalizeProductNeed('Melon vert en morceaux').id);
+    assert.strictEqual(normalizeProductNeed('Lait demi écrémé delacto').id, normalizeProductNeed('Lait demi écrémé facile a digerer').id);
+    assert.strictEqual(normalizeProductNeed('Eau minerale').id, normalizeProductNeed('Bouchon sport').id);
+    assert.strictEqual(normalizeProductNeed('Eau de source').id, normalizeProductNeed('Eau source').id);
+  });
+
+  it('13. Couche 3 : Fusion des offres magasins, recalcul Écart Audit et éradication des lignes fantômes', () => {
+    const duplicateAndGhostDocs: any[] = [
+      {
+        nom_generique: 'Delice de dinde halal',
+        rayon: 'Boucherie, Volaille & Poissonnerie',
+        cle_besoin: 'delice_de_dinde_halal',
+        offres_magasins: {
+          super_u_etrembieres: {
+            prix_unitaire: 2.59,
+            unite: 'piece',
+            prix_paye: 2.59,
+            marque: 'Halal',
+            format: '1 piece',
+            date: '2026-10-18',
+            magasin_nom: 'Super U - Étrembières',
+            magasin_id: 'super_u_etrembieres'
+          }
+        }
+      },
+      {
+        nom_generique: 'Delice dinde halal',
+        rayon: 'Boucherie, Volaille & Poissonnerie',
+        cle_besoin: 'delice_dinde_halal',
+        offres_magasins: {
+          leclerc_ville_la_grand: {
+            prix_unitaire: 1.80,
+            unite: 'piece',
+            prix_paye: 1.80,
+            marque: 'Marque Repère',
+            format: '1 piece',
+            date: '2026-10-20',
+            magasin_nom: 'E.Leclerc - Ville-la-Grand',
+            magasin_id: 'leclerc_ville_la_grand'
+          }
+        }
+      },
+      {
+        // Ligne fantôme sans aucun prix valide -> doit être strictement éradiquée
+        nom_generique: 'Produit fantome sans prix',
+        rayon: 'Épicerie salée & Épices',
+        cle_besoin: 'produit_fantome',
+        offres_magasins: {}
+      },
+      {
+        // Artefact OCR "De articles" -> doit être strictement éradiqué
+        nom_generique: 'De articles',
+        rayon: 'Autres / Divers',
+        cle_besoin: 'de_articles',
+        offres_magasins: {
+          leclerc_ville_la_grand: {
+            prix_unitaire: 6.80,
+            unite: 'piece',
+            prix_paye: 6.80,
+            date: '2026-10-20',
+            magasin_nom: 'E.Leclerc - Ville-la-Grand'
+          }
+        }
+      }
+    ];
+
+    const matrix = buildComparativeMatrixFromProducts(duplicateAndGhostDocs, [], 2);
+
+    // Les 2 lignes "Delice de dinde halal" et "Delice dinde halal" ont fusionné en 1 seule ligne comparable,
+    // et les 2 lignes fantôme / artefact ont été supprimées !
+    assert.strictEqual(matrix.totalUniqueProducts, 1);
+    assert.strictEqual(matrix.totalComparableProducts, 1);
+
+    const boucherieGroup = matrix.aisleGroups.find(g => g.key === 'boucherie_poissonnerie')!;
+    assert.strictEqual(boucherieGroup.products.length, 1);
+
+    const mergedRow = boucherieGroup.products[0];
+    assert.strictEqual(mergedRow.normalizedName, 'Blanc & Délice de volaille');
+    assert.strictEqual(mergedRow.storeCount, 2);
+    assert.strictEqual(mergedRow.lowestUnitPrice, 1.80);
+    assert.strictEqual(mergedRow.highestUnitPrice, 2.59);
+    assert.strictEqual(mergedRow.unitPriceDifference, 0.79);
   });
 });

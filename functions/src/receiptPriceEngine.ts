@@ -190,89 +190,284 @@ export function correctFrenchSpelling(str?: string): string {
   return s;
 }
 
-/**
- * RÈGLE 1 : NETTOYAGE EXTRÊME - RÉDUCTION À L'ESSENCE STRICTE DU BESOIN
- * Élimine marques, conditionnements, contenances et marketing.
- */
-export function cleanGenericEssence(rawName?: string, brand?: string): string {
-  if (!rawName || typeof rawName !== 'string') return 'produit';
+export interface NormalizedProductNeed {
+  id: string;
+  nom_affichage: string;
+  rayon?: LockedSupermarketAisle;
+  isInvalidArtifact?: boolean;
+}
 
-  let s = rawName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-_'/]/g, ' ');
+export interface CanonicalFamilyRule {
+  pattern: RegExp;
+  id: string;
+  nom_affichage: string;
+  rayon?: LockedSupermarketAisle;
+}
 
-  if (brand && typeof brand === 'string') {
-    const b = brand.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-    if (b && b !== 'generique' && b !== 'générique') {
-      s = s.replace(new RegExp('\\b' + b.replace(/[^a-z0-9]/g, '\\s*') + '\\b', 'gi'), ' ');
+export const STOP_WORDS_COUCHE_1 = new Set<string>([
+  'de', 'du', 'des', 'd', 'l', 'le', 'la', 'les', 'au', 'aux', 'a', 'en', 'et',
+  'ou', 'avec', 'sans', 'sur', 'sous', 'par', 'pour', 'dans', 'un', 'une',
+  'lit', 'gout', 'saveur', 'piece', 'pieces', 'pce', 'pces', 'unite', 'unites',
+  'tranche', 'tranches', 'morceau', 'morceaux', 'decoupe', 'decoupes', 'entier', 'entiere', 'entiers',
+  'kg', 'kilo', 'kilos', 'g', 'gr', 'gramme', 'grammes', 'mg',
+  'cl', 'ml', 'l', 'litre', 'litres', 'dl',
+  'bocal', 'bocaux', 'sachet', 'sachets', 'pet', 'bidon', 'bidons',
+  'bouteille', 'bouteilles', 'pack', 'packs', 'lot', 'lots', 'format', 'familial',
+  'boite', 'boites', 'brique', 'briques', 'flacon', 'flacons', 'pot', 'pots',
+  'barquette', 'barquettes', 'filet', 'filets', 'etui', 'etuis', 'tube', 'tubes',
+  'verre', 'plastique', 'souple', 'squeeze', 'squeez', 'poche', 'doypack', 'vrac',
+  '1er', 'premier', 'prix', 'promo', 'offre', 'nature', 'pur', 'pure',
+  'croustillant', 'croustillante', 'douceur', 'moelleux', 'moelleuse', 'sandwich',
+  'complet', 'complete', 'extra', 'fin', 'fins', 'fine', 'fines', 'tres',
+  'frais', 'fraiche', 'fraiches', 'bio', 'uht', 'mg', 'allonge', 'allongees', 'blonde',
+  'super', 'u', 'leclerc', 'marque', 'repere', 'carrefour', 'intermarche', 'lidl',
+  'aldi', 'auchan', 'monoprix', 'casino', 'cora', 'franprix', 'leader', 'price',
+  'danone', 'barilla', 'panzani', 'heinz', 'amora', 'president', 'cristaline',
+  'volvic', 'evian', 'coca', 'freeway', 'milka', 'nestle', 'harrys', 'harry',
+  'lu', 'oreo', 'jafad', 'jafun', 'lesieur', 'candia', 'lactel', 'pepsi',
+  'bonduelle', 'fleury', 'michon', 'herta', 'knorr', 'maggi', 'maille',
+  'paturages', 'monique', 'ranou', 'chabrior', 'paquito', 'odyssee', 'pommette',
+  'cantu', 'daise', 'discreet', 'finish', 'mousline', 'ayam', 'landvika', 'kult'
+]);
+
+export const INVARIANT_SINGULAR_EXCEPTIONS = new Set<string>([
+  'mais', 'jus', 'radis', 'pois', 'noix', 'cassis', 'brebis', 'frais', 'epais',
+  'ananas', 'os', 'riz', 'couscous', 'houmous', 'speculoos', 'tapas', 'nems',
+  'chips', 'muesli', 'gnocchi', 'ravioli', 'tortelloni', 'spaghetti', 'macaroni',
+  'farfalle', 'penne', 'lasagne', 'tagliatelle', 'brocoli', 'kiwi', 'litchi',
+  'surimi', 'maki', 'sushi', 'tiramisu', 'tofu', 'quinoa', 'coulis', 'hachis'
+]);
+
+export const CANONICAL_FAMILY_RULES: CanonicalFamilyRule[] = [
+  { pattern: /^(ufs|uf|oeuf|oeufs)(\s+.*|$)/i, id: 'oeufs', nom_affichage: 'Œufs', rayon: 'Produits frais & Crèmerie' },
+  { pattern: /^(delice.*(dinde|poulet|volaille)|blanc.*(volaille|dinde|poulet)).*/i, id: 'blanc_delice_volaille', nom_affichage: 'Blanc & Délice de volaille', rayon: 'Boucherie, Volaille & Poissonnerie' },
+  { pattern: /^lardon.*(poulet|volaille|dinde).*/i, id: 'lardons_volaille_fumes', nom_affichage: 'Lardons de volaille fumés', rayon: 'Boucherie, Volaille & Poissonnerie' },
+  { pattern: /^crevette.*(deco|decortique|cuite).*/i, id: 'crevettes_decortiquees', nom_affichage: 'Crevettes décortiquées', rayon: 'Boucherie, Volaille & Poissonnerie' },
+  { pattern: /^(de\s+)?(filet\s+)?colin.*alaska.*/i, id: 'filet_colin_alaska', nom_affichage: "Filet de colin d'Alaska", rayon: 'Boucherie, Volaille & Poissonnerie' },
+  { pattern: /^thon.*listao.*/i, id: 'thon_listao_naturel', nom_affichage: 'Thon listao au naturel', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^(mie|pain.*mie)(\s+.*|$)/i, id: 'pain_de_mie', nom_affichage: 'Pain de mie', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^(frite(s)?(\s+allumette.*)?|pomme(s)?\s+(de\s+)?terre\s+frite(s)?.*)$/i, id: 'frites', nom_affichage: 'Frites', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^mais(\s+.*(doux|grain|sucre|boite|conserve).*|\s*$)/i, id: 'mais_boite', nom_affichage: 'Maïs en boîte', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^(batavia|laitue.*batavia.*|salade.*batavia.*)$/i, id: 'salade_batavia', nom_affichage: 'Salade Batavia', rayon: 'Fruits & Légumes' },
+  { pattern: /^concombre(s)?(?!.*fromage)(?!.*betterave)(?!.*maki)(?!.*trio).*/i, id: 'concombre', nom_affichage: 'Concombre', rayon: 'Fruits & Légumes' },
+  { pattern: /^melon(s)?(\s+.*|$)/i, id: 'melon', nom_affichage: 'Melon', rayon: 'Fruits & Légumes' },
+  { pattern: /^oignon(s)?\s+emince(s)?.*/i, id: 'oignons_eminces', nom_affichage: 'Oignons émincés', rayon: 'Fruits & Légumes' },
+  { pattern: /^shaker.*ananas.*/i, id: 'shaker_ananas', nom_affichage: "Shaker d'ananas frais", rayon: 'Fruits & Légumes' },
+  { pattern: /^carotte(s)?\s+rape(e|s|es)?.*/i, id: 'carottes_rapees', nom_affichage: 'Carottes râpées', rayon: 'Fruits & Légumes' },
+  { pattern: /^(lait.*(demi|1\s*2).*ecreme.*(delacto|sans\s+lactose|facile.*digerer).*|sans\s+lactose)$/i, id: 'lait_demi_ecreme_sans_lactose', nom_affichage: 'Lait demi-écrémé sans lactose', rayon: 'Produits frais & Crèmerie' },
+  { pattern: /^lait.*(demi|1\s*2)(\s+ecreme(e)?)?(?!.*(delacto|sans\s+lactose|facile)).*/i, id: 'lait_demi_ecreme', nom_affichage: 'Lait demi-écrémé', rayon: 'Produits frais & Crèmerie' },
+  { pattern: /^(pj.*orange.*|pur.*jus.*orange.*|jus.*orange.*)$/i, id: 'jus_d_orange', nom_affichage: "Jus d'orange", rayon: 'Boissons' },
+  { pattern: /^(pj.*pomme.*|pur.*jus.*pomme.*|jus.*pomme.*)$/i, id: 'jus_de_pomme', nom_affichage: 'Jus de pomme', rayon: 'Boissons' },
+  { pattern: /^(pj.*multi.*|abc.*multi.*|jus.*multifruit.*|jafun.*multifruit.*|jus.*tutti.*frutti.*)$/i, id: 'jus_multifruits', nom_affichage: 'Jus multifruits', rayon: 'Boissons' },
+  { pattern: /^(eau.*minerale.*|bouchon.*sport.*)$/i, id: 'eau_minerale', nom_affichage: 'Eau minérale', rayon: 'Boissons' },
+  { pattern: /^eau\s+(de\s+)?source(?!.*peche)(?!.*fraise)(?!.*citron).*/i, id: 'eau_de_source', nom_affichage: 'Eau de source', rayon: 'Boissons' },
+  { pattern: /^confiture(s)?\s+(de\s+)?fraise(s)?.*/i, id: 'confiture_fraise', nom_affichage: 'Confiture de fraise', rayon: 'Épicerie sucrée' },
+  { pattern: /^beignet(s)?\s+(au\s+)?chocolat.*/i, id: 'beignets_chocolat', nom_affichage: 'Beignets au chocolat', rayon: 'Épicerie sucrée' },
+  { pattern: /^yaourt(s)?\s+(saveur\s+)?vanille(?!.*bille).*/i, id: 'yaourt_vanille', nom_affichage: 'Yaourt vanille', rayon: 'Produits frais & Crèmerie' },
+  { pattern: /^baguette(s)?(\s+la|\s+blanche)?$/i, id: 'baguette', nom_affichage: 'Baguette', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^basilic(\s+en|\s+frais)?$/i, id: 'basilic', nom_affichage: 'Basilic', rayon: 'Fruits & Légumes' },
+  { pattern: /^banane(s)?(\s+ruban.*|\s+vrac.*)?$/i, id: 'bananes', nom_affichage: 'Bananes', rayon: 'Fruits & Légumes' },
+  { pattern: /^pomme(s)?\s+(de\s+)?terre(?!.*frite)(?!.*puree).*/i, id: 'pommes_de_terre', nom_affichage: 'Pommes de terre', rayon: 'Fruits & Légumes' },
+  { pattern: /^haricot(s)?\s+vert(s)?.*/i, id: 'haricots_verts', nom_affichage: 'Haricots verts', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^mayonnaise.*/i, id: 'mayonnaise', nom_affichage: 'Mayonnaise', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^huile\s+(de\s+)?tournesol.*/i, id: 'huile_de_tournesol', nom_affichage: 'Huile de tournesol', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^sauce\s+(fruits?\s+)?aigre\s+douce.*/i, id: 'sauce_aigre_douce', nom_affichage: 'Sauce aigre-douce', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^(e\s+v\s+)?sauce\s+bechamel.*/i, id: 'sauce_bechamel', nom_affichage: 'Sauce Béchamel', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^chips?\s+(mtp\s+)?(bbq|barbecue).*/i, id: 'chips_bbq', nom_affichage: 'Chips BBQ', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^cornichon(s)?(\s+fins?)?$/i, id: 'cornichons', nom_affichage: 'Cornichons', rayon: 'Épicerie salée & Épices' },
+  { pattern: /^(les\s+saucisdelices|saucisse(s)?\s+(de\s+)?volaille.*)$/i, id: 'saucisses_volaille', nom_affichage: 'Saucisses de volaille', rayon: 'Boucherie, Volaille & Poissonnerie' },
+  { pattern: /^(msc\s+)?cabillaud\s+pane.*/i, id: 'cabillaud_pane', nom_affichage: 'Cabillaud pané', rayon: 'Boucherie, Volaille & Poissonnerie' },
+  { pattern: /^pave(s)?\s+(de\s+)?truite.*/i, id: 'paves_truite', nom_affichage: 'Pavés de truite', rayon: 'Boucherie, Volaille & Poissonnerie' },
+  { pattern: /^truite\s+fume(e)?.*/i, id: 'truite_fumee', nom_affichage: 'Truite fumée', rayon: 'Boucherie, Volaille & Poissonnerie' },
+  { pattern: /^saumon\s+fume.*/i, id: 'saumon_fume', nom_affichage: 'Saumon fumé', rayon: 'Boucherie, Volaille & Poissonnerie' },
+  { pattern: /^(fromage|specialite)\s+ail\s+(et\s+)?(fines?\s+)?herbes?.*/i, id: 'fromage_ail_fines_herbes', nom_affichage: 'Fromage ail et fines herbes', rayon: 'Produits frais & Crèmerie' },
+  { pattern: /^pop\s+(creme\s+)?(saveur\s+)?vanille.*/i, id: 'creme_dessert_vanille', nom_affichage: 'Crème dessert vanille', rayon: 'Produits frais & Crèmerie' },
+  { pattern: /^creme\s+(ufs|oeufs|aux\s+oeufs)\s+(sur\s+)?(lit\s+)?(de\s+)?caramel.*/i, id: 'creme_oeufs_caramel', nom_affichage: 'Crème aux œufs caramel', rayon: 'Produits frais & Crèmerie' },
+  { pattern: /^(compote(s)?\s+(de\s+)?pomme(s)?(?!.*banane)(?!.*poire).*|dessert\s+(de\s+)?fruits?\s+pomme(s)?)$/i, id: 'compote_pommes', nom_affichage: 'Compote de pommes', rayon: 'Épicerie sucrée' },
+  { pattern: /^(biscuit(s)?\s+speculoos|speculoos)$/i, id: 'biscuits_speculoos', nom_affichage: 'Biscuits Spéculoos', rayon: 'Épicerie sucrée' },
+  { pattern: /^(cracotte(s)?\s+froment|tartine(s)?\s+craquante(s)?\s+froment)$/i, id: 'tartines_froment', nom_affichage: 'Tartines craquantes au froment', rayon: 'Épicerie sucrée' },
+  { pattern: /^(corn\s+flakes?.*|petale(s)?\s+(de\s+)?mais\s+sucre.*)$/i, id: 'corn_flakes', nom_affichage: 'Corn Flakes / Pétales de maïs', rayon: 'Épicerie sucrée' },
+  { pattern: /^cereale(s)?\s+(fou|fourree(s)?).*(choc|lait).*/i, id: 'cereales_fourrees_chocolat', nom_affichage: 'Céréales fourrées chocolat lait', rayon: 'Épicerie sucrée' },
+  { pattern: /^(cereale(s)?\s+coco\s+pops\s+chocos|chocos)$/i, id: 'cereales_chocos', nom_affichage: 'Céréales Chocos', rayon: 'Épicerie sucrée' },
+  { pattern: /^mouchoir(s)?(\s+blancs?)?(\s+en)?(\s+de\s+plis)?$/i, id: 'mouchoirs_papier', nom_affichage: 'Mouchoirs en papier', rayon: 'Hygiène, Beauté & Sanitaire' },
+  { pattern: /^lait\s+(de\s+)?corps.*/i, id: 'lait_hydratant_corps', nom_affichage: 'Lait hydratant pour le corps', rayon: 'Hygiène, Beauté & Sanitaire' },
+  { pattern: /^eau\s+de\s+toilette.*/i, id: 'eau_de_toilette', nom_affichage: 'Eau de toilette', rayon: 'Hygiène, Beauté & Sanitaire' },
+  { pattern: /^essuie\s+tout.*/i, id: 'essuie_tout', nom_affichage: 'Essuie-tout', rayon: 'Entretien & Maison' },
+  { pattern: /^(film\s+etirable.*|papier\s+film\s+blanc.*)$/i, id: 'film_alimentaire', nom_affichage: 'Film alimentaire étirable', rayon: 'Entretien & Maison' },
+  { pattern: /^(dom\s+)?pile(s)?\s+alca.*/i, id: 'piles_alcalines', nom_affichage: 'Piles alcalines', rayon: 'Entretien & Maison' },
+  { pattern: /^lessive\s+liquide.*/i, id: 'lessive_liquide', nom_affichage: 'Lessive liquide', rayon: 'Entretien & Maison' },
+  { pattern: /^(liquide\s+vaisselle.*|vaisselle\s+hygiene.*)$/i, id: 'liquide_vaisselle', nom_affichage: 'Liquide vaisselle', rayon: 'Entretien & Maison' },
+  { pattern: /^(finish\s+gel.*|gel\s+lavage\s+concentre.*|pastille(s)?\s+lave\s+vaisselle.*)$/i, id: 'produit_lave_vaisselle', nom_affichage: 'Produit lave-vaisselle', rayon: 'Entretien & Maison' },
+  { pattern: /^(deboucheur.*|gel\s+deboucheur.*)$/i, id: 'deboucheur_canalisations', nom_affichage: 'Déboucheur canalisations', rayon: 'Entretien & Maison' },
+  { pattern: /^syphon\s+(bloc|gel)\s+wc.*/i, id: 'nettoyant_wc', nom_affichage: 'Nettoyant & Bloc WC', rayon: 'Entretien & Maison' },
+  { pattern: /^(ice\s+tea\s+peche.*|the\s+(glace(e)?\s+)?peche.*|boisson\s+eau\s+source\s+peche.*|peche)$/i, id: 'the_glace_peche', nom_affichage: 'Thé glacé pêche', rayon: 'Boissons' },
+  { pattern: /^(boisson\s+gazeuse\s+lemon\s+lime.*|soda\s+lemon\s+lime.*)$/i, id: 'soda_lemon_lime', nom_affichage: 'Soda citron-citron vert', rayon: 'Boissons' },
+  { pattern: /^(orangina(\s+jaune)?|jaune)$/i, id: 'orangina', nom_affichage: 'Orangina', rayon: 'Boissons' },
+  { pattern: /^(regular|coca.*regular|cola.*regular)$/i, id: 'cola_standard', nom_affichage: 'Coca-Cola / Cola standard', rayon: 'Boissons' },
+  { pattern: /^(zero|coca.*zero|cola.*zero)$/i, id: 'cola_zero', nom_affichage: 'Coca-Cola Zéro / Sans sucre', rayon: 'Boissons' },
+  { pattern: /^(glacon(s)?|sac\s+grains?\s+(de\s+)?glace(e)?)$/i, id: 'glacons', nom_affichage: 'Glaçons', rayon: 'Boissons' },
+  { pattern: /^(sac|sac\s+kraft\s+drive|sac\s+poignee|sac\s+cabas)$/i, id: 'sac_caisse', nom_affichage: 'Sac de caisse / Cabas', rayon: 'Sacs & Consignes' }
+];
+
+export function singularizeWord(word: string): string {
+  if (!word || word.length <= 2) return word;
+  if (INVARIANT_SINGULAR_EXCEPTIONS.has(word)) return word;
+  let w = word;
+  if (w.endsWith('aux') && w.length > 4) return w.slice(0, -1);
+  if ((w.endsWith('s') || w.endsWith('x')) && w.length > 3) w = w.slice(0, -1);
+  if (
+    w.length > 4 &&
+    (w.endsWith('rapee') ||
+      w.endsWith('fumee') ||
+      w.endsWith('decortiquee') ||
+      w.endsWith('emincee') ||
+      w.endsWith('glacee') ||
+      w.endsWith('allegee') ||
+      w.endsWith('fourree') ||
+      w.endsWith('sucree') ||
+      w.endsWith('salee') ||
+      w.endsWith('pelee') ||
+      w.endsWith('grillee') ||
+      w.endsWith('panee') ||
+      w.endsWith('tranchee') ||
+      w.endsWith('hachee') ||
+      w.endsWith('ecremee'))
+  ) {
+    w = w.slice(0, -1);
+  }
+  return w;
+}
+
+export function preNormalizeRawText(rawName: string): string {
+  if (!rawName || typeof rawName !== 'string') return '';
+  let s = rawName
+    .replace(/œ/gi, 'oe')
+    .replace(/æ/gi, 'ae')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-_'/’.,:;()[\]]+/g, ' ');
+  s = s.replace(/\bb\s*u+f\b/g, 'boeuf');
+  s = s.replace(/\bc\s*ur\b/g, 'coeur');
+  s = s.replace(/\b1\s*[/_\s-]?\s*2\b/g, 'demi');
+  s = s.replace(/\bsteacks?\b/g, 'steak');
+  s = s.replace(/\bpomm?\s+terre\b/g, 'pommes de terre');
+  return s.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+export function isInvalidReceiptArtifact(rawName?: string): boolean {
+  if (!rawName || typeof rawName !== 'string') return true;
+  const s = preNormalizeRawText(rawName);
+  if (!s || s.length < 2) return true;
+  const invalidPatterns = [
+    /^(de\s+)?articles?$/,
+    /^\d+\s+articles?$/,
+    /^nb\s+articles?$/,
+    /^total(\s+.*)?$/,
+    /^sous\s+total(\s+.*)?$/,
+    /^montant(\s+.*)?$/,
+    /^carte\s+bancaire(\s+.*)?$/,
+    /^cb(\s+.*)?$/,
+    /^especes(\s+.*)?$/,
+    /^rendu\s+monnaie(\s+.*)?$/,
+    /^remise(\s+immediate)?$/,
+    /^bon\s+d\s+achat$/,
+    /^tva(\s+.*)?$/,
+    /^produit(s)?(\s+inconnu)?$/
+  ];
+  return invalidPatterns.some(rx => rx.test(s));
+}
+
+export function normalizeProductNeed(rawName?: string, brand?: string): NormalizedProductNeed {
+  if (!rawName || typeof rawName !== 'string') {
+    return { id: 'produit', nom_affichage: 'Produit', isInvalidArtifact: true };
+  }
+  const invalid = isInvalidReceiptArtifact(rawName);
+  const preNorm = preNormalizeRawText(rawName);
+  if (!preNorm) {
+    return { id: 'produit', nom_affichage: 'Produit', isInvalidArtifact: true };
+  }
+
+  for (const rule of CANONICAL_FAMILY_RULES) {
+    if (rule.pattern.test(preNorm)) {
+      return { id: rule.id, nom_affichage: rule.nom_affichage, rayon: rule.rayon, isInvalidArtifact: false };
     }
   }
 
-  // Normalisation des fractions (ex: 1/2 ou 1 2 -> demi)
-  s = s.replace(/\b1\s*[/_-\s]?\s*2\b/g, 'demi');
-
-  // Suppression des formats et quantités numériques (ex: "500g", "825g", "1.5l", "6x1l", "4x100g", "1litre")
-  s = s.replace(/\b\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml|piece|pieces|unite|unites|tranches?)\b/gi, ' ');
-  s = s.replace(/\b\d+\s*x\s*\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml)?\b/gi, ' ');
-  s = s.replace(/\bx\s*\d+\b/gi, ' ');
-  s = s.replace(/\b\d+\s*(litre|litres|kilo|kilos|gramme|grammes)\b/gi, ' ');
-  s = s.replace(/\b\d+([.,]\d+)?\b/gi, ' ');
-
-  // Suppression des marques
-  for (const b of KNOWN_BRANDS_AND_STORES) {
-    s = s.replace(new RegExp('\\b' + b.replace(/[^a-z0-9]/g, '\\s*') + '\\b', 'gi'), ' ');
+  let working = preNorm;
+  if (brand && typeof brand === 'string') {
+    const cleanBrand = preNormalizeRawText(brand);
+    if (cleanBrand && cleanBrand !== 'generique') {
+      working = working.replace(new RegExp('\\b' + cleanBrand.replace(/\s+/g, '\\s+') + '\\b', 'gi'), ' ');
+    }
   }
 
-  // Suppression du conditionnement
-  for (const w of KNOWN_PACKAGING_WORDS) {
-    s = s.replace(new RegExp('\\b' + w + '\\b', 'gi'), ' ');
+  working = working.replace(/\b\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml|m|cm|mm|pce|piece|pieces|tranche|tranches|unite|unites|rlx|plis|c)\b/gi, ' ');
+  working = working.replace(/\b\d+\s*x\s*\d+([.,]\d+)?\b/gi, ' ');
+  working = working.replace(/\bx\s*\d+\b/gi, ' ');
+  working = working.replace(/\b\d+\b/g, ' ');
+
+  const rawTokens = working.split(/\s+/).filter(Boolean);
+  const filteredTokens: string[] = [];
+
+  for (const token of rawTokens) {
+    if (token.length <= 1) continue;
+    if (STOP_WORDS_COUCHE_1.has(token)) continue;
+    const singular = singularizeWord(token);
+    if (singular && singular.length > 1 && !STOP_WORDS_COUCHE_1.has(singular)) {
+      if (filteredTokens[filteredTokens.length - 1] !== singular) {
+        filteredTokens.push(singular);
+      }
+    }
   }
 
-  // Suppression du marketing
-  for (const m of KNOWN_MARKETING_WORDS) {
-    s = s.replace(new RegExp('\\b' + m + '\\b', 'gi'), ' ');
+  const pureSentence = filteredTokens.join(' ');
+  if (pureSentence) {
+    for (const rule of CANONICAL_FAMILY_RULES) {
+      if (rule.pattern.test(pureSentence)) {
+        return { id: rule.id, nom_affichage: rule.nom_affichage, rayon: rule.rayon, isInvalidArtifact: false };
+      }
+    }
   }
 
-  // Remplacement des faux-amis / normalisations canoniques françaises
-  s = s.replace(/\bpur\s+jus\b/gi, 'jus');
-  s = s.replace(/\bjus\s+pomme\b/gi, 'jus de pomme');
-  s = s.replace(/\bjus\s+orange\b/gi, 'jus d orange');
-  s = s.replace(/\bjus\s+clementine\b/gi, 'jus de clementine');
-  s = s.replace(/\bpain\s+mie\b/gi, 'pain de mie');
-  s = s.replace(/\blait\s+demi(\s+ecrem(e|ee)?)?\b/gi, 'lait demi ecreme');
-  s = s.replace(/\bsteack\b/gi, 'steak');
-  s = s.replace(/\bpomm?\s+terre\b/gi, 'pommes de terre');
+  const finalId = pureSentence ? pureSentence.replace(/\s+/g, '_') : preNorm.replace(/\s+/g, '_');
 
-  s = s.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return s || 'produit';
+  let cleanDisplay = rawName
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml|m|cm|piece|pieces|pce|tranche|tranches)\b/gi, ' ')
+    .replace(/\b1er\s+prix\b/gi, ' ')
+    .replace(/\bprix\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const edgeStopWords = /^(de|du|des|d|l|le|la|les|en|au|aux|a|et|avec|sans|sur|piece|pce|kg|g|l|ml|cl|t|m|b|s|e|v)\s+/i;
+  const trailingStopWords = /\s+(de|du|des|d|l|le|la|les|en|au|aux|a|et|avec|sans|sur|piece|pce|kg|g|l|ml|cl|t|m|b|s|e|v)$/i;
+  let prev = '';
+  while (cleanDisplay !== prev) {
+    prev = cleanDisplay;
+    cleanDisplay = cleanDisplay.replace(edgeStopWords, '').replace(trailingStopWords, '').trim();
+  }
+  if (!cleanDisplay && filteredTokens.length > 0) {
+    cleanDisplay = filteredTokens.join(' ');
+  }
+
+  return {
+    id: finalId || 'produit',
+    nom_affichage: correctFrenchSpelling(cleanDisplay || 'Produit'),
+    isInvalidArtifact: invalid
+  };
+}
+
+export function cleanGenericEssence(rawName?: string, brand?: string): string {
+  return normalizeProductNeed(rawName, brand).id.replace(/_/g, ' ') || 'produit';
 }
 
 export function generateGenericNeedKey(rawName?: string, brand?: string): string {
-  const essence = cleanGenericEssence(rawName, brand);
-  return essence.replace(/\s+/g, '_') || 'produit';
+  return normalizeProductNeed(rawName, brand).id || 'produit';
 }
 
 export function sanitizeGenericDisplayName(rawName?: string, brand?: string): string {
-  const essence = cleanGenericEssence(rawName, brand);
-  const canonicalMap: Record<string, string> = {
-    'pain de mie': 'Pain de mie',
-    'jus de pomme': 'Jus de pomme',
-    'jus d orange': "Jus d'orange",
-    'jus de clementine': 'Jus de clémentine',
-    'lait demi ecreme': 'Lait demi-écrémé',
-    'haricots verts': 'Haricots verts',
-    'mayonnaise': 'Mayonnaise',
-    'limonade': 'Limonade',
-    'frites allumettes': 'Frites allumettes',
-    'pommes de terre': 'Pommes de terre',
-    'steak hache': 'Steak haché',
-    'creme fraiche': 'Crème fraîche',
-    'huile tournesol': 'Huile de tournesol',
-    'huile de tournesol': 'Huile de tournesol'
-  };
-
-  if (essence in canonicalMap) {
-    return canonicalMap[essence];
-  }
-  return essence.charAt(0).toUpperCase() + essence.slice(1);
+  return normalizeProductNeed(rawName, brand).nom_affichage || 'Produit';
 }
 
 /**

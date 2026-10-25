@@ -13,6 +13,7 @@ import {
   type PriceEvolutionInfo,
   generateSuperKey,
   generateGenericNeedKey,
+  normalizeProductNeed,
   KNOWN_BRANDS_AND_STORES
 } from '../types/receipts.ts';
 import { resolvePhysicalStore, TARGET_PHYSICAL_STORES, type PhysicalStoreDefinition } from './storeRegistry.ts';
@@ -743,13 +744,22 @@ export function buildComparativeMatrix(
     if (!receiptStore) return;
 
     receipt.items.forEach(item => {
-      // RÈGLE 1 : Clé de Besoin Générique (ex: "sauce_burger")
-      // Regroupe les produits répondant au même besoin indépendamment de la marque ou du format
-      const needKey = item.cle_besoin || generateGenericNeedKey(item.normalizedName || item.rawName, item.brand);
+      // RÈGLE 1 & COUCHE 1/2 : Empreinte Pure & Famille Canonique
+      const rawCandidate = (item.nomGenerique || item.normalizedName || item.rawName || '').trim();
+      const canonicalNeed = normalizeProductNeed(rawCandidate, item.brand);
+      if (canonicalNeed.isInvalidArtifact) return;
+
+      const needKey = canonicalNeed.id;
       const lookupKey = needKey;
 
       // Respect de la règle d'audit : ignorer les produits supprimés de la matrice
-      if (hiddenSet.has(lookupKey) || hiddenSet.has((item.normalizedName || '').toLowerCase())) return;
+      if (
+        hiddenSet.has(lookupKey) ||
+        hiddenSet.has((item.normalizedName || '').toLowerCase()) ||
+        hiddenSet.has(canonicalNeed.nom_affichage.toLowerCase())
+      ) {
+        return;
+      }
 
       const pricePaid = Number(item.pricePaid ?? item.price) || 0;
       const weightOrVolume = String(item.weightOrVolume || item.formatExact || '').trim();
@@ -762,17 +772,15 @@ export function buildComparativeMatrix(
         item.weightOrVolumeUnit
       );
       const unitPrice = Number(item.unitPrice) > 0 ? Number(item.unitPrice) : (item.referenceUnitPrice || computed.unitPrice);
+      if (!unitPrice || unitPrice <= 0 || Number.isNaN(unitPrice)) return;
+
       const unit = item.unit || computed.unit;
       const brand = String(item.brand || '').trim();
 
-      // Nom générique propre en titre (ex: "Sauce Burger" ou "Lait demi-écrémé")
-      const rawNormalized = (item.nomGenerique || item.normalizedName || '').trim();
-      const hasBrandInName = item.brand && rawNormalized.toLowerCase().includes(item.brand.toLowerCase());
-      const hasKnownBrandInName = KNOWN_BRANDS_AND_STORES.some(b => rawNormalized.toLowerCase().includes(b));
-      const canonical = (rawNormalized && !hasBrandInName && !hasKnownBrandInName)
-        ? rawNormalized
-        : capitalizeWords(needKey.replace(/_/g, ' '));
-      const normalizedCat = normalizeAisle(item.categoryKey || item.category || classifyItemAisle(canonical, item.rawName));
+      const canonical = canonicalNeed.nom_affichage;
+      const normalizedCat = normalizeAisle(
+        canonicalNeed.rayon || item.categoryKey || item.category || classifyItemAisle(canonical, item.rawName)
+      );
 
       if (!productMap.has(lookupKey)) {
         productMap.set(lookupKey, {
@@ -1033,12 +1041,12 @@ export function buildComparativeMatrixFromProducts(
   products.forEach(p => {
     const offers = (p as any).offres_magasins || p.prix_actuel;
     if (offers) {
-      Object.values(offers).forEach((pa: any) => {
-        const normName = normalizeStoreName(pa.magasin_nom);
-        if (normName && !storeMap.has(normName)) {
+      Object.entries(offers).forEach(([stId, pa]: [string, any]) => {
+        const normName = normalizeStoreName(pa?.magasin_nom || stId);
+        if (normName && normName !== 'Supermarché' && !storeMap.has(normName)) {
           const resolved = resolvePhysicalStore({ storeName: normName });
           storeMap.set(normName, {
-            id: pa.magasin_id || resolved.id,
+            id: pa?.magasin_id || resolved.id,
             displayName: normName,
             googleMapsUrl: resolved.googleMapsUrl,
             address: resolved.address
@@ -1056,17 +1064,30 @@ export function buildComparativeMatrixFromProducts(
 
   const isSingleReceipt = receiptsCount === 1;
 
-  // 2. Construction des lignes de comparaison
-  const allRows: ProductComparisonRow[] = [];
-  let totalPotentialSavings = 0;
-  const storeWinCount: Record<string, number> = {};
-  stores.forEach(s => { storeWinCount[s] = 0; });
+  // 2. Consolidation préalable par Famille Canonique (Couches 1, 2 & 3)
+  const consolidatedProducts = new Map<string, {
+    canonicalId: string;
+    displayName: string;
+    aisle: { key: SupermarketAisleKey; label: SupermarketAisle };
+    unit: string;
+    storePrices: Record<string, StorePriceDetail>;
+    history: StorePriceDetail[];
+    sampleBrands: Set<string>;
+    sampleRawNames: Set<string>;
+  }>();
 
   products.forEach(p => {
-    const rawKey = (p as any).cle_besoin || p.superKey || p.nom_generique;
-    const lookupKey = rawKey.trim().toLowerCase();
+    const rawName = p.nom_generique || (p as any).cle_besoin || p.superKey || '';
+    const canonicalNeed = normalizeProductNeed(rawName, p.marque);
+    if (canonicalNeed.isInvalidArtifact) return;
 
-    if (hiddenSet.has(lookupKey) || hiddenSet.has(p.nom_generique.toLowerCase())) {
+    const rawKey = ((p as any).cle_besoin || p.superKey || p.nom_generique || '').trim().toLowerCase();
+    if (
+      hiddenSet.has(rawKey) ||
+      hiddenSet.has(canonicalNeed.id) ||
+      hiddenSet.has((p.nom_generique || '').toLowerCase()) ||
+      hiddenSet.has(canonicalNeed.nom_affichage.toLowerCase())
+    ) {
       return;
     }
 
@@ -1076,63 +1097,118 @@ export function buildComparativeMatrixFromProducts(
 
     if ((p as any).offres_magasins) {
       Object.entries((p as any).offres_magasins).forEach(([stId, offer]: [string, any]) => {
+        if (!offer || !(Number(offer.prix_unitaire) > 0)) return;
         const storeKey = normalizeStoreName(offer.magasin_nom || stId);
+        if (!storeKey || storeKey === 'Supermarché') return;
         if (offer.marque && offer.marque !== 'Générique') sampleBrands.add(offer.marque);
         storePrices[storeKey] = {
           storeName: storeKey,
           storeId: offer.magasin_id || stId,
           googleMapsUrl: storeMetadata[storeKey]?.googleMapsUrl,
-          pricePaid: offer.prix_paye,
-          unitPrice: offer.prix_unitaire,
+          pricePaid: Number(offer.prix_paye) || Number(offer.prix_unitaire),
+          unitPrice: Number(offer.prix_unitaire),
           brand: offer.marque || 'Générique',
           weightOrVolume: offer.format || '1 piece',
-          date: offer.date,
-          receiptId: offer.receiptId,
+          date: offer.date || new Date().toISOString().slice(0, 10),
+          receiptId: offer.receiptId || '',
           quantity: 1,
           rawName: offer.rawName || p.nom_generique,
           unit: offer.unite || p.unite_mesure || 'piece'
         };
       });
     } else if (p.prix_actuel) {
-      Object.values(p.prix_actuel).forEach(pa => {
-        const storeKey = normalizeStoreName(pa.magasin_nom);
+      Object.entries(p.prix_actuel).forEach(([stId, pa]) => {
+        if (!pa || !(Number(pa.prix_unitaire) > 0)) return;
+        const storeKey = normalizeStoreName(pa.magasin_nom || stId);
+        if (!storeKey || storeKey === 'Supermarché') return;
         storePrices[storeKey] = {
           storeName: storeKey,
-          storeId: pa.magasin_id,
+          storeId: pa.magasin_id || stId,
           googleMapsUrl: storeMetadata[storeKey]?.googleMapsUrl,
-          pricePaid: pa.prix_paye,
-          unitPrice: pa.prix_unitaire,
-          brand: p.marque,
-          weightOrVolume: p.poids_ou_volume,
-          date: pa.date,
-          receiptId: pa.receiptId,
-          quantity: pa.quantite,
+          pricePaid: Number(pa.prix_paye) || Number(pa.prix_unitaire),
+          unitPrice: Number(pa.prix_unitaire),
+          brand: p.marque || 'Générique',
+          weightOrVolume: p.poids_ou_volume || '1 piece',
+          date: pa.date || new Date().toISOString().slice(0, 10),
+          receiptId: pa.receiptId || '',
+          quantity: pa.quantite || 1,
           rawName: p.nom_generique,
-          unit: p.unite_mesure
+          unit: p.unite_mesure || 'piece'
         };
       });
     }
 
+    if (Object.keys(storePrices).length === 0) return;
+
+    const historySource = (p as any).historique_offres || p.historique_prix || [];
+    const mappedHistory: StorePriceDetail[] = historySource
+      .filter((h: any) => h && Number(h.prix_unitaire) > 0)
+      .map((h: any) => ({
+        storeName: normalizeStoreName(h.magasin_nom || h.magasin),
+        storeId: h.magasin,
+        googleMapsUrl: storeMetadata[normalizeStoreName(h.magasin_nom || h.magasin)]?.googleMapsUrl,
+        pricePaid: Number(h.prix_paye) || Number(h.prix_unitaire),
+        unitPrice: Number(h.prix_unitaire),
+        brand: h.marque || p.marque || 'Générique',
+        weightOrVolume: h.format || p.poids_ou_volume || '1 piece',
+        date: h.date || new Date().toISOString().slice(0, 10),
+        receiptId: h.receiptId || '',
+        quantity: h.quantite || 1,
+        rawName: p.nom_generique,
+        unit: h.unite || p.unite_mesure || 'piece'
+      }));
+
+    const aisle = normalizeAisle(
+      canonicalNeed.rayon || (p as any).rayon || p.rayon_cle || p.rayon_assigne || classifyItemAisle(canonicalNeed.nom_affichage, rawName)
+    );
+    const displayName = canonicalNeed.nom_affichage;
+
+    if (!consolidatedProducts.has(canonicalNeed.id)) {
+      consolidatedProducts.set(canonicalNeed.id, {
+        canonicalId: canonicalNeed.id,
+        displayName,
+        aisle,
+        unit: p.unite_mesure || 'piece',
+        storePrices: { ...storePrices },
+        history: [...mappedHistory],
+        sampleBrands: new Set(sampleBrands),
+        sampleRawNames: new Set([p.nom_generique].filter(Boolean))
+      });
+    } else {
+      const existing = consolidatedProducts.get(canonicalNeed.id)!;
+      if (canonicalNeed.rayon) {
+        existing.aisle = normalizeAisle(canonicalNeed.rayon);
+      }
+      sampleBrands.forEach(b => existing.sampleBrands.add(b));
+      if (p.nom_generique) existing.sampleRawNames.add(p.nom_generique);
+
+      // Fusion des offres par magasin : conserver la plus récente (ou la plus avantageuse à date égale)
+      Object.entries(storePrices).forEach(([stKey, sp]) => {
+        const cur = existing.storePrices[stKey];
+        if (!cur || sp.date > cur.date || (sp.date === cur.date && sp.unitPrice < cur.unitPrice)) {
+          existing.storePrices[stKey] = sp;
+        }
+      });
+
+      existing.history.push(...mappedHistory);
+    }
+  });
+
+  // 3. Construction des lignes de comparaison
+  const allRows: ProductComparisonRow[] = [];
+  let totalPotentialSavings = 0;
+  const storeWinCount: Record<string, number> = {};
+  stores.forEach(s => { storeWinCount[s] = 0; });
+
+  consolidatedProducts.forEach(entry => {
+    const storePrices = entry.storePrices;
     const presentStores = Object.keys(storePrices);
     const storeCount = presentStores.length;
     if (storeCount === 0) return;
 
-    // Historique chronologique
-    const historySource = (p as any).historique_offres || p.historique_prix || [];
-    const sortedHistory: StorePriceDetail[] = historySource.map((h: any) => ({
-      storeName: normalizeStoreName(h.magasin_nom),
-      storeId: h.magasin,
-      googleMapsUrl: storeMetadata[normalizeStoreName(h.magasin_nom)]?.googleMapsUrl,
-      pricePaid: h.prix_paye,
-      unitPrice: h.prix_unitaire,
-      brand: h.marque || p.marque,
-      weightOrVolume: h.format || p.poids_ou_volume,
-      date: h.date,
-      receiptId: h.receiptId,
-      quantity: h.quantite || 1,
-      rawName: p.nom_generique,
-      unit: h.unite || p.unite_mesure
-    })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const sortedHistory = [...entry.history].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
 
     // Évolution des prix
     let priceEvolution: PriceEvolutionInfo | undefined;
@@ -1214,15 +1290,15 @@ export function buildComparativeMatrixFromProducts(
       cheapestStore = presentStores[0];
     }
 
-    const aisle = normalizeAisle((p as any).rayon || p.rayon_cle || p.rayon_assigne);
-    const displayName = p.nom_generique;
+    const aisle = entry.aisle;
+    const displayName = entry.displayName;
 
     allRows.push({
       normalizedName: displayName,
       category: aisle.label,
       categoryKey: aisle.key,
-      sampleRawNames: [p.nom_generique],
-      sampleBrands: sampleBrands.size > 0 ? Array.from(sampleBrands) : [p.marque || 'Générique'],
+      sampleRawNames: Array.from(entry.sampleRawNames),
+      sampleBrands: entry.sampleBrands.size > 0 ? Array.from(entry.sampleBrands) : ['Générique'],
       storePrices,
       priceHistory: sortedHistory,
       priceEvolution,
@@ -1233,7 +1309,7 @@ export function buildComparativeMatrixFromProducts(
       cheapestStore,
       unitPriceDifference,
       unitPriceDifferencePercent,
-      unit: p.unite_mesure,
+      unit: (entry.unit as any) || 'piece',
       lowestPrice: lowestUnitPrice,
       highestPrice: highestUnitPrice,
       priceDifference: unitPriceDifference,

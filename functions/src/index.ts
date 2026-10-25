@@ -1,4 +1,10 @@
-import { generateGenericNeedKey, resolvePhysicalStore, normalizeLockedAisle, sanitizeGenericDisplayName } from "./receiptPriceEngine";
+import {
+  generateGenericNeedKey,
+  resolvePhysicalStore,
+  normalizeLockedAisle,
+  sanitizeGenericDisplayName,
+  normalizeProductNeed
+} from "./receiptPriceEngine";
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { GoogleGenAI, Type, Schema } from "@google/genai";
@@ -42,50 +48,57 @@ export const analyzeDocument = functions.region('europe-west1')
     if (fileType === 'receipt') {
       prompt = `Tu es l'analyste financier d'élite et auditeur de prix de CashPilot.
 MISSION PRIORITAIRE : Analyse rigoureusement ce ticket de caisse (photo, scan ou PDF) et extrais chaque article en JSON STRICT avec une fidélité absolue, sans aucun texte introductif, sans markdown ni backticks.
-N'inclus AUCUNE information de TVA (ne pas analyser, extraire ou afficher la TVA).
+N'inclus AUCUNE information de TVA et IGNORE les lignes non-produits ("12 DE ARTICLES", "Sous-total", "Carte bancaire", "Remise").
 
 ================================================================================
-RÈGLE 1 : LE "NETTOYAGE EXTRÊME" (RÉDUCTION À L'ESSENCE STRICTE DU BESOIN)
+RÈGLE 1 : LE "NETTOYAGE EXTRÊME" & FAMILLE CANONIQUE (COUCHES 1 & 2)
 ================================================================================
-Pour chaque article, tu dois extraire le champ "nom_generique_nettoye" en réduisant le libellé à l'ESSENCE PURE du besoin consommateur.
-IL EST FORMELLEMENT ET STRICTEMENT INTERDIT D'INCLURE DANS "nom_generique_nettoye" :
-1. LA MARQUE : Élimine totalement toute marque, enseigne commerciale ou gamme (ex: Harry's, Lu, Danone, Heinz, Marque Repère, Super U, Président, Candia, Lesieur, etc.).
-2. LE TYPE D'EMBALLAGE OU CONDITIONNEMENT : Élimine tout mot décrivant l'emballage (ex: Pet, Bocal, Bocaux, Sachet, Sachets, Bidon, Flacon, Brique, Boîte, Canette, Barquette, Lot, Pack, Filet, Tube, Étui, Pot, Verre, Plastique, Squeeze, Doypack, etc.).
-3. LA CONTENANCE OU LE POIDS : Élimine toute indication de quantité, volume ou poids (ex: Kg, 825g, 500g, 1 Litre, 1L, 1.5L, 6x1L, 1 pièce, Tranches, etc.).
-4. LES ADJECTIFS ET MENTIONS MARKETING : Élimine tous les adjectifs promotionnels ou qualificatifs superflus (ex: Croustillant, Croustille, Douceur, Moelleux, Pur/Pure, Nature, Complet, Sandwich, Toast, Extra fin, Délicieux, Fondant, Gourmand, Savoureux, Tradition, Classique, Suprême, Familial, Eco, etc.).
+Pour chaque article, tu dois extraire le champ "nom_generique_nettoye" en réduisant le libellé à sa FAMILLE CANONIQUE PURE :
+1. AUCUNE MARQUE : Élimine totalement toute marque ou enseigne (Harry's, Lu, Danone, Heinz, Marque Repère, Super U, Président, Candia, Lesieur, Jafun, Paquito, Pâturages, Monique Ranou, Chabrior, etc.).
+2. AUCUN EMBALLAGE / CONDITIONNEMENT : Élimine Pet, Bocal, Sachet, Bidon, Flacon, Brique, Boîte, Canette, Barquette, Lot, Pack, Filet, Tube, Étui, Pot, Verre, Plastique, Squeeze, Bouchon sport, etc.
+3. AUCUNE CONTENANCE NI DÉCOUPE : Élimine Kg, 825g, 1L, 1.5L, 6x1L, Pièce, Pce, Tranche, Tranches, Morceaux, Découpé, 1er prix, Prix.
+4. AUCUN MOT PARASITE COUPÉ EN DÉBUT/FIN : Interdiction absolue de produire "Baguette la", "Basilic en", "Mouchoirs blancs en", "De colin d alaska".
 
-EXEMPLES D'APPLICATION DU NETTOYAGE EXTRÊME :
-- "Pain de Mie Harry S Nature" -> "Pain de mie"
-- "Pain mie sandwich complet 825g" -> "Pain de mie"
-- "Pain de Mie Nature Harry S" -> "Pain de mie"
-- "Pur Jus de Pomme 1Litre" -> "Jus de pomme"
-- "Pur Jus Pomme Pet" -> "Jus de pomme"
-- "Pur Jus de Pomme Douceur" -> "Jus de pomme"
-- "Jus de Pomme Pet" -> "Jus de pomme"
-- "Mayonnaise Squeez" -> "Mayonnaise"
-- "Haricots verts extra fins bocal" -> "Haricots verts"
-- "Lait 1 2 écrémé Uht 1L" -> "Lait demi-écrémé"
-- "Sirop Fraise Bidon" -> "Sirop de fraise"
-- "Frites Allumettes Just Au Four 1kg" -> "Frites allumettes"
+NOMENCLATURE CANONIQUE OBLIGATOIRE (FAMILLES STANDARDS) :
+- Tous les œufs ("Ufs b", "Ufs boulanger", "Ufs sol", "Œufs cage", "Œufs label rouge", "Œufs plein air") -> "Œufs" (Rayon : "Produits frais & Crèmerie")
+- "Delice de dinde halal" / "Delice dinde halal" / "Delice poulet dinde fume" / "Blanc de volaille" -> "Blanc & Délice de volaille"
+- "Lardon poulet gout fume" / "Lardon volaille fumee" -> "Lardons de volaille fumés"
+- "Crevette deco cuite" / "Crevettes decortiquees" -> "Crevettes décortiquées"
+- "De colin d alaska meuniere" / "Colin d'Alaska" -> "Filet de colin d'Alaska"
+- "Thon entier listao" / "Thon listao au naturel" -> "Thon listao au naturel" (Rayon : "Épicerie salée & Épices")
+- "Mie" / "Pain de Mie Harry S Nature" / "Pain mie sandwich complet 825g" -> "Pain de mie"
+- "Frites allumette kg" / "Frites allumettes" / "Pommes de terre frites" -> "Frites"
+- "Mais doux" / "Mais grain sucre" -> "Maïs en boîte"
+- "Batavia" / "Laitue batavia blonde" / "Salade batavia blonde" -> "Salade Batavia"
+- "Concombre" / "Concombre piece" / "Concombre tranches" -> "Concombre"
+- "Melon piece" / "Melon vert" / "Melon vert en morceaux" -> "Melon"
+- "Oignons eminces" / "Oignons eminces kg" -> "Oignons émincés"
+- "Shaker ananas" / "Shaker d ananas decoupe" -> "Shaker d'ananas frais"
+- "Carotte rapee" / "Carottes rapees" -> "Carottes râpées"
+- "Lait demi écrémé delacto" / "Lait demi écrémé delactose" / "Lait demi écrémé facile a digerer" -> "Lait demi-écrémé sans lactose"
+- "Lait demi écrémé" / "Lait 1/2 écrémé UHT 1L" -> "Lait demi-écrémé"
+- "Pj orange sp p" / "Jus d orange sans pulpe" / "Jus d'orange" -> "Jus d'orange"
+- "Pj pomme" / "Pur Jus de Pomme" / "Pur Jus Pomme Pet" -> "Jus de pomme"
+- "Pj multi" / "Abc multi bk" / "Jafun boisson multifruits" / "Jus multifruits" -> "Jus multifruits"
+- "Eau minerale" / "Eau minerale naturelle" / "Bouchon sport" -> "Eau minérale"
+- "Eau de source" / "Eau source" -> "Eau de source"
+- "Confiture de fraise" / "Confiture fraise" -> "Confiture de fraise"
+- "Beignet chocolat" / "Beignets chocolat" -> "Beignets au chocolat"
+- "Yaourt vanille bio" / "Yaourts vanille" -> "Yaourt vanille"
 
 ================================================================================
 RÈGLE 2 : RÈGLE VITALE D'ORTHOGRAPHE ET DE CASSE FRANÇAISE
 ================================================================================
-Corrige OBLIGATOIREMENT toutes les erreurs d'OCR, abréviations tronquées et fautes de frappe :
-- "B Uf" ou "B uf" -> "Bœuf"
-- "Steack" -> "Steak"
-- "Pomm terre" ou "Pomme terre" -> "Pommes de terre"
-- Rétablis impérativement tous les accents et caractères français manquants ("Crème", "Pâte", "Œuf", "Écrémé", "Rôti").
-- Capitalise élégamment la première lettre du nom générique uniquement ("Pain de mie", "Jus de pomme").
+- "B Uf" -> "Bœuf", "Ufs" -> "Œufs", "C ur" -> "Cœur", "Steack" -> "Steak", "Pomm terre" -> "Pommes de terre".
+- Rétablis impérativement tous les accents français ("Crème", "Pâte", "Œufs", "Écrémé", "Râpées", "Décortiquées").
 
 ================================================================================
 RÈGLE 3 : GESTION DES PRODUITS SANS MARQUE OU FRAIS
 ================================================================================
-- Pour tout produit frais (fruits, légumes, boucherie à la coupe, vrac) ou si aucune marque n'est explicitement imprimée sur le ticket, inscris OBLIGATOIREMENT "marque": "generique".
-- Si une marque industrielle est explicitement présente, renseigne son nom propre dans "marque" (ex: "Harry's", "Danone", "Heinz").
+- Pour tout produit frais ou sans marque explicite, inscris OBLIGATOIREMENT "marque": "generique".
 
 ================================================================================
-RÈGLE 4 : NOMENCLATURE STRICTE DES 13 RAYONS OFFICIELS
+RÈGLE 4 : NOMENCLATURE STRICTE DES 14 RAYONS OFFICIELS
 ================================================================================
 Le champ "rayon_assigne" doit être choisi STRICTEMENT parmi la liste suivante :
 1. Boucherie, Volaille & Poissonnerie
@@ -100,7 +113,8 @@ Le champ "rayon_assigne" doit être choisi STRICTEMENT parmi la liste suivante :
 10. Santé & Pharmacie
 11. Papeterie & Bureau
 12. Fleurs & Cadeaux
-13. Sacs & Consignes`;
+13. Sacs & Consignes
+14. Autres / Divers`;
 
       schema = {
         type: Type.OBJECT,
@@ -1587,65 +1601,105 @@ export const migrateAndMergeDuplicateProducts = functions.region('europe-west1')
       return { success: true, message: "Aucun produit trouvé dans la collection.", mergedGroups: 0, deletedCount: 0 };
     }
 
-    // Regrouper par nouvelle clé canonique de besoin
-    const groups = new Map<string, Array<{ id: string; data: any }>>();
+    // Regrouper par nouvelle clé canonique de besoin (Couches 1 & 2)
+    const groups = new Map<string, Array<{ id: string; data: any; canonical: ReturnType<typeof normalizeProductNeed> }>>();
+    const invalidDocIds: string[] = [];
 
     snapshot.docs.forEach(docSnap => {
       const docData = docSnap.data();
       const currentId = docSnap.id;
-      const rawName = docData.nom_generique || currentId;
+      const rawName = docData.nom_generique || docData.nom_generique_nettoye || currentId;
       const brand = docData.marque || '';
-      const canonicalKey = generateGenericNeedKey(rawName, brand);
+      const canonical = normalizeProductNeed(rawName, brand);
 
+      if (canonical.isInvalidArtifact) {
+        invalidDocIds.push(currentId);
+        return;
+      }
+
+      const canonicalKey = canonical.id;
       if (!groups.has(canonicalKey)) {
         groups.set(canonicalKey, []);
       }
-      groups.get(canonicalKey)!.push({ id: currentId, data: docData });
+      groups.get(canonicalKey)!.push({ id: currentId, data: docData, canonical });
     });
 
     let mergedCount = 0;
     let deletedCount = 0;
     const mergeLog: Array<{ canonicalKey: string; oldIds: string[]; finalName: string }> = [];
 
+    // Suppression des artefacts invalides ("De articles", lignes vides)
+    if (invalidDocIds.length > 0) {
+      const cleanBatch = db.batch();
+      for (const badId of invalidDocIds) {
+        cleanBatch.delete(productsCollRef.doc(badId));
+        deletedCount++;
+      }
+      await cleanBatch.commit();
+    }
+
     // Traitement par batch Firestore
     for (const [canonicalKey, docList] of groups.entries()) {
-      const needsConsolidation = docList.length > 1 || docList[0].id !== canonicalKey;
-
-      if (!needsConsolidation) {
-        continue;
-      }
-
       const mergedOffers: Record<string, any> = {};
       const allHistPrix: Array<{ date: string; magasin: string; prix_unitaire: number }> = [];
       const allHistOffres: Array<any> = [];
-      let representativeName = '';
-      let representativeAisle = '';
+      const firstCanonical = docList[0].canonical;
+      let representativeName = firstCanonical.nom_affichage || sanitizeGenericDisplayName(canonicalKey);
+      let representativeAisle = firstCanonical.rayon || '';
       let representativeAisleKey = '';
 
       for (const item of docList) {
         const d = item.data;
-        if (!representativeName) {
-          representativeName = sanitizeGenericDisplayName(d.nom_generique || d.cle_besoin || canonicalKey);
-        }
         if (!representativeAisle) {
           representativeAisle = d.rayon || 'Autres / Divers';
           representativeAisleKey = d.rayon_cle || 'autres_divers';
         }
 
-        const offers = d.offres_magasins || {};
+        const offers = d.offres_magasins || d.prix_actuel || {};
         for (const [storeId, offer] of Object.entries(offers)) {
-          if (!mergedOffers[storeId] || new Date((offer as any).date).getTime() >= new Date(mergedOffers[storeId].date).getTime()) {
-            mergedOffers[storeId] = offer;
+          const off = offer as any;
+          if (!off || !(Number(off.prix_unitaire) > 0)) continue;
+          const resolvedStore = resolvePhysicalStore({ storeName: off.magasin_nom || storeId });
+          const stKey = resolvedStore.id || storeId;
+          const cur = mergedOffers[stKey];
+          if (!cur || new Date(off.date || 0).getTime() >= new Date(cur.date || 0).getTime()) {
+            mergedOffers[stKey] = {
+              ...off,
+              magasin_id: stKey,
+              magasin_nom: resolvedStore.displayName
+            };
           }
         }
 
         if (Array.isArray(d.historique_prix)) {
-          allHistPrix.push(...d.historique_prix);
+          allHistPrix.push(...d.historique_prix.filter((h: any) => h && Number(h.prix_unitaire) > 0));
         }
 
         if (Array.isArray(d.historique_offres)) {
-          allHistOffres.push(...d.historique_offres);
+          allHistOffres.push(...d.historique_offres.filter((h: any) => h && Number(h.prix_unitaire) > 0));
         }
+      }
+
+      const offerEntries = Object.entries(mergedOffers);
+      // COUCHE 3.2 : Suppression stricte des lignes fantômes sans aucun prix valide
+      if (offerEntries.length === 0) {
+        const ghostBatch = db.batch();
+        for (const oldItem of docList) {
+          ghostBatch.delete(productsCollRef.doc(oldItem.id));
+          deletedCount++;
+        }
+        await ghostBatch.commit();
+        continue;
+      }
+
+      if (firstCanonical.rayon) {
+        const locked = normalizeLockedAisle(firstCanonical.rayon);
+        representativeAisle = locked.label;
+        representativeAisleKey = locked.key;
+      } else if (!representativeAisleKey) {
+        const locked = normalizeLockedAisle(representativeAisle);
+        representativeAisle = locked.label;
+        representativeAisleKey = locked.key;
       }
 
       // Dédoublonnage et tri chronologique
@@ -1665,37 +1719,36 @@ export const migrateAndMergeDuplicateProducts = functions.region('europe-west1')
         return true;
       }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-      const offerEntries = Object.entries(mergedOffers);
-      let meilleure: any = undefined;
-      let pire: any = undefined;
-      if (offerEntries.length > 0) {
-        const sorted = [...offerEntries].sort((a, b) => a[1].prix_unitaire - b[1].prix_unitaire);
-        meilleure = {
-          magasin_id: sorted[0][0],
-          magasin_nom: sorted[0][1].magasin_nom || sorted[0][0],
-          prix_unitaire: sorted[0][1].prix_unitaire,
-          unite: sorted[0][1].unite
-        };
-        pire = {
-          magasin_id: sorted[sorted.length - 1][0],
-          magasin_nom: sorted[sorted.length - 1][1].magasin_nom || sorted[sorted.length - 1][0],
-          prix_unitaire: sorted[sorted.length - 1][1].prix_unitaire,
-          unite: sorted[sorted.length - 1][1].unite
-        };
-      }
+      const sorted = [...offerEntries].sort((a, b) => a[1].prix_unitaire - b[1].prix_unitaire);
+      const meilleure = {
+        magasin_id: sorted[0][0],
+        magasin_nom: sorted[0][1].magasin_nom || sorted[0][0],
+        prix_unitaire: sorted[0][1].prix_unitaire,
+        unite: sorted[0][1].unite || 'piece'
+      };
+      const pire = {
+        magasin_id: sorted[sorted.length - 1][0],
+        magasin_nom: sorted[sorted.length - 1][1].magasin_nom || sorted[sorted.length - 1][0],
+        prix_unitaire: sorted[sorted.length - 1][1].prix_unitaire,
+        unite: sorted[sorted.length - 1][1].unite || 'piece'
+      };
 
       const consolidatedDoc = {
+        superKey: canonicalKey,
         nom_generique: representativeName,
+        nom_generique_nettoye: representativeName,
         rayon: representativeAisle,
+        rayon_assigne: representativeAisle,
         rayon_cle: representativeAisleKey,
         cle_besoin: canonicalKey,
         offres_magasins: mergedOffers,
         historique_prix: dedupedHistPrix,
         historique_offres: dedupedHistOffres,
-        meilleure_offre: meilleure || null,
-        pire_offre: pire || null,
+        meilleure_offre: meilleure,
+        pire_offre: pire,
+        ecart_prix_max: Number((pire.prix_unitaire - meilleure.prix_unitaire).toFixed(2)),
         derniere_mise_a_jour: new Date().toISOString(),
-        nombre_releves: dedupedHistOffres.length
+        nombre_releves: Math.max(dedupedHistOffres.length, offerEntries.length)
       };
 
       const batch = db.batch();
@@ -1733,6 +1786,8 @@ export const migrateAndMergeDuplicateProducts = functions.region('europe-west1')
 // ============================================================================
 export {
   processReceiptWithSuperKeys,
+  normalizeProductNeed,
+  CANONICAL_FAMILY_RULES,
   generateGenericNeedKey,
   generateSuperKey,
   cleanGenericEssence,

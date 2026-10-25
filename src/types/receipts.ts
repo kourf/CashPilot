@@ -388,85 +388,33 @@ export const KNOWN_MARKETING_WORDS = [
  * - Contenances / Quantités (ex: Kg, 825g, 1Litre, 1.5L, 6x1L)
  * - Adjectifs marketing / superflus (ex: Croustillant, Douceur, Moelleux, Nature, Complet, Sandwich)
  */
+import {
+  normalizeProductNeed,
+  isInvalidReceiptArtifact,
+  CANONICAL_FAMILY_RULES,
+  singularizeWord,
+  type NormalizedProductNeed
+} from '../lib/productCanonicalizer.ts';
+
+export {
+  normalizeProductNeed,
+  isInvalidReceiptArtifact,
+  CANONICAL_FAMILY_RULES,
+  singularizeWord,
+  type NormalizedProductNeed
+};
+
 export function cleanGenericEssence(rawName?: string, brand?: string): string {
-  if (!rawName || typeof rawName !== 'string') return 'produit';
-
-  let s = rawName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-_'/]/g, ' ');
-
-  if (brand && typeof brand === 'string') {
-    const b = brand.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-    if (b && b !== 'generique' && b !== 'générique') {
-      s = s.replace(new RegExp('\\b' + b.replace(/[^a-z0-9]/g, '\\s*') + '\\b', 'gi'), ' ');
-    }
-  }
-
-  // Normalisation des fractions (ex: 1/2 ou 1 2 -> demi)
-  s = s.replace(/\b1\s*[/_-\s]?\s*2\b/g, 'demi');
-
-  // Suppression des formats et quantités numériques (ex: "500g", "825g", "1.5l", "6x1l", "4x100g", "1litre")
-  s = s.replace(/\b\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml|piece|pieces|unite|unites|tranches?)\b/gi, ' ');
-  s = s.replace(/\b\d+\s*x\s*\d+([.,]\d+)?\s*(kg|g|mg|l|cl|ml)?\b/gi, ' ');
-  s = s.replace(/\bx\s*\d+\b/gi, ' ');
-  s = s.replace(/\b\d+\s*(litre|litres|kilo|kilos|gramme|grammes)\b/gi, ' ');
-  s = s.replace(/\b\d+([.,]\d+)?\b/gi, ' ');
-
-  // Suppression des marques
-  for (const b of KNOWN_BRANDS_AND_STORES) {
-    s = s.replace(new RegExp('\\b' + b.replace(/[^a-z0-9]/g, '\\s*') + '\\b', 'gi'), ' ');
-  }
-
-  // Suppression du conditionnement
-  for (const w of KNOWN_PACKAGING_WORDS) {
-    s = s.replace(new RegExp('\\b' + w + '\\b', 'gi'), ' ');
-  }
-
-  // Suppression du marketing
-  for (const m of KNOWN_MARKETING_WORDS) {
-    s = s.replace(new RegExp('\\b' + m + '\\b', 'gi'), ' ');
-  }
-
-  // Remplacement des faux-amis / normalisations canoniques françaises
-  s = s.replace(/\bpur\s+jus\b/gi, 'jus');
-  s = s.replace(/\bjus\s+pomme\b/gi, 'jus de pomme');
-  s = s.replace(/\bjus\s+orange\b/gi, 'jus d orange');
-  s = s.replace(/\bjus\s+clementine\b/gi, 'jus de clementine');
-  s = s.replace(/\bpain\s+mie\b/gi, 'pain de mie');
-  s = s.replace(/\blait\s+demi(\s+ecrem(e|ee)?)?\b/gi, 'lait demi ecreme');
-  s = s.replace(/\bsteack\b/gi, 'steak');
-  s = s.replace(/\bpomm?\s+terre\b/gi, 'pommes de terre');
-
-  s = s.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return s || 'produit';
+  const res = normalizeProductNeed(rawName, brand);
+  return res.id.replace(/_/g, ' ') || 'produit';
 }
 
 export function generateGenericNeedKey(rawName?: string, brand?: string): string {
-  const essence = cleanGenericEssence(rawName, brand);
-  return essence.replace(/\s+/g, '_') || 'produit';
+  return normalizeProductNeed(rawName, brand).id || 'produit';
 }
 
 export function sanitizeGenericDisplayName(rawName?: string, brand?: string): string {
-  const essence = cleanGenericEssence(rawName, brand);
-  const canonicalMap: Record<string, string> = {
-    'pain de mie': 'Pain de mie',
-    'jus de pomme': 'Jus de pomme',
-    'jus d orange': "Jus d'orange",
-    'jus de clementine': 'Jus de clémentine',
-    'lait demi ecreme': 'Lait demi-écrémé',
-    'haricots verts': 'Haricots verts',
-    'mayonnaise': 'Mayonnaise',
-    'limonade': 'Limonade',
-    'frites allumettes': 'Frites allumettes',
-    'pommes de terre': 'Pommes de terre',
-    'steak hache': 'Steak haché',
-    'creme fraiche': 'Crème fraîche',
-    'huile tournesol': 'Huile de tournesol',
-    'huile de tournesol': 'Huile de tournesol'
-  };
-
-  if (essence in canonicalMap) {
-    return canonicalMap[essence];
-  }
-  return essence.charAt(0).toUpperCase() + essence.slice(1);
+  return normalizeProductNeed(rawName, brand).nom_affichage || 'Produit';
 }
 
 /**
@@ -480,6 +428,7 @@ export function correctFrenchSpelling(str?: string): string {
   const corrections: Array<[RegExp, string]> = [
     [/\bb\s*u+f\b/gi, 'bœuf'],
     [/\bboeuf\b/gi, 'bœuf'],
+    [/\bc\s*ur\b/gi, 'cœur'],
     [/\bsteack\b/gi, 'steak'],
     [/\bsteacks\b/gi, 'steaks'],
     [/\bpomm?\s+terre\b/gi, 'pommes de terre'],
@@ -492,11 +441,12 @@ export function correctFrenchSpelling(str?: string): string {
     [/\becremee\b/gi, 'écrémée'],
     [/\boeuf\b/gi, 'œuf'],
     [/\boeufs\b/gi, 'œufs'],
+    [/^(ufs|uf)\b/gi, 'Œufs'],
     [/\bhache\b/gi, 'haché'],
     [/\bhachee\b/gi, 'hachée'],
     [/\brot\b/gi, 'rôti'],
     [/\broti\b/gi, 'rôti'],
-    [/\bglace\b/gi, 'glacée'],
+    [/\bglacee\b/gi, 'glacée'],
     [/\bvolaill\b/gi, 'volaille'],
     [/\bpoiss\b/gi, 'poisson'],
     [/\bfeuilletee\b/gi, 'feuilletée'],

@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIES } from './bankParser.ts';
 import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from './receiptClassifier';
-import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey, generateGenericNeedKey, sanitizeGenericDisplayName, correctFrenchSpelling } from '../types/receipts';
+import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey, generateGenericNeedKey, sanitizeGenericDisplayName, correctFrenchSpelling, normalizeProductNeed } from '../types/receipts';
 import { resolvePhysicalStore, TARGET_PHYSICAL_STORES } from './storeRegistry.ts';
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
@@ -1743,28 +1743,40 @@ Il existe 3 magasins Intermarché distincts ciblés dans la zone pour le compara
 Tu DOIS IMPÉRATIVEMENT extraire l'adresse de rue et la ville avec exactitude pour permettre à l'application de savoir dans lequel des 3 magasins le ticket a été émis.
 
 ================================================================================
-RÈGLE 8 : LE "NETTOYAGE EXTRÊME" (RÉDUCTION À L'ESSENCE STRICTE DU BESOIN)
+RÈGLE 8 : LE "NETTOYAGE EXTRÊME" & FAMILLES CANONIQUES (COUCHES 1 & 2)
 ================================================================================
-Pour chaque article, tu dois extraire le champ "nom_generique_nettoye" en réduisant le libellé à l'ESSENCE PURE du besoin consommateur.
-IL EST FORMELLEMENT ET STRICTEMENT INTERDIT D'INCLURE DANS "nom_generique_nettoye" :
-1. LA MARQUE : Élimine totalement toute marque, enseigne commerciale ou gamme (ex: Harry's, Lu, Danone, Heinz, Marque Repère, Super U, Président, Candia, Lesieur, etc.).
-2. LE TYPE D'EMBALLAGE OU CONDITIONNEMENT : Élimine tout mot décrivant l'emballage (ex: Pet, Bocal, Bocaux, Sachet, Sachets, Bidon, Flacon, Brique, Boîte, Canette, Barquette, Lot, Pack, Filet, Tube, Étui, Pot, Verre, Plastique, Squeeze, Doypack, etc.).
-3. LA CONTENANCE OU LE POIDS : Élimine toute indication de quantité, volume ou poids (ex: Kg, 825g, 500g, 1 Litre, 1L, 1.5L, 6x1L, 1 pièce, Tranches, etc.).
-4. LES ADJECTIFS ET MENTIONS MARKETING : Élimine tous les adjectifs promotionnels ou qualificatifs superflus (ex: Croustillant, Croustille, Douceur, Moelleux, Pur/Pure, Nature, Complet, Sandwich, Toast, Extra fin, Délicieux, Fondant, Gourmand, Savoureux, Tradition, Classique, Suprême, Familial, Eco, etc.).
+Pour chaque article, tu dois extraire le champ "nom_generique_nettoye" en réduisant le libellé à sa FAMILLE CANONIQUE PURE :
+1. AUCUNE MARQUE : Élimine totalement toute marque ou enseigne (Harry's, Lu, Danone, Heinz, Marque Repère, Super U, Président, Candia, Lesieur, Jafun, Paquito, Pâturages, Monique Ranou, Chabrior, etc.).
+2. AUCUN EMBALLAGE OU CONDITIONNEMENT : Élimine Pet, Bocal, Sachet, Bidon, Flacon, Brique, Boîte, Canette, Barquette, Lot, Pack, Filet, Tube, Étui, Pot, Verre, Plastique, Squeeze, Bouchon sport, etc.).
+3. AUCUNE CONTENANCE NI DÉCOUPE : Élimine Kg, 825g, 500g, 1L, 1.5L, 6x1L, Pièce, Pce, Tranches, Morceaux, Découpé, 1er prix, Prix.
+4. AUCUN MOT PARASITE COUPÉ EN DÉBUT/FIN : Interdiction de produire "Baguette la", "Basilic en", "Mouchoirs blancs en", "De colin d alaska".
 
-EXEMPLES D'APPLICATION DU NETTOYAGE EXTRÊME :
-- "Pain de Mie Harry S Nature" -> "Pain de mie"
-- "Pain mie sandwich complet 825g" -> "Pain de mie"
-- "Pain de Mie Nature Harry S" -> "Pain de mie"
-- "Pur Jus de Pomme 1Litre" -> "Jus de pomme"
-- "Pur Jus Pomme Pet" -> "Jus de pomme"
-- "Pur Jus de Pomme Douceur" -> "Jus de pomme"
-- "Jus de Pomme Pet" -> "Jus de pomme"
-- "Mayonnaise Squeez" -> "Mayonnaise"
-- "Haricots verts extra fins bocal" -> "Haricots verts"
-- "Lait 1 2 écrémé Uht 1L" -> "Lait demi-écrémé"
-- "Sirop Fraise Bidon" -> "Sirop de fraise"
-- "Frites Allumettes Just Au Four 1kg" -> "Frites allumettes"
+EXEMPLES OBLIGATOIRES DE NOMENCLATURE CANONIQUE :
+- Tous les œufs ("Ufs b", "Ufs boulanger", "Ufs sol", "Œufs cage", "Œufs label rouge") -> "Œufs"
+- "Delice de dinde halal" / "Delice dinde halal" / "Delice poulet dinde fume" / "Blanc de volaille" -> "Blanc & Délice de volaille"
+- "Lardon poulet gout fume" / "Lardon volaille fumee" -> "Lardons de volaille fumés"
+- "Crevette deco cuite" / "Crevettes decortiquees" -> "Crevettes décortiquées"
+- "De colin d alaska meuniere" -> "Filet de colin d'Alaska"
+- "Thon entier listao" / "Thon listao au naturel" -> "Thon listao au naturel" (Rayon : "Épicerie salée & Épices")
+- "Mie" / "Pain de Mie Harry S Nature" / "Pain mie sandwich complet 825g" -> "Pain de mie"
+- "Frites allumette kg" / "Frites allumettes" / "Pommes de terre frites" -> "Frites"
+- "Mais doux" / "Mais grain sucre" -> "Maïs en boîte"
+- "Batavia" / "Laitue batavia blonde" / "Salade batavia blonde" -> "Salade Batavia"
+- "Concombre" / "Concombre piece" / "Concombre tranches" -> "Concombre"
+- "Melon piece" / "Melon vert" / "Melon vert en morceaux" -> "Melon"
+- "Oignons eminces" / "Oignons eminces kg" -> "Oignons émincés"
+- "Shaker ananas" / "Shaker d ananas decoupe" -> "Shaker d'ananas frais"
+- "Carotte rapee" / "Carottes rapees" -> "Carottes râpées"
+- "Lait demi écrémé delacto" / "Lait demi écrémé delactose" / "Lait demi écrémé facile a digerer" -> "Lait demi-écrémé sans lactose"
+- "Lait 1 2 écrémé Uht 1L" / "Lait demi écrémé" -> "Lait demi-écrémé"
+- "Pj orange sp p" / "Jus d orange sans pulpe" / "Jus d'orange" -> "Jus d'orange"
+- "Pj pomme" / "Pur Jus de Pomme" / "Pur Jus Pomme Pet" -> "Jus de pomme"
+- "Pj multi" / "Abc multi bk" / "Jafun boisson multifruits" / "Jus multifruits" -> "Jus multifruits"
+- "Eau minerale" / "Eau minerale naturelle" / "Bouchon sport" -> "Eau minérale"
+- "Eau de source" / "Eau source" -> "Eau de source"
+- "Confiture de fraise" / "Confiture fraise" -> "Confiture de fraise"
+- "Beignet chocolat" / "Beignets chocolat" -> "Beignets au chocolat"
+- "Yaourt vanille bio" / "Yaourts vanille" -> "Yaourt vanille"
 
 ================================================================================
 RÈGLE D'ORTHOGRAPHE ET DE STANDARDISATION ABSOLUE (CORRECTION OCR IMPÉRATIVE)
@@ -1978,8 +1990,11 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
       const rawFormat = String(it.format_exact || it.poids_ou_volume || it.weightOrVolume || '').trim();
       const rawAisle = String(it.rayon_assigne || it.categoryKey || it.category || classifyItemAisle(rawNorm, raw));
 
-      // Règle 1 : La "Clé de Besoin Générique" (ex: "sauce_burger")
-      const cleBesoin = generateGenericNeedKey(rawNorm, rawBrand);
+      // Règle 1 & Couches 1/2 : Empreinte Pure & Famille Canonique
+      const canonical = normalizeProductNeed(rawNorm, rawBrand);
+      if (canonical.isInvalidArtifact) continue;
+
+      const cleBesoin = canonical.id;
 
       // Règle 2 : Gestion des produits génériques / frais sans marque
       const isGeneric = !rawBrand || 
@@ -1990,7 +2005,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         rawBrand.toLowerCase() === 'vrac';
 
       const brand = isGeneric ? 'Générique' : (rawBrand.charAt(0).toUpperCase() + rawBrand.slice(1));
-      const norm = sanitizeGenericDisplayName(rawNorm, brand) || correctFrenchSpelling(rawNorm);
+      const norm = canonical.nom_affichage || correctFrenchSpelling(rawNorm);
       const qty = Math.max(1, Number(it.quantity) || 1);
       const weightOrVolume = rawFormat;
       const weightOrVolumeValue = typeof it.weightOrVolumeValue === 'number' ? it.weightOrVolumeValue : undefined;
@@ -2002,8 +2017,8 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         pricePaid = parsedUnitP * qty;
       }
 
-      // Classification rigoureuse dans les 14 rayons verrouillés (Règle 4)
-      const aisle = normalizeAisle(rawAisle);
+      // Classification rigoureuse dans les 14 rayons verrouillés (Règle 4 & Famille Canonique)
+      const aisle = normalizeAisle(canonical.rayon || rawAisle);
 
       // Règle 3 : Calcul standardisé du prix unitaire de référence (€/kg, €/L ou €/pièce)
       const comp = computeUnitPrice(pricePaid, weightOrVolume, qty, weightOrVolumeValue, weightOrVolumeUnit);

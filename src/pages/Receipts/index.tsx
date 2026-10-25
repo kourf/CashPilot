@@ -40,10 +40,12 @@ import {
   type SupermarketAisle,
   type ProductComparisonRow,
   type StorePriceDetail,
+  type StoreOfferDetail,
   SUPERMARKET_AISLES,
   correctFrenchSpelling,
   generateGenericNeedKey,
-  sanitizeGenericDisplayName
+  sanitizeGenericDisplayName,
+  normalizeProductNeed
 } from '../../types/receipts';
 import { ReceiptHistoryView } from './components/ReceiptHistoryView';
 import { ReceiptValidationModal } from './components/ReceiptValidationModal';
@@ -95,13 +97,35 @@ export default function Receipts() {
     deleteReceipt,
     hideProductFromMatrix,
     restoreProductToMatrix,
-    extractReceipt
+    extractReceipt,
+    harmonizeAndCleanDatabase
   } = useReceipts();
 
   // État du téléversement
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<UploadedFilePreview[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // État de l'harmonisation / nettoyage de la base Firestore (Couche 3)
+  const [isHarmonizing, setIsHarmonizing] = useState(false);
+  const [harmonizeFeedback, setHarmonizeFeedback] = useState<string | null>(null);
+
+  const handleHarmonizeDatabase = async () => {
+    try {
+      setIsHarmonizing(true);
+      setHarmonizeFeedback(null);
+      const res = await harmonizeAndCleanDatabase();
+      setHarmonizeFeedback(
+        `Harmonisation terminée : ${res.mergedGroups} familles canoniques consolidées, ${res.deletedDocs} doublons/lignes fantômes supprimés de Firestore.`
+      );
+      setTimeout(() => setHarmonizeFeedback(null), 8000);
+    } catch (err: any) {
+      console.error('Erreur harmonisation Firestore:', err);
+      setErrorMessage(err?.message || "Erreur lors de l'harmonisation de la base.");
+    } finally {
+      setIsHarmonizing(false);
+    }
+  };
 
   // Modales
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -294,7 +318,7 @@ export default function Receipts() {
       sampleRawRow?: ProductComparisonRow;
     }> = [];
 
-    // 2. CONSOLIDATION EXTRÊME : Élimine les faux doublons en regroupant sous la Clé de Besoin Générique
+    // 2. CONSOLIDATION EXTRÊME EN 3 COUCHES : Empreinte Pure + Famille Canonique + Fusion Magasins
     const allMatrixProducts = matrix.aisleGroups.flatMap(g => g.products);
     const consolidatedMap = new Map<string, {
       canonicalKey: string;
@@ -307,41 +331,83 @@ export default function Receipts() {
 
     allMatrixProducts.forEach(prod => {
       const lookupKey = prod.normalizedName.trim().toLowerCase();
-      if (hiddenSet.has(lookupKey)) return;
+      const canonical = normalizeProductNeed(prod.normalizedName);
+      if (canonical.isInvalidArtifact) return;
 
-      const canonicalKey = generateGenericNeedKey(prod.normalizedName);
-      const cleanDisplayName = sanitizeGenericDisplayName(prod.normalizedName);
+      const canonicalKey = canonical.id;
+      const cleanDisplayName = canonical.nom_affichage;
+
+      if (
+        hiddenSet.has(lookupKey) ||
+        hiddenSet.has(canonicalKey) ||
+        hiddenSet.has(cleanDisplayName.toLowerCase())
+      ) {
+        return;
+      }
 
       if (!consolidatedMap.has(canonicalKey)) {
         consolidatedMap.set(canonicalKey, {
           canonicalKey,
           nomGenerique: cleanDisplayName,
-          rayon: prod.category,
+          rayon: canonical.rayon || prod.category,
           storeOffers: {},
           sampleBrands: new Set<string>(),
-          sampleRawRow: prod
+          sampleRawRow: {
+            ...prod,
+            normalizedName: cleanDisplayName,
+            category: (canonical.rayon || prod.category) as SupermarketAisle,
+            priceHistory: [...(prod.priceHistory || [])]
+          }
         });
       }
 
       const entry = consolidatedMap.get(canonicalKey)!;
+      if (canonical.rayon) {
+        entry.rayon = canonical.rayon;
+      }
+
+      // Fusionner l'historique des prix pour la courbe d'évolution
+      if (entry.sampleRawRow && prod.priceHistory && prod.priceHistory.length > 0) {
+        const currentHist = entry.sampleRawRow.priceHistory || [];
+        prod.priceHistory.forEach(ph => {
+          if (
+            ph &&
+            ph.unitPrice > 0 &&
+            !currentHist.some(x => x.date === ph.date && x.storeName === ph.storeName && Math.abs(x.unitPrice - ph.unitPrice) < 0.01)
+          ) {
+            currentHist.push(ph);
+          }
+        });
+        entry.sampleRawRow.priceHistory = currentHist.sort((a, b) => a.date.localeCompare(b.date));
+      }
+
       const presentStores = Object.keys(prod.storePrices);
 
       presentStores.forEach(sName => {
         const sp = prod.storePrices[sName];
-        if (!storeMap.has(sName)) {
-          const resolved = resolvePhysicalStore({ storeName: sName });
-          storeMap.set(sName, {
+        if (!sp || !(sp.unitPrice > 0) || Number.isNaN(sp.unitPrice)) return;
+
+        const resolved = resolvePhysicalStore({ storeName: sName });
+        const canonicalStoreName = resolved.displayName;
+        if (!canonicalStoreName || canonicalStoreName === 'Supermarché') return;
+
+        if (!storeMap.has(canonicalStoreName)) {
+          storeMap.set(canonicalStoreName, {
             id: resolved.id,
-            displayName: sName,
+            displayName: canonicalStoreName,
             googleMapsUrl: resolved.googleMapsUrl,
             address: resolved.address
           });
         }
 
-        // Si l'offre existe déjà pour ce magasin, conserver la plus récente ou la plus avantageuse
-        const existingOffer = entry.storeOffers[sName];
-        if (!existingOffer || (sp.unitPrice > 0 && sp.unitPrice < existingOffer.prixUnitaire)) {
-          entry.storeOffers[sName] = {
+        // COUCHE 3.1 : Conserver l'offre la plus récente (ou la plus avantageuse à date égale)
+        const existingOffer = entry.storeOffers[canonicalStoreName];
+        if (
+          !existingOffer ||
+          (sp.date && existingOffer.date && sp.date > existingOffer.date) ||
+          (sp.date === existingOffer.date && sp.unitPrice < existingOffer.prixUnitaire)
+        ) {
+          entry.storeOffers[canonicalStoreName] = {
             prixUnitaire: sp.unitPrice,
             unite: sp.unit || prod.unit || 'kg',
             prixPaye: sp.pricePaid,
@@ -357,24 +423,37 @@ export default function Receipts() {
       });
     });
 
-    // Transformer le dictionnaire consolidé en lignes prêtes pour l'affichage
+    const storesList = Array.from(storeMap.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+    const validStoreNames = new Set(storesList.map(s => s.displayName));
+
+    // COUCHE 3.2 : Transformer le dictionnaire consolidé en lignes et ÉRADIQUER STRICTEMENT LES LIGNES FANTÔMES
     consolidatedMap.forEach(entry => {
-      const storeCount = Object.keys(entry.storeOffers).length;
+      const validOffers: Record<string, any> = {};
+      Object.entries(entry.storeOffers).forEach(([stName, off]: [string, any]) => {
+        if (validStoreNames.has(stName) && off && off.prixUnitaire > 0 && !Number.isNaN(off.prixUnitaire)) {
+          validOffers[stName] = off;
+        }
+      });
+
+      const storeCount = Object.keys(validOffers).length;
+      // RÈGLE STRICTE COUCHE 3.2 : Interdire toute ligne fantôme sans aucun prix valide dans les colonnes magasins
+      if (storeCount === 0) return;
+
       const isComp = storeCount >= 2;
-      const unitPrices = Object.values(entry.storeOffers).map((o: any) => o.prixUnitaire);
+      const unitPrices = Object.values(validOffers).map((o: any) => o.prixUnitaire);
       const lowestPrice = unitPrices.length > 0 ? Math.min(...unitPrices) : 0;
       const highestPrice = unitPrices.length > 0 ? Math.max(...unitPrices) : 0;
       const priceDiff = isComp ? Number((highestPrice - lowestPrice).toFixed(2)) : 0;
       const priceDiffPercent = isComp && highestPrice > 0 ? Math.round((priceDiff / highestPrice) * 100) : 0;
 
-      const cheapestStoreEntry = Object.entries(entry.storeOffers).find(([_, o]: any) => o.prixUnitaire === lowestPrice);
+      const cheapestStoreEntry = Object.entries(validOffers).find(([_, o]: any) => o.prixUnitaire === lowestPrice);
       const cheapestStore = cheapestStoreEntry ? cheapestStoreEntry[0] : '';
 
       rows.push({
         cleBesoin: entry.canonicalKey,
         nomGenerique: entry.nomGenerique,
         rayon: entry.rayon,
-        storeOffers: entry.storeOffers,
+        storeOffers: validOffers,
         storeCount,
         isComparable: isComp,
         lowestPrice,
@@ -387,7 +466,6 @@ export default function Receipts() {
       });
     });
 
-    const storesList = Array.from(storeMap.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
     const compCount = rows.filter(r => r.isComparable).length;
     const uniqCount = rows.length - compCount;
 
@@ -844,8 +922,34 @@ export default function Receipts() {
                   {hideUncomparable ? `${totalComparableCount} comparables` : `${totalUniqueCount} sans comp.`}
                 </span>
               </button>
+
+              {/* COUCHE 3.3 : BOUTON "HARMONISER & NETTOYER LES DOUBLONS" (BATCH FIRESTORE 100% GRATUIT) */}
+              <button
+                type="button"
+                onClick={handleHarmonizeDatabase}
+                disabled={isHarmonizing}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs",
+                  "bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/40 text-cyan-600 dark:text-cyan-400 disabled:opacity-50"
+                )}
+                title="Consolider immédiatement les doublons et nettoyer les lignes fantômes dans Firestore (Batch 100% gratuit)"
+              >
+                {isHarmonizing ? (
+                  <Loader2 size={13} className="animate-spin text-cyan-500" />
+                ) : (
+                  <Sparkles size={13} className="text-cyan-500" />
+                )}
+                <span>{isHarmonizing ? "Harmonisation..." : "Harmoniser & Nettoyer les doublons"}</span>
+              </button>
             </div>
           </div>
+
+          {harmonizeFeedback && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
+              <CheckCircle2 size={15} className="shrink-0" />
+              <span>{harmonizeFeedback}</span>
+            </div>
+          )}
 
           {/* TABLEAU CROISÉ : LIGNES (BESOIN GÉNÉRIQUE & RAYON) VS COLONNES (MAGASINS PHYSIQUES) */}
           <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-sm">

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { getActiveAccountId } from '../lib/userUtils';
 import { 
   type Receipt, 
@@ -11,6 +11,7 @@ import {
   type StandardizedProductDoc,
   generateSuperKey,
   generateGenericNeedKey,
+  normalizeProductNeed,
   getReceiptUniqueKey
 } from '../types/receipts';
 import { 
@@ -45,6 +46,7 @@ export interface ReceiptsContextType {
   hideProductFromMatrix: (normalizedName: string) => Promise<void>;
   restoreProductToMatrix: (normalizedName: string) => Promise<void>;
   extractReceipt: (files: File[]) => Promise<ExtractedReceiptResult>;
+  harmonizeAndCleanDatabase: () => Promise<{ mergedGroups: number; deletedDocs: number; totalProducts: number }>;
 }
 
 const CACHE_KEY_RECEIPTS = 'cashpilot_receipts_v2_cache';
@@ -280,7 +282,11 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const productsColRef = collection(db, `users/${accountId}/products`);
 
       unsubProducts = onSnapshot(productsColRef, (snapshot) => {
-        const list: StandardizedProductDoc[] = snapshot.docs.map(d => d.data() as StandardizedProductDoc);
+        const list: StandardizedProductDoc[] = snapshot.docs.map(d => ({
+          ...(d.data() as StandardizedProductDoc),
+          superKey: (d.data() as any).cle_besoin || (d.data() as any).superKey || d.id,
+          _docId: d.id
+        } as any));
         setProducts(list);
         try {
           localStorage.setItem(CACHE_KEY_PRODUCTS, JSON.stringify(list));
@@ -326,12 +332,88 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // 4. Calcul de la matrice comparative Magasins vs Produits en mémoire
-  // Si la collection standardisée des produits est peuplée, calcul direct en O(1)
-  // Sinon repli transparent sur la matrice calculée depuis les tickets
+  // 4. Calcul de la matrice comparative Magasins vs Produits en mémoire (Couches 1, 2 & 3)
+  // Unifie la collection `products` et les articles réels de `receipts` pour garantir 0 perte de prix et 0 ligne fantôme
   const matrix = useMemo<ComparativeMatrix>(() => {
-    if (products.length > 0) {
-      return buildComparativeMatrixFromProducts(products, hiddenProductNames, receipts.length);
+    const virtualDocsFromReceipts: StandardizedProductDoc[] = [];
+
+    receipts.forEach(r => {
+      const resolved = resolvePhysicalStore({
+        storeName: r.storeName,
+        storeAddress: r.storeAddress,
+        storePostalCode: r.storePostalCode,
+        storeCity: r.storeCity
+      });
+      const stId = r.storeId || resolved.id;
+      const stName = resolved.displayName;
+
+      (r.items || []).forEach(it => {
+        const rawCandidate = it.nomGenerique || it.normalizedName || it.rawName || '';
+        const canonical = normalizeProductNeed(rawCandidate, it.brand);
+        if (canonical.isInvalidArtifact) return;
+
+        const pricePaid = Number(it.pricePaid ?? it.price) || 0;
+        const comp = computeUnitPrice(pricePaid, it.weightOrVolume, it.quantity, it.weightOrVolumeValue, it.weightOrVolumeUnit);
+        const unitPrice = Number(it.unitPrice) > 0 ? Number(it.unitPrice) : comp.unitPrice;
+        if (!(unitPrice > 0)) return;
+
+        const aisle = normalizeAisle(canonical.rayon || it.categoryKey || it.category || classifyItemAisle(canonical.nom_affichage, it.rawName));
+
+        virtualDocsFromReceipts.push({
+          superKey: canonical.id,
+          cle_besoin: canonical.id,
+          marque: it.brand || 'Générique',
+          nom_generique: canonical.nom_affichage,
+          poids_ou_volume: it.weightOrVolume || '1 piece',
+          unite_mesure: (it.unit || comp.unit || 'piece') as any,
+          rayon: aisle.label,
+          rayon_assigne: aisle.label,
+          rayon_cle: aisle.key,
+          offres_magasins: {
+            [stId]: {
+              prix_unitaire: unitPrice,
+              unite: it.unit || comp.unit || 'piece',
+              prix_paye: pricePaid,
+              marque: it.brand || 'Générique',
+              format: it.weightOrVolume || '1 piece',
+              date: r.date,
+              magasin_nom: stName,
+              magasin_id: stId,
+              receiptId: r.id,
+              rawName: it.rawName
+            }
+          },
+          prix_actuel: {
+            [stId]: {
+              prix_unitaire: unitPrice,
+              prix_paye: pricePaid,
+              quantite: it.quantity || 1,
+              date: r.date,
+              magasin_id: stId,
+              magasin_nom: stName,
+              receiptId: r.id
+            }
+          },
+          historique_prix: [
+            {
+              date: r.date,
+              magasin: stId,
+              magasin_nom: stName,
+              prix_unitaire: unitPrice,
+              prix_paye: pricePaid,
+              quantite: it.quantity || 1,
+              receiptId: r.id
+            }
+          ],
+          derniere_mise_a_jour: r.createdAt || new Date().toISOString(),
+          nombre_releves: 1
+        } as any);
+      });
+    });
+
+    const unifiedList = [...products, ...virtualDocsFromReceipts];
+    if (unifiedList.length > 0) {
+      return buildComparativeMatrixFromProducts(unifiedList, hiddenProductNames, Math.max(receipts.length, 2));
     }
     return buildComparativeMatrix(receipts, hiddenProductNames);
   }, [products, receipts, hiddenProductNames]);
@@ -411,10 +493,19 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     products.forEach(p => updatedProductsMap.set(p.superKey, { ...p }));
 
     for (const it of enrichedItems) {
-      // RÈGLE 1 & 2 : Clé de Besoin Générique et structure offres_magasins
-      const cleBesoin = it.cle_besoin || generateGenericNeedKey(it.normalizedName || it.rawName, it.brand);
+      // RÈGLE 1 & 2 (Couches 1 & 2) : Famille Canonique et structure offres_magasins
+      const canonical = normalizeProductNeed(it.nomGenerique || it.normalizedName || it.rawName, it.brand);
+      if (canonical.isInvalidArtifact) continue;
+
+      const cleBesoin = canonical.id;
       it.cle_besoin = cleBesoin;
       it.superKey = cleBesoin;
+      it.normalizedName = canonical.nom_affichage;
+      if (canonical.rayon) {
+        const normAisle = normalizeAisle(canonical.rayon);
+        it.category = normAisle.label;
+        it.categoryKey = normAisle.key;
+      }
 
       const offerRecord = {
         prix_unitaire: it.unitPrice,
@@ -693,6 +784,351 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [receipts, setPendingValidationReceipt]);
 
+  // Action (COUCHE 3) : Harmonisation & Nettoyage par batch Firestore 100% gratuit de la base existante
+  const harmonizeAndCleanDatabase = useCallback(async (): Promise<{
+    mergedGroups: number;
+    deletedDocs: number;
+    totalProducts: number;
+  }> => {
+    const accountId = getActiveAccountId();
+    const productsColRef = collection(db, `users/${accountId}/products`);
+    const snapshot = await getDocs(productsColRef);
+
+    // 1. Accumulateur par Clé de Famille Canonique (Couches 1 & 2)
+    const canonicalGroups = new Map<string, {
+      canonicalId: string;
+      nomGenerique: string;
+      rayon: SupermarketAisle;
+      rayonCle: SupermarketAisleKey;
+      unite: string;
+      offresMagasins: Record<string, any>;
+      prixActuel: Record<string, any>;
+      historiqueOffres: any[];
+      historiquePrix: any[];
+      sourceDocIds: Set<string>;
+    }>();
+
+    const obsoleteDocIds = new Set<string>();
+
+    const registerOffer = (
+      rawName: string,
+      brand: string,
+      rawCategory: string | undefined,
+      storeIdInput: string,
+      storeNameInput: string,
+      unitPrice: number,
+      pricePaid: number,
+      unit: string,
+      format: string,
+      date: string,
+      receiptId: string,
+      quantity: number,
+      sourceDocId?: string
+    ) => {
+      if (!(unitPrice > 0) || Number.isNaN(unitPrice)) return;
+      const canonical = normalizeProductNeed(rawName, brand);
+      if (canonical.isInvalidArtifact) {
+        if (sourceDocId) obsoleteDocIds.add(sourceDocId);
+        return;
+      }
+
+      const resolvedStore = resolvePhysicalStore({ storeName: storeNameInput || storeIdInput });
+      const stId = resolvedStore.id || storeIdInput;
+      const stName = resolvedStore.displayName;
+      if (!stName || stName === 'Supermarché') return;
+
+      const aisle = normalizeAisle(
+        canonical.rayon || rawCategory || classifyItemAisle(canonical.nom_affichage, rawName)
+      );
+
+      if (!canonicalGroups.has(canonical.id)) {
+        canonicalGroups.set(canonical.id, {
+          canonicalId: canonical.id,
+          nomGenerique: canonical.nom_affichage,
+          rayon: aisle.label,
+          rayonCle: aisle.key,
+          unite: unit || 'piece',
+          offresMagasins: {},
+          prixActuel: {},
+          historiqueOffres: [],
+          historiquePrix: [],
+          sourceDocIds: new Set<string>()
+        });
+      }
+
+      const group = canonicalGroups.get(canonical.id)!;
+      if (canonical.rayon) {
+        const forcedAisle = normalizeAisle(canonical.rayon);
+        group.rayon = forcedAisle.label;
+        group.rayonCle = forcedAisle.key;
+      }
+      if (sourceDocId) {
+        group.sourceDocIds.add(sourceDocId);
+        if (sourceDocId !== canonical.id) {
+          obsoleteDocIds.add(sourceDocId);
+        }
+      }
+
+      const existingOffer = group.offresMagasins[stId];
+      const safeDate = date || new Date().toISOString().slice(0, 10);
+
+      if (
+        !existingOffer ||
+        safeDate > existingOffer.date ||
+        (safeDate === existingOffer.date && unitPrice < existingOffer.prix_unitaire)
+      ) {
+        group.offresMagasins[stId] = {
+          prix_unitaire: Number(unitPrice.toFixed(2)),
+          unite: unit || group.unite || 'piece',
+          prix_paye: Number((pricePaid || unitPrice).toFixed(2)),
+          marque: brand || 'Générique',
+          format: format || '1 piece',
+          date: safeDate,
+          magasin_nom: stName,
+          magasin_id: stId,
+          receiptId: receiptId || '',
+          rawName: rawName || canonical.nom_affichage
+        };
+
+        group.prixActuel[stId] = {
+          prix_unitaire: Number(unitPrice.toFixed(2)),
+          prix_paye: Number((pricePaid || unitPrice).toFixed(2)),
+          quantite: quantity || 1,
+          date: safeDate,
+          magasin_id: stId,
+          magasin_nom: stName,
+          receiptId: receiptId || ''
+        };
+      }
+
+      const histDuplicate = group.historiquePrix.some(
+        h => h.date === safeDate && h.magasin === stId && Math.abs(h.prix_unitaire - unitPrice) < 0.01
+      );
+      if (!histDuplicate) {
+        group.historiquePrix.push({
+          date: safeDate,
+          magasin: stId,
+          magasin_nom: stName,
+          prix_unitaire: Number(unitPrice.toFixed(2)),
+          prix_paye: Number((pricePaid || unitPrice).toFixed(2)),
+          quantite: quantity || 1,
+          receiptId: receiptId || ''
+        });
+        group.historiqueOffres.push({
+          prix_unitaire: Number(unitPrice.toFixed(2)),
+          unite: unit || 'piece',
+          prix_paye: Number((pricePaid || unitPrice).toFixed(2)),
+          marque: brand || 'Générique',
+          format: format || '1 piece',
+          date: safeDate,
+          magasin: stId,
+          magasin_nom: stName,
+          magasin_id: stId,
+          receiptId: receiptId || ''
+        });
+      }
+    };
+
+    // A. Parcourir d'abord tous les tickets existants (source de vérité complète)
+    receipts.forEach(r => {
+      const resolvedStore = resolvePhysicalStore({
+        storeName: r.storeName,
+        storeAddress: r.storeAddress,
+        storePostalCode: r.storePostalCode,
+        storeCity: r.storeCity
+      });
+      const stId = r.storeId || resolvedStore.id;
+      const stName = resolvedStore.displayName;
+
+      (r.items || []).forEach(it => {
+        const pricePaid = Number(it.pricePaid ?? it.price) || 0;
+        const comp = computeUnitPrice(pricePaid, it.weightOrVolume, it.quantity, it.weightOrVolumeValue, it.weightOrVolumeUnit);
+        const unitPrice = Number(it.unitPrice) > 0 ? Number(it.unitPrice) : comp.unitPrice;
+        registerOffer(
+          it.nomGenerique || it.normalizedName || it.rawName,
+          it.brand || 'Générique',
+          it.category,
+          stId,
+          stName,
+          unitPrice,
+          pricePaid,
+          it.unit || comp.unit || 'piece',
+          it.weightOrVolume || '1 piece',
+          r.date,
+          r.id,
+          it.quantity || 1
+        );
+      });
+    });
+
+    // B. Parcourir les documents existants dans `users/{accountId}/products`
+    snapshot.docs.forEach(docSnap => {
+      const d = docSnap.data() as any;
+      const docId = docSnap.id;
+      const rawName = d.nom_generique || d.nom_generique_nettoye || d.cle_besoin || d.superKey || docId;
+      const canonical = normalizeProductNeed(rawName, d.marque);
+
+      if (canonical.isInvalidArtifact) {
+        obsoleteDocIds.add(docId);
+        return;
+      }
+
+      if (docId !== canonical.id) {
+        obsoleteDocIds.add(docId);
+      }
+
+      let hasValidOffer = false;
+      if (d.offres_magasins && typeof d.offres_magasins === 'object') {
+        Object.entries(d.offres_magasins).forEach(([stId, off]: [string, any]) => {
+          if (off && Number(off.prix_unitaire) > 0) {
+            hasValidOffer = true;
+            registerOffer(
+              rawName,
+              off.marque || d.marque || 'Générique',
+              d.rayon || d.rayon_assigne,
+              off.magasin_id || stId,
+              off.magasin_nom || stId,
+              Number(off.prix_unitaire),
+              Number(off.prix_paye) || Number(off.prix_unitaire),
+              off.unite || d.unite_mesure || 'piece',
+              off.format || d.poids_ou_volume || '1 piece',
+              off.date || '',
+              off.receiptId || '',
+              1,
+              docId
+            );
+          }
+        });
+      } else if (d.prix_actuel && typeof d.prix_actuel === 'object') {
+        Object.entries(d.prix_actuel).forEach(([stId, pa]: [string, any]) => {
+          if (pa && Number(pa.prix_unitaire) > 0) {
+            hasValidOffer = true;
+            registerOffer(
+              rawName,
+              d.marque || 'Générique',
+              d.rayon || d.rayon_assigne,
+              pa.magasin_id || stId,
+              pa.magasin_nom || stId,
+              Number(pa.prix_unitaire),
+              Number(pa.prix_paye) || Number(pa.prix_unitaire),
+              d.unite_mesure || 'piece',
+              d.poids_ou_volume || '1 piece',
+              pa.date || '',
+              pa.receiptId || '',
+              pa.quantite || 1,
+              docId
+            );
+          }
+        });
+      }
+
+      if (!hasValidOffer) {
+        obsoleteDocIds.add(docId);
+      }
+    });
+
+    // 2. Écriture par lots Firestore (max 400 opérations par batch)
+    const nowIso = new Date().toISOString();
+    let batch = writeBatch(db);
+    let opCount = 0;
+    let mergedGroups = 0;
+    let deletedDocs = 0;
+    const newProductsState: StandardizedProductDoc[] = [];
+
+    const commitIfFull = async () => {
+      if (opCount >= 400) {
+        await batch.commit();
+        batch = writeBatch(db);
+        opCount = 0;
+      }
+    };
+
+    for (const [canonicalId, group] of canonicalGroups.entries()) {
+      const offerEntries = Object.entries(group.offresMagasins);
+      if (offerEntries.length === 0) continue;
+
+      const sortedOffers = [...offerEntries].sort((a, b) => a[1].prix_unitaire - b[1].prix_unitaire);
+      const best = sortedOffers[0][1];
+      const worst = sortedOffers[sortedOffers.length - 1][1];
+
+      const cleanDoc: any = {
+        superKey: canonicalId,
+        cle_besoin: canonicalId,
+        nom_generique: group.nomGenerique,
+        nom_generique_nettoye: group.nomGenerique,
+        rayon: group.rayon,
+        rayon_assigne: group.rayon,
+        rayon_cle: group.rayonCle,
+        marque: best.marque || 'Générique',
+        poids_ou_volume: best.format || '1 piece',
+        unite_mesure: group.unite || 'piece',
+        offres_magasins: group.offresMagasins,
+        prix_actuel: group.prixActuel,
+        historique_offres: group.historiqueOffres.sort((a, b) => a.date.localeCompare(b.date)),
+        historique_prix: group.historiquePrix.sort((a, b) => a.date.localeCompare(b.date)),
+        meilleure_offre: {
+          magasin_id: best.magasin_id,
+          magasin_nom: best.magasin_nom,
+          prix_unitaire: best.prix_unitaire,
+          unite: best.unite
+        },
+        pire_offre: {
+          magasin_id: worst.magasin_id,
+          magasin_nom: worst.magasin_nom,
+          prix_unitaire: worst.prix_unitaire,
+          unite: worst.unite
+        },
+        ecart_prix_max: Number((worst.prix_unitaire - best.prix_unitaire).toFixed(2)),
+        derniere_mise_a_jour: nowIso,
+        nombre_releves: group.historiquePrix.length
+      };
+
+      const targetRef = doc(db, `users/${accountId}/products/${canonicalId}`);
+      batch.set(targetRef, cleanDoc);
+      opCount++;
+      mergedGroups++;
+      newProductsState.push(cleanDoc as StandardizedProductDoc);
+      await commitIfFull();
+    }
+
+    for (const obsoleteId of obsoleteDocIds) {
+      if (!canonicalGroups.has(obsoleteId)) {
+        const delRef = doc(db, `users/${accountId}/products/${obsoleteId}`);
+        batch.delete(delRef);
+        opCount++;
+        deletedDocs++;
+        await commitIfFull();
+      }
+    }
+
+    if (opCount > 0) {
+      await batch.commit();
+    }
+
+    setProducts(newProductsState);
+    try {
+      localStorage.setItem(CACHE_KEY_PRODUCTS, JSON.stringify(newProductsState));
+      localStorage.setItem('cashpilot_canonical_migration_v3_done', 'true');
+    } catch {}
+
+    return {
+      mergedGroups,
+      deletedDocs,
+      totalProducts: newProductsState.length
+    };
+  }, [receipts]);
+
+  // Exécution automatique unique en arrière-plan pour nettoyer les 20 tickets existants dès l'ouverture
+  useEffect(() => {
+    if (!isRealtimeSynced || receipts.length === 0) return;
+    const alreadyDone = localStorage.getItem('cashpilot_canonical_migration_v3_done');
+    if (alreadyDone === 'true') return;
+
+    harmonizeAndCleanDatabase().catch(err => {
+      console.warn('Harmonisation automatique en arrière-plan:', err);
+    });
+  }, [isRealtimeSynced, receipts.length, harmonizeAndCleanDatabase]);
+
   const value: ReceiptsContextType = {
     receipts,
     products,
@@ -710,7 +1146,8 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     deleteReceipt,
     hideProductFromMatrix,
     restoreProductToMatrix,
-    extractReceipt
+    extractReceipt,
+    harmonizeAndCleanDatabase
   };
 
   return (
