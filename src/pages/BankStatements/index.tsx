@@ -2372,10 +2372,11 @@ export const BankStatements: React.FC = () => {
 
           <button 
             onClick={() => setIsToolsSheetOpen(true)} 
-            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 cursor-pointer"
+            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 cursor-pointer group"
           >
-             <Layers size={16} className="text-orange-500" />
-             <span className="text-xs font-semibold">Outils</span>
+             <Layers size={16} className="text-orange-500 group-hover:rotate-12 transition-transform" />
+             <span className="text-xs font-bold">Outils & Analyses</span>
+             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 font-extrabold border border-orange-500/20">8</span>
           </button>
         </div>
 
@@ -2526,145 +2527,368 @@ export const BankStatements: React.FC = () => {
       )}
       </div>
 
-      {/* Tools Bottom Sheet */}
+      {/* Tools Modal / Responsive Hub avec Google Stitch Design DNA */}
       {isToolsSheetOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-200">
-           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsToolsSheetOpen(false)}></div>
-           <div className="bg-white dark:bg-gray-900 w-full rounded-t-[2rem] shadow-2xl relative animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto">
-             <div className="sticky top-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md z-10 px-6 py-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-               <h3 className="font-bold text-xl">Analyses & Outils</h3>
-               <button onClick={() => setIsToolsSheetOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full active:scale-90 transition-transform"><X size={18}/></button>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200">
+           {/* Backdrop avec flou haut de gamme */}
+           <div 
+             className="absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity" 
+             onClick={() => setIsToolsSheetOpen(false)}
+           />
+
+           {/* Boîte Modale / Hub Bento Réactif */}
+           <div className="bg-white dark:bg-gray-900 w-full sm:max-w-4xl lg:max-w-5xl rounded-t-[2.2rem] sm:rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-gray-800/80 relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden text-gray-900 dark:text-gray-100 z-10">
+             
+             {/* Poignée mobile */}
+             <div className="pt-3 pb-1 flex justify-center sm:hidden shrink-0">
+               <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full" />
              </div>
-             <div className="p-4 space-y-3 pb-8">
+
+             {/* En-tête de Hub Premium */}
+             <div className="sticky top-0 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md z-20 px-5 sm:px-7 py-4 sm:py-5 border-b border-gray-100 dark:border-gray-800/80 flex justify-between items-center shrink-0">
+               <div className="flex items-center gap-3.5">
+                 <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-500/10 shrink-0">
+                   <Sparkles size={20} className="text-amber-300" />
+                 </div>
+                 <div>
+                   <div className="flex items-center gap-2 flex-wrap">
+                     <h3 className="font-extrabold text-lg sm:text-xl text-gray-900 dark:text-white tracking-tight">
+                       Centre d'Analyses & Outils
+                     </h3>
+                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                       8 Modules Experts
+                     </span>
+                   </div>
+                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                     Audits IA, projections prédictives, suivi des charges et contrôle de vos comptes
+                   </p>
+                 </div>
+               </div>
+
+               <button 
+                 onClick={() => setIsToolsSheetOpen(false)} 
+                 className="p-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-2xl active:scale-90 transition-all cursor-pointer shadow-sm"
+                 title="Fermer"
+               >
+                 <X size={18}/>
+               </button>
+             </div>
+
+             {/* Contenu Défilant Bento Grid */}
+             <div className="p-4 sm:p-6 overflow-y-auto space-y-6 overscroll-contain">
                 
-                {/* Outil Frise Chronologique & Rapprochement */}
-                <button 
-                  onClick={() => {
-                    setIsToolsSheetOpen(false); 
-                    setActiveViewMode('timeline');
-                  }} 
-                  className="w-full flex items-center justify-between p-4 bg-emerald-50/70 dark:bg-emerald-950/20 border-2 border-emerald-500/30 dark:border-emerald-500/40 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform group cursor-pointer"
-                >
-                  <div className="flex items-center space-x-4 text-left">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
-                      <Clock size={22} />
+                {/* 1. SECTION IA & AUDITS STRATÉGIQUES (HERO BENTO) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-indigo-600 dark:text-indigo-400 uppercase">
+                      <Sparkles size={14} className="text-amber-400" />
+                      <span>Audits Stratégiques & Intelligence Artificielle</span>
                     </div>
-                    <div>
-                      <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                        <span>Frise Chronologique & Rapprochement</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 font-semibold font-mono">NoSQL</span>
-                      </div>
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                        Soldes vérifiés (PDF), dérivés (CSV), détection des trous et alertes d'écart
-                      </div>
-                    </div>
+                    <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest hidden sm:inline">Piliers d'analyse</span>
                   </div>
-                  <ChevronDown className="rotate-[-90deg] text-emerald-500" size={20}/>
-                </button>
 
-                {/* 1. Rapport d'Audit Approfondi IA */}
-                <button 
-                  onClick={() => {
-                    setIsToolsSheetOpen(false); 
-                    handleOpenDeepAudit();
-                  }} 
-                  className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border-2 border-indigo-500/30 dark:border-indigo-500/40 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform group cursor-pointer"
-                >
-                  <div className="flex items-center space-x-4 text-left">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
-                      {isGeneratingDeepAudit ? <Loader2 size={22} className="animate-spin" /> : <Sparkles size={22} className="text-amber-300" />}
-                    </div>
-                    <div>
-                      <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                        <span>Rapport d'Audit Approfondi IA</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 font-semibold font-mono">Gemini 3.8</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Outil Frise Chronologique & Rapprochement */}
+                    <button 
+                      onClick={() => {
+                        setIsToolsSheetOpen(false); 
+                        setActiveViewMode('timeline');
+                      }} 
+                      className="relative p-5 rounded-[1.8rem] bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent dark:from-emerald-950/40 dark:via-teal-950/20 dark:to-transparent border-2 border-emerald-500/30 dark:border-emerald-500/40 hover:border-emerald-500 shadow-sm hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 group cursor-pointer text-left flex flex-col justify-between active:scale-[0.98]"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span className="text-[10px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold font-mono border border-emerald-500/25 uppercase tracking-wider">
+                            Moteur NoSQL
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 size={12} />
+                            Source vérifiée
+                          </span>
+                        </div>
+
+                        <div className="flex items-start gap-3.5">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/25 group-hover:scale-105 transition-transform shrink-0">
+                            <Clock size={22} />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-base text-gray-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                              Frise Chronologique & Rapprochement
+                            </h4>
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                              Rapprochement continu PDF vs CSV, validation des soldes officiels et détection automatique des ruptures temporelles ou écarts.
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                        {isGeneratingDeepAudit ? "Génération en cours..." : "Synthèse 6 sections (Biais banque, Flux réels, 7 alertes, Stratégie)"}
+
+                      <div className="mt-4 pt-3 border-t border-emerald-500/20 flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                        <span>Explorer la timeline continue</span>
+                        <ChevronDown className="rotate-[-90deg] group-hover:translate-x-1 transition-transform" size={16}/>
                       </div>
-                    </div>
+                    </button>
+
+                    {/* 1. Rapport d'Audit Approfondi IA */}
+                    <button 
+                      onClick={() => {
+                        setIsToolsSheetOpen(false); 
+                        handleOpenDeepAudit();
+                      }} 
+                      className="relative p-5 rounded-[1.8rem] bg-gradient-to-br from-indigo-500/15 via-purple-500/10 to-pink-500/5 dark:from-indigo-950/40 dark:via-purple-950/30 dark:to-transparent border-2 border-indigo-500/35 dark:border-indigo-500/45 hover:border-indigo-500 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 group cursor-pointer text-left flex flex-col justify-between active:scale-[0.98]"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span className="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-extrabold font-mono border border-indigo-500/25 uppercase tracking-wider">
+                            Gemini 2.5 Flash
+                          </span>
+                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                            <Zap size={12} className="text-amber-400" />
+                            Diagnostic 360°
+                          </span>
+                        </div>
+
+                        <div className="flex items-start gap-3.5">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform shrink-0">
+                            {isGeneratingDeepAudit ? <Loader2 size={22} className="animate-spin" /> : <Sparkles size={22} className="text-amber-300" />}
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-base text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                              Rapport d'Audit Approfondi IA
+                            </h4>
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                              {isGeneratingDeepAudit ? "Génération en cours par l'intelligence artificielle..." : "Synthèse financière en 6 volets : analyse du biais bancaire, flux nets réels, 7 alertes prédictives & stratégie de trésorerie."}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-indigo-500/20 flex items-center justify-between text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                        <span>{isGeneratingDeepAudit ? "Génération..." : "Consulter le rapport d'audit"}</span>
+                        <ChevronDown className="rotate-[-90deg] group-hover:translate-x-1 transition-transform" size={16}/>
+                      </div>
+                    </button>
                   </div>
-                  <ChevronDown className="rotate-[-90deg] text-indigo-400" size={20}/>
-                </button>
-
-                {/* 2. Abonnements & Prélèvements */}
-                <button onClick={() => {
-                   setIsToolsSheetOpen(false); 
-                   handleOpenSubscriptionsAudit();
-                }} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform cursor-pointer">
-                   <div className="flex items-center space-x-4 text-left">
-                     <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center justify-center"><Calendar size={22}/></div>
-                     <div>
-                       <div className="font-bold text-gray-900 dark:text-white">Abonnements & Prélèvements</div>
-                       <div className="text-xs font-medium text-gray-400">Liste des abonnements & prélèvements récurrents</div>
-                     </div>
-                   </div>
-                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
-                </button>
-                
-                <button onClick={() => {setIsToolsSheetOpen(false); handleOpenEssentialAudit();}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
-                   <div className="flex items-center space-x-4 text-left">
-                     <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 flex items-center justify-center"><Layers size={22}/></div>
-                     <div>
-                       <div className="font-bold text-gray-900 dark:text-white">Coût de la vie</div>
-                       <div className="text-xs font-medium text-gray-400">Check-list des charges incompressibles</div>
-                     </div>
-                   </div>
-                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
-                </button>\n
-                <button onClick={() => {setIsToolsSheetOpen(false); setIsSpendingHabitsDrawerOpen(true);}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
-                   <div className="flex items-center space-x-4 text-left">
-                     <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 flex items-center justify-center"><Calendar size={22}/></div>
-                     <div>
-                       <div className="font-bold text-gray-900 dark:text-white">Habitudes de Dépenses</div>
-                       <div className="text-xs font-medium text-gray-400">Analyse des jours les plus dépensiers</div>
-                     </div>
-                   </div>
-                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
-                </button>
-\n
-                <button onClick={() => {setIsToolsSheetOpen(false); setIsBudgetTrackingDrawerOpen(true);}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
-                   <div className="flex items-center space-x-4 text-left">
-                     <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center justify-center"><PiggyBank size={22}/></div>
-                     <div>
-                       <div className="font-bold text-gray-900 dark:text-white">Fixation de Budget</div>
-                       <div className="text-xs font-medium text-gray-400">Suivi pour maximiser l'épargne</div>
-                     </div>
-                   </div>
-                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
-                </button>
-
-
-                <button onClick={() => {setIsToolsSheetOpen(false); handleOpenInterAccountsAudit();}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
-                   <div className="flex items-center space-x-4 text-left">
-                     <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 flex items-center justify-center"><ArrowLeftRight size={22}/></div>
-                     <div>
-                       <div className="font-bold text-gray-900 dark:text-white">Mouvements Inter-comptes</div>
-                       <div className="text-xs font-medium text-gray-400">Flux et solde entre vos comptes</div>
-                     </div>
-                   </div>
-                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
-                </button>
-
-                <button onClick={() => {setIsToolsSheetOpen(false); handleOpenPeerTransfersAudit();}} className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-sm rounded-[1.5rem] active:scale-95 transition-transform">
-                   <div className="flex items-center space-x-4 text-left">
-                     <div className="w-12 h-12 rounded-2xl bg-pink-50 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400 flex items-center justify-center"><Users size={22}/></div>
-                     <div>
-                       <div className="font-bold text-gray-900 dark:text-white">Échanges Famille & Amis</div>
-                       <div className="text-xs font-medium text-gray-400">Position créditrice/débitrice</div>
-                     </div>
-                   </div>
-                   <ChevronDown className="rotate-[-90deg] text-gray-300" size={20}/>
-                </button>
-
-                <div className="my-6 border-t border-gray-100 dark:border-gray-800"></div>
-
-                <div className="text-[10px] font-bold text-gray-400 px-4 uppercase tracking-widest mb-3">Paramètres Avancés</div>
-                <div className="bg-white dark:bg-gray-800 rounded-[1.5rem] border border-gray-100 dark:border-gray-800 overflow-hidden">
-                  <button onClick={() => {setIsToolsSheetOpen(false); handlePurgeScope();}} className="w-full flex items-center space-x-3 p-4 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-sm font-bold text-rose-600 transition-colors cursor-pointer">
-                     <Trash2 size={18}/> <span>Supprimer ce relevé</span>
-                  </button>
                 </div>
+
+                {/* 2. SECTION CHARGES & MAÎTRISE BUDGÉTAIRE */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-amber-600 dark:text-amber-400 uppercase px-1">
+                    <Layers size={14} />
+                    <span>Maîtrise des Charges & Optimisation Budgétaire</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {/* Abonnements & Prélèvements */}
+                    <button 
+                      onClick={() => {
+                        setIsToolsSheetOpen(false); 
+                        handleOpenSubscriptionsAudit();
+                      }} 
+                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-blue-500/20 hover:border-blue-500/50 hover:bg-blue-50/30 dark:hover:bg-blue-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                    >
+                      <div className="flex items-start gap-3.5 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                          <Calendar size={20}/>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                              Abonnements & Prélèvements
+                            </h4>
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-extrabold uppercase">
+                              Anti-Hausse
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                            Détection d'augmentations de tarif, suivi chronologique et assistant de résiliation.
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                    </button>
+
+                    {/* Coût de la vie */}
+                    <button 
+                      onClick={() => {
+                        setIsToolsSheetOpen(false); 
+                        handleOpenEssentialAudit();
+                      }} 
+                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-amber-500/20 hover:border-amber-500/50 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                    >
+                      <div className="flex items-start gap-3.5 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                          <Layers size={20}/>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                              Coût de la vie
+                            </h4>
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold uppercase">
+                              Médianes Réelles
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                            Simulateur mensuel des charges incompressibles basé sur vos médianes réelles.
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-amber-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                    </button>
+
+                    {/* Fixation de Budget */}
+                    <button 
+                      onClick={() => {
+                        setIsToolsSheetOpen(false); 
+                        setIsBudgetTrackingDrawerOpen(true);
+                      }} 
+                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-teal-500/20 hover:border-teal-500/50 hover:bg-teal-50/30 dark:hover:bg-teal-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                    >
+                      <div className="flex items-start gap-3.5 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                          <PiggyBank size={20}/>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                              Fixation de Budget
+                            </h4>
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400 font-extrabold uppercase">
+                              Épargne Cible
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                            Définition de plafonds de dépenses par catégorie pour maximiser votre épargne.
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-teal-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                    </button>
+
+                    {/* Habitudes de Dépenses */}
+                    <button 
+                      onClick={() => {
+                        setIsToolsSheetOpen(false); 
+                        setIsSpendingHabitsDrawerOpen(true);
+                      }} 
+                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-purple-500/20 hover:border-purple-500/50 hover:bg-purple-50/30 dark:hover:bg-purple-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                    >
+                      <div className="flex items-start gap-3.5 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                          <Clock size={20}/>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                              Habitudes de Dépenses
+                            </h4>
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 font-extrabold uppercase">
+                              Temporalité
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                            Analyse chronologique des jours et périodes d'achats les plus intenses.
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-purple-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. SECTION FLUX & SOLIDARITÉ */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-rose-600 dark:text-rose-400 uppercase px-1">
+                    <Users size={14} />
+                    <span>Flux Internes & Rapprochements Tiers</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {/* Mouvements Inter-comptes */}
+                    <button 
+                      onClick={() => {
+                        setIsToolsSheetOpen(false); 
+                        handleOpenInterAccountsAudit();
+                      }} 
+                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-indigo-500/20 hover:border-indigo-500/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                    >
+                      <div className="flex items-start gap-3.5 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                          <ArrowLeftRight size={20}/>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                              Mouvements Inter-comptes
+                            </h4>
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-extrabold uppercase">
+                              Neutre au Bilan
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                            Rapprochement et compensation des transferts entre vos différents comptes.
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                    </button>
+
+                    {/* Échanges Famille & Amis */}
+                    <button 
+                      onClick={() => {
+                        setIsToolsSheetOpen(false); 
+                        handleOpenPeerTransfersAudit();
+                      }} 
+                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-pink-500/20 hover:border-pink-500/50 hover:bg-pink-50/30 dark:hover:bg-pink-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                    >
+                      <div className="flex items-start gap-3.5 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                          <Users size={20}/>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                              Échanges Famille & Amis
+                            </h4>
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-600 dark:text-pink-400 font-extrabold uppercase">
+                              Balance Tiers
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                            Position débitrice/créditrice et solde des remboursements avec vos proches.
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-pink-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. PARAMÈTRES AVANCÉS & ACTION DESTRUCTIVE (ZONE SÉCURISÉE) */}
+                <div className="pt-2">
+                  <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                        <AlertTriangle size={17} />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-gray-900 dark:text-white">Zone de Réinitialisation</div>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400">Supprimer définitivement ce relevé et toutes ses opérations du périmètre actif</div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setIsToolsSheetOpen(false); 
+                        handlePurgeScope();
+                      }} 
+                      className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                    >
+                      <Trash2 size={14}/>
+                      <span>Supprimer ce relevé</span>
+                    </button>
+                  </div>
+                </div>
+
              </div>
            </div>
         </div>
