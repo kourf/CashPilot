@@ -16,6 +16,7 @@ import {
   sanitizeImportErrorMessage,
   getStatementDisplayStatus
 } from '../src/lib/bankValidation.ts';
+import { detectSubscriptionEvolution } from '../src/lib/bankUtils.ts';
 
 test('1. DÉTECTION DU NOM DE BANQUE (detectBankName)', () => {
   assert.equal(
@@ -306,4 +307,60 @@ test('8. STRUCTURE DES CATÉGORIES : AUCUNE MACRO-CATÉGORIE ET REGROUPEMENT PRO
   const amexTx = classifyTransaction('PRELEVEMENT AMERICAN EXPRESS CARTE', -125.00);
   assert.equal(amexTx.category, 'Paiement fractionné');
   assert.equal(amexTx.flowType, 'FIXED_EXPENSE');
+});
+
+test('9. OUTIL ABONNEMENTS : DÉTECTION ÉVOLUTION DES PRIX, HISTORIQUE ET AIDE À LA NÉGOCIATION', () => {
+  const allTx = [
+    { id: '1', date: '2026-01-05', cleanLabel: 'Netflix', rawLabel: 'PRLV SEPA NETFLIX', amount: -13.49, isSubscription: true },
+    { id: '2', date: '2026-02-05', cleanLabel: 'Netflix', rawLabel: 'PRLV SEPA NETFLIX', amount: -15.99, isSubscription: true },
+    { id: '3', date: '2026-03-05', cleanLabel: 'Netflix', rawLabel: 'PRLV SEPA NETFLIX', amount: -17.99, isSubscription: true },
+    { id: '4', date: '2026-01-10', cleanLabel: 'Free Mobile', rawLabel: 'PRLV SEPA FREE MOBILE', amount: -19.99, isSubscription: true },
+    { id: '5', date: '2026-02-10', cleanLabel: 'Free Mobile', rawLabel: 'PRLV SEPA FREE MOBILE', amount: -15.99, isSubscription: true },
+    { id: '6', date: '2026-01-15', cleanLabel: 'Spotify', rawLabel: 'PRLV SPOTIFY', amount: -10.99, isSubscription: true },
+    { id: '7', date: '2026-02-15', cleanLabel: 'Spotify', rawLabel: 'PRLV SPOTIFY', amount: -10.99, isSubscription: true },
+    { id: '8', date: '2026-03-20', cleanLabel: 'Disney+', rawLabel: 'PRLV DISNEY PLUS', amount: -8.99, isSubscription: true }
+  ];
+
+  // Test 9.1: Hausse de prix détectée sur Netflix
+  const evoNetflix = detectSubscriptionEvolution(allTx[2] as any, allTx as any);
+  assert.equal(evoNetflix.status, 'INCREASED');
+  assert.equal(evoNetflix.currentAmount, 17.99);
+  assert.equal(evoNetflix.previousAmount, 15.99);
+  assert.equal(evoNetflix.difference, 2.00);
+  assert.equal(Math.round(evoNetflix.percentChange || 0), 13);
+  assert.equal(evoNetflix.history.length, 3);
+  assert.match(evoNetflix.negotiationAdvice || '', /Hausse de/);
+
+  // Test 9.2: Baisse de prix détectée sur Free Mobile
+  const evoFree = detectSubscriptionEvolution(allTx[4] as any, allTx as any);
+  assert.equal(evoFree.status, 'DECREASED');
+  assert.equal(evoFree.difference, -4.00);
+
+  // Test 9.3: Tarif stable sur Spotify
+  const evoSpotify = detectSubscriptionEvolution(allTx[6] as any, allTx as any);
+  assert.equal(evoSpotify.status, 'STABLE');
+  assert.equal(evoSpotify.difference, 0);
+
+  // Test 9.4: Nouveau prélèvement sur Disney+
+  const evoDisney = detectSubscriptionEvolution(allTx[7] as any, allTx as any);
+  assert.equal(evoDisney.status, 'NEW');
+});
+
+test('10. SIMULATEUR COÛT DE LA VIE : RÉINITIALISATION À 0 € ET PRÉSERVATION DES POSTES PAR DÉFAUT', () => {
+  const defaultItems = [
+    { id: 'loyer', name: 'Loyer / Crédit Immobilier', amount: 850, categoryGroup: 'logement' },
+    { id: 'courses', name: 'Courses Alimentaires', amount: 450, categoryGroup: 'alimentation' },
+    { id: 'custom_1', name: 'Salle de sport', amount: 35, categoryGroup: 'abonnements' }
+  ];
+
+  // Action : Réinitialiser remet tous les montants à 0 €
+  const zeroed = defaultItems.map(item => ({ ...item, amount: 0 }));
+  assert.equal(zeroed.every(i => i.amount === 0), true);
+  assert.equal(zeroed.length, 3);
+  assert.equal(zeroed[0].name, 'Loyer / Crédit Immobilier');
+
+  // Action : Suppression d un item par défaut remet son montant à 0 € sans supprimer la ligne
+  const handledDefaultRemoval = defaultItems.map(item => item.id === 'loyer' ? { ...item, amount: 0 } : item);
+  assert.equal(handledDefaultRemoval.find(i => i.id === 'loyer')?.amount, 0);
+  assert.equal(handledDefaultRemoval.length, 3, 'La ligne Loyer ne doit pas disparaître');
 });

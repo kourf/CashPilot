@@ -1,5 +1,5 @@
-import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, formatDateFR, classifyTransaction, detectBankName, cleanMerchantDescription, sanitizeRawBankLabel, CATEGORIES, extractCleanBankStatementRows, type CleanBankStatementRow } from './bankParser';
-import { validateBankStatementFile, validateBankStatementCSVContent, sanitizeImportErrorMessage, type BankFileValidationResult } from './bankValidation';
+import { parseCSVBankStatement, categorizeTransaction, formatMonthLabel, formatDateFR, classifyTransaction, detectBankName, cleanMerchantDescription, sanitizeRawBankLabel, CATEGORIES, extractCleanBankStatementRows, type CleanBankStatementRow } from './bankParser.ts';
+import { validateBankStatementFile, validateBankStatementCSVContent, sanitizeImportErrorMessage, type BankFileValidationResult } from './bankValidation.ts';
 
 export { formatMonthLabel, formatDateFR, categorizeTransaction, parseCSVBankStatement, classifyTransaction, detectBankName, cleanMerchantDescription, sanitizeRawBankLabel, CATEGORIES, extractCleanBankStatementRows, validateBankStatementFile, validateBankStatementCSVContent, sanitizeImportErrorMessage, type CleanBankStatementRow, type BankFileValidationResult };
 export type FlowType = 'INCOME' | 'FIXED_EXPENSE' | 'VARIABLE_EXPENSE' | 'SAVINGS_TRANSFER';
@@ -637,6 +637,154 @@ export interface SubscriptionSummary {
   totalAnnual: number;
   count: number;
   items: BankTransaction[];
+}
+
+export interface SubscriptionPricePoint {
+  date: string;
+  amount: number;
+  rawLabel?: string;
+  formattedDate?: string;
+}
+
+export interface SubscriptionPriceEvolution {
+  serviceKey: string;
+  serviceName: string;
+  currentAmount: number;
+  previousAmount?: number;
+  difference?: number;
+  percentChange?: number;
+  status: 'INCREASED' | 'DECREASED' | 'STABLE' | 'NEW';
+  history: SubscriptionPricePoint[];
+  negotiationAdvice?: string;
+}
+
+/**
+ * Normalise l'empreinte d'un abonnement pour le reconnaître à travers plusieurs mois
+ * Retire les dates, références bancaires, numéros de mandat ou de carte.
+ */
+export function normalizeSubscriptionServiceKey(tx: { cleanLabel?: string; rawLabel?: string; description?: string }): string {
+  const raw = (tx.cleanLabel || tx.description || tx.rawLabel || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  return raw
+    .replace(/carte\s+x?\d+/gi, '')
+    .replace(/\b\d{2}[\/\-.]\d{2}(?:[\/\-.]\d{2,4})?\b/g, '')
+    .replace(/prlv\s+(sepa|europeen)?/gi, '')
+    .replace(/vir\s+(sepa|instantane|permanent)?/gi, '')
+    .replace(/prelevement\s+(sepa|europeen)?/gi, '')
+    .replace(/cotisation\s+/gi, '')
+    .replace(/facture\s+\w+/gi, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 3)
+    .join(' ');
+}
+
+/**
+ * Analyse l'évolution du prix d'un abonnement ou prélèvement par rapport à l'historique
+ */
+export function detectSubscriptionEvolution(
+  currentTx: { amount: number; date?: string; cleanLabel?: string; rawLabel?: string; description?: string },
+  allTransactions: Array<{ amount: number; date: string; cleanLabel?: string; rawLabel?: string; description?: string }>
+): SubscriptionPriceEvolution {
+  const serviceKey = normalizeSubscriptionServiceKey(currentTx);
+  const serviceName = currentTx.cleanLabel || currentTx.description || currentTx.rawLabel || 'Abonnement';
+  const currAmt = Math.abs(Number(currentTx.amount) || 0);
+
+  // Rechercher toutes les opérations correspondantes dans l'historique (débits uniquement)
+  const matches = (allTransactions || [])
+    .filter(t => {
+      if ((Number(t.amount) || 0) >= 0) return false;
+      const k = normalizeSubscriptionServiceKey(t);
+      if (!k || !serviceKey) return false;
+      return k === serviceKey || (k.length >= 4 && (serviceKey.includes(k) || k.includes(serviceKey)));
+    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Regrouper par mois/date distinct pour éviter les faux doublons le même jour
+  const seenDates = new Set<string>();
+  const history: SubscriptionPricePoint[] = [];
+
+  matches.forEach(m => {
+    const d = m.date || '';
+    const monthKey = d.substring(0, 7);
+    if (!seenDates.has(monthKey)) {
+      seenDates.add(monthKey);
+      history.push({
+        date: d,
+        amount: Math.abs(Number(m.amount) || 0),
+        rawLabel: m.rawLabel || m.description
+      });
+    }
+  });
+
+  // Si l'opération en cours n'est pas encore dans l'historique
+  if (currentTx.date && !seenDates.has(currentTx.date.substring(0, 7))) {
+    history.push({
+      date: currentTx.date,
+      amount: currAmt,
+      rawLabel: currentTx.rawLabel || currentTx.description
+    });
+    history.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }
+
+  // Si on a au moins 2 occurrences dans le temps, comparer la plus récente avec la précédente
+  if (history.length >= 2) {
+    const latest = history[history.length - 1];
+    const previous = history[history.length - 2];
+    const diff = Math.round((latest.amount - previous.amount) * 100) / 100;
+    const pct = previous.amount > 0 ? Math.round((diff / previous.amount) * 1000) / 10 : 0;
+
+    if (diff >= 0.05) {
+      return {
+        serviceKey,
+        serviceName,
+        currentAmount: latest.amount,
+        previousAmount: previous.amount,
+        difference: diff,
+        percentChange: pct,
+        status: 'INCREASED',
+        history,
+        negotiationAdvice: `Hausse de tarif détectée (+${diff.toFixed(2)} €/mois, soit +${(diff * 12).toFixed(2)} €/an). Pensez à faire jouer la concurrence ou contacter le service client pour négocier ou résilier sans frais.`
+      };
+    } else if (diff <= -0.05) {
+      return {
+        serviceKey,
+        serviceName,
+        currentAmount: latest.amount,
+        previousAmount: previous.amount,
+        difference: diff,
+        percentChange: pct,
+        status: 'DECREASED',
+        history,
+        negotiationAdvice: `Baisse de tarif constatée (${diff.toFixed(2)} €/mois). Vous bénéficiez d'une réduction ou d'une offre promotionnelle.`
+      };
+    } else {
+      return {
+        serviceKey,
+        serviceName,
+        currentAmount: latest.amount,
+        previousAmount: previous.amount,
+        difference: 0,
+        percentChange: 0,
+        status: 'STABLE',
+        history,
+        negotiationAdvice: `Tarif stable et inchangé (${latest.amount.toFixed(2)} €/mois).`
+      };
+    }
+  }
+
+  return {
+    serviceKey,
+    serviceName,
+    currentAmount: currAmt,
+    status: 'NEW',
+    history,
+    negotiationAdvice: `Premier prélèvement répertorié sur vos relevés disponibles (${currAmt.toFixed(2)} €).`
+  };
 }
 
 /**

@@ -2197,7 +2197,7 @@ export const BankStatements: React.FC = () => {
           className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
             activeViewMode === 'transactions'
               ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-750'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700/60'
           }`}
         >
           <FileSpreadsheet size={14} />
@@ -2209,7 +2209,7 @@ export const BankStatements: React.FC = () => {
           className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
             activeViewMode === 'timeline'
               ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-750'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700/60'
           }`}
         >
           <Clock size={14} />
@@ -2364,7 +2364,7 @@ export const BankStatements: React.FC = () => {
         <div className="flex space-x-2.5 overflow-x-auto pb-4 hide-scrollbar">
           <button 
             onClick={() => fileInputRef.current?.click()} 
-            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer"
+            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 cursor-pointer"
           >
              <Upload size={16} className="text-blue-500" />
              <span className="text-xs font-semibold">Importer RB</span>
@@ -2372,7 +2372,7 @@ export const BankStatements: React.FC = () => {
 
           <button 
             onClick={() => setIsToolsSheetOpen(true)} 
-            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer"
+            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 cursor-pointer"
           >
              <Layers size={16} className="text-orange-500" />
              <span className="text-xs font-semibold">Outils</span>
@@ -2428,7 +2428,7 @@ export const BankStatements: React.FC = () => {
                <div className="p-10 text-center text-gray-400 font-medium">Aucune transaction trouvée</div>
              ) : (
                filteredTransactions.slice(0, 100).map(tx => (
-                 <div key={tx.id} onClick={() => handleOpenEditModal(tx)} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 active:scale-[0.98] transition-all cursor-pointer">
+                 <div key={tx.id} onClick={() => handleOpenEditModal(tx)} className="p-4 flex items-center justify-between hover:bg-gray-100/80 dark:hover:bg-gray-700/50 active:scale-[0.98] transition-all cursor-pointer">
                    <div className="flex items-center space-x-4 overflow-hidden">
                       <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${
                         tx.flowType === 'INCOME' || tx.type === 'credit' 
@@ -2682,6 +2682,7 @@ export const BankStatements: React.FC = () => {
           customTitle={auditCustomTitle} 
           customSubtitle={auditCustomSubtitle} 
           customTotalAmount={auditCustomTotal} 
+          allTransactions={bankTransactions}
         />
       )}
       {isCostOfLivingDrawerOpen && (

@@ -34,12 +34,15 @@ import {
   Landmark,
   Calculator,
   Scale,
-  User
+  User,
+  AlertTriangle,
+  Copy,
+  Check
 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { formatCurrency, formatDateFR } from '../lib/bankUtils';
+import { formatCurrency, formatDateFR, detectSubscriptionEvolution } from '../lib/bankUtils';
 import { 
   calculateInternalTransfers, 
   calculatePeerTransfers, 
@@ -62,6 +65,7 @@ export interface CategoryAuditDrawerProps {
   customTitle?: string;
   customSubtitle?: string;
   customTotalAmount?: number;
+  allTransactions?: any[];
 }
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -101,10 +105,13 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
   customTransactions,
   customTitle,
   customSubtitle,
-  customTotalAmount
+  customTotalAmount,
+  allTransactions
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [natureFilter, setNatureFilter] = useState<'all' | 'fixe' | 'variable'>('all');
+  const [copiedAdviceId, setCopiedAdviceId] = useState<string | null>(null);
+  const [expandedNegotiateId, setExpandedNegotiateId] = useState<string | null>(null);
 
   // Mouvements Inter-Comptes : Solde initial et filtre directionnel (Entrées vs Sorties)
   const [initialBalanceInput, setInitialBalanceInput] = useState<string>(() => {
@@ -114,6 +121,37 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
   // Échanges Famille & Amis : Filtre interactif par personne
   const [selectedPersonFilter, setSelectedPersonFilter] = useState<string | null>(null);
+
+  // Analyse et suivi de l'évolution des prix pour les abonnements et prélèvements
+  const subscriptionEvolutions = useMemo(() => {
+    if (auditType !== 'subscriptions') return new Map<string, ReturnType<typeof detectSubscriptionEvolution>>();
+    const map = new Map<string, ReturnType<typeof detectSubscriptionEvolution>>();
+    const pool = (allTransactions && allTransactions.length > 0) ? allTransactions : (customTransactions || []);
+    
+    (customTransactions || []).forEach(tx => {
+      const evo = detectSubscriptionEvolution(tx, pool);
+      map.set(tx.id, evo);
+    });
+    return map;
+  }, [auditType, customTransactions, allTransactions]);
+
+  const subscriptionStats = useMemo(() => {
+    if (auditType !== 'subscriptions') return { increasesCount: 0, totalIncreaseImpact: 0, decreasesCount: 0 };
+    let increasesCount = 0;
+    let totalIncreaseImpact = 0;
+    let decreasesCount = 0;
+
+    subscriptionEvolutions.forEach(evo => {
+      if (evo.status === 'INCREASED') {
+        increasesCount++;
+        totalIncreaseImpact += (evo.difference || 0);
+      } else if (evo.status === 'DECREASED') {
+        decreasesCount++;
+      }
+    });
+
+    return { increasesCount, totalIncreaseImpact, decreasesCount };
+  }, [auditType, subscriptionEvolutions]);
 
   const handleInitialBalanceChange = (val: string) => {
     setInitialBalanceInput(val);
@@ -762,6 +800,40 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
               </div>
             </div>
           )}
+
+          {/* Alerte & Suivi d'évolution des prix d'abonnements */}
+          {auditType === 'subscriptions' && (
+            <div className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
+              subscriptionStats.increasesCount > 0 
+                ? 'bg-rose-500/10 border-rose-500/25 text-rose-300' 
+                : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+            }`}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                  subscriptionStats.increasesCount > 0 ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'
+                }`}>
+                  {subscriptionStats.increasesCount > 0 ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-foreground">
+                    {subscriptionStats.increasesCount > 0
+                      ? `${subscriptionStats.increasesCount} hausse${subscriptionStats.increasesCount > 1 ? 's' : ''} de tarif détectée${subscriptionStats.increasesCount > 1 ? 's' : ''}`
+                      : 'Tous vos abonnements sont stables'}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                    {subscriptionStats.increasesCount > 0
+                      ? `Surcoût : +${formatCurrency(subscriptionStats.totalIncreaseImpact, { showSign: false })}/mois (+${formatCurrency(subscriptionStats.totalIncreaseImpact * 12, { showSign: false })}/an) • Idéal pour négocier ou résilier`
+                      : 'Aucune augmentation constatée par rapport à vos mois précédents'}
+                  </div>
+                </div>
+              </div>
+              {subscriptionStats.increasesCount > 0 && (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 uppercase tracking-wider shrink-0 hidden sm:inline-block">
+                  Opportunité Négociation
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* --- BARRE D'OUTILS ET RECHERCHE --- */}
@@ -877,32 +949,119 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      {auditType === 'subscriptions' ? (
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-black text-sm text-foreground truncate" title={label}>
-                              {tx.cleanLabel || tx.description || label}
-                            </span>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm">
-                              Payé
-                            </span>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-4 mt-1">
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Libellé Bancaire</span>
-                              <span className="text-[11px] text-foreground/90 font-medium truncate" title={tx.rawLabel || tx.description}>{tx.rawLabel || tx.description}</span>
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Date de Prélèvement</span>
-                              <span className="text-[11px] text-blue-500 font-bold flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {tx.subscriptionDay ? `Le ${tx.subscriptionDay} du mois` : formatDateFR(tx.date)}
+                      {auditType === 'subscriptions' ? (() => {
+                        const evo = subscriptionEvolutions.get(tx.id);
+                        return (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-black text-sm text-foreground truncate" title={label}>
+                                {tx.cleanLabel || tx.description || label}
                               </span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm">
+                                Payé
+                              </span>
+                              {/* Badge d'évolution de prix illustré */}
+                              {evo && evo.status === 'INCREASED' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/30">
+                                  <TrendingUp className="w-3 h-3" />
+                                  <span>+{formatCurrency(evo.difference || 0, { showSign: false })} ({evo.percentChange && evo.percentChange > 0 ? `+${evo.percentChange}%` : ''}) • Hausse détectée</span>
+                                </span>
+                              )}
+                              {evo && evo.status === 'DECREASED' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">
+                                  <TrendingDown className="w-3 h-3" />
+                                  <span>{formatCurrency(evo.difference || 0, { showSign: true })} • Baisse de prix</span>
+                                </span>
+                              )}
+                              {evo && evo.status === 'STABLE' && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border/50">
+                                  Tarif stable
+                                </span>
+                              )}
                             </div>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-4 mt-0.5">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Libellé Bancaire</span>
+                                <span className="text-[11px] text-foreground/90 font-medium truncate" title={tx.rawLabel || tx.description}>{tx.rawLabel || tx.description}</span>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Date de Prélèvement</span>
+                                <span className="text-[11px] text-blue-500 font-bold flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {tx.subscriptionDay ? `Le ${tx.subscriptionDay} du mois` : formatDateFR(tx.date)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Illustration de l'historique d'évolution des prix */}
+                            {evo && evo.history && evo.history.length > 1 && (
+                              <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[11px]">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Historique :</span>
+                                {evo.history.map((pt, hIdx) => (
+                                  <React.Fragment key={pt.date + hIdx}>
+                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
+                                      hIdx === evo.history.length - 1 && evo.status === 'INCREASED'
+                                        ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                                        : 'bg-secondary/70 text-foreground border-border/50'
+                                    }`}>
+                                      {formatCurrency(pt.amount, { showSign: false })}
+                                    </span>
+                                    {hIdx < evo.history.length - 1 && (
+                                      <span className="text-muted-foreground font-bold text-[10px]">➔</span>
+                                    )}
+                                  </React.Fragment>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Aide à la négociation / résiliation en cas de hausse */}
+                            {evo && evo.status === 'INCREASED' && (
+                              <div className="mt-1.5 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/25 flex flex-col gap-1.5">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-1.5 text-rose-300 font-bold text-xs">
+                                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                    <span>Hausse de tarif constatée (passé de {formatCurrency(evo.previousAmount || 0, { showSign: false })} à {formatCurrency(evo.currentAmount, { showSign: false })})</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedNegotiateId(expandedNegotiateId === tx.id ? null : tx.id)}
+                                    className="text-[10px] font-bold px-2 py-1 rounded bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 transition-colors cursor-pointer"
+                                  >
+                                    {expandedNegotiateId === tx.id ? 'Masquer l\'argumentaire' : 'Conseil négocier / résilier'}
+                                  </button>
+                                </div>
+
+                                {expandedNegotiateId === tx.id && (
+                                  <div className="mt-1 p-2.5 rounded-lg bg-black/30 border border-rose-500/20 space-y-2">
+                                    <p className="text-[11px] text-rose-200/90 leading-relaxed">
+                                      {evo.negotiationAdvice}
+                                    </p>
+                                    <div className="pt-2 border-t border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                      <span className="text-[10px] font-medium text-muted-foreground">
+                                        Message type pour le service client :
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const text = `Bonjour,\n\nJ'ai constaté une augmentation tarifaire sur mon abonnement ${tx.cleanLabel || tx.description} (passé de ${evo.previousAmount?.toFixed(2)} € à ${evo.currentAmount.toFixed(2)} € par mois).\n\nSans geste commercial ou alignement sur vos offres actuelles, je souhaite faire valoir mes droits de résiliation sans frais afin de souscrire chez un opérateur concurrent.\n\nMerci de votre retour.`;
+                                          navigator.clipboard.writeText(text);
+                                          setCopiedAdviceId(tx.id);
+                                          setTimeout(() => setCopiedAdviceId(null), 2500);
+                                        }}
+                                        className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
+                                      >
+                                        {copiedAdviceId === tx.id ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3 text-white" />}
+                                        <span>{copiedAdviceId === tx.id ? 'Copié dans le presse-papier !' : 'Copier le message'}</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ) : (
+                        );
+                      })() : (
                         <>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold text-xs sm:text-sm text-foreground truncate" title={label}>

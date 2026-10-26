@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Lock, Plus, Trash2, Home, HeartPulse, ShoppingCart, Car, Tv, Edit2, Save, Calculator, RefreshCw, ChevronDown, History, Eye, ArrowLeft } from 'lucide-react';
+import { X, Plus, Trash2, Home, HeartPulse, ShoppingCart, Car, Tv, Edit2, Save, Calculator, RefreshCw, Eye, ArrowLeft, RotateCcw } from 'lucide-react';
 import { formatCurrency, type BankTransaction } from '../lib/bankUtils';
 import { calculateCategoryMedians } from '../lib/kpiUtils';
 
@@ -15,7 +15,7 @@ interface ExpenseItem {
   name: string;
   amount: number;
   categoryGroup: string;
-  isAutoCalculated: boolean;
+  isAutoCalculated?: boolean;
 }
 
 const CATEGORY_GROUPS = [
@@ -52,6 +52,10 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
   const [newItemGroup, setNewItemGroup] = useState('logement');
   const [openDrillDownId, setOpenDrillDownId] = useState<string | null>(null);
 
+  const categoryMedians = useMemo(() => {
+    return calculateCategoryMedians(bankTransactions as any);
+  }, [bankTransactions]);
+
   const getCategoryForExpenseItem = (itemName: string): string | null => {
     if (categoryMedians[itemName]) return itemName;
     if (itemName.includes('Loyer')) return 'Loyer / Crédit Immobilier';
@@ -66,9 +70,35 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
     return null;
   };
 
-  const categoryMedians = useMemo(() => {
-    return calculateCategoryMedians(bankTransactions as any);
-  }, [bankTransactions]);
+  const getEstimatedMedian = (item: ExpenseItem): number => {
+    // 1. Direct item name match
+    if (categoryMedians[item.name]?.median) return categoryMedians[item.name].median;
+    // 2. Category mapping
+    const targetCat = getCategoryForExpenseItem(item.name);
+    if (targetCat && categoryMedians[targetCat]?.median) {
+      return categoryMedians[targetCat].median;
+    }
+    // 3. Fallbacks
+    if (item.name.includes('Loyer')) return categoryMedians['Loyer / Charges']?.median || categoryMedians['Logement & Énergie']?.median || 0;
+    if (item.name.includes('Assurance')) return categoryMedians['Assurances']?.median || 0;
+    if (item.name.includes('Santé')) return categoryMedians['Santé & Mutuelle']?.median || categoryMedians['Santé']?.median || 0;
+    if (item.name.includes('Courses')) return categoryMedians['Alimentation & Courses']?.median || 0;
+    if (item.name.includes('Carburant')) return categoryMedians['Carburant & Péages']?.median || categoryMedians['Transports & Carburant']?.median || 0;
+    if (item.name.includes('Transports')) return categoryMedians['Transports']?.median || 0;
+    if (item.name.includes('Abonnements')) return categoryMedians['Abonnements & Télécom']?.median || 0;
+    return 0;
+  };
+
+  const getMedianDetailObj = (item: ExpenseItem) => {
+    if (categoryMedians[item.name] && (categoryMedians[item.name].median > 0 || categoryMedians[item.name].sampleTx?.length > 0)) {
+      return categoryMedians[item.name];
+    }
+    const targetCat = getCategoryForExpenseItem(item.name);
+    if (targetCat && categoryMedians[targetCat]) {
+      return categoryMedians[targetCat];
+    }
+    return null;
+  };
 
   // Computed grouped recent expenses and averages
   const groupStats = useMemo(() => {
@@ -112,33 +142,72 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
     return stats;
   }, [bankTransactions]);
 
+  // Calcul rigoureux des médianes mensuelles par groupe de catégorie (Budget moyen par catégorie)
+  const categoryGroupMedians = useMemo(() => {
+    const monthlyGroupTotals: Record<string, Record<string, number>> = {
+      logement: {},
+      sante: {},
+      alimentation: {},
+      transport: {},
+      abonnements: {}
+    };
+
+    const expenses = bankTransactions.filter(t => Number(t.amount) < 0 && !t.isInternalTransfer);
+
+    expenses.forEach(t => {
+      const d = t.date || '';
+      const m = d.substring(0, 7) || 'general';
+      const cat = (t.category || '').toLowerCase();
+      let groupId = 'autre';
+      if (cat.includes('logement') || cat.includes('loyer') || cat.includes('énergie') || cat.includes('energie') || cat.includes('élec') || cat.includes('gaz') || cat.includes('eau')) groupId = 'logement';
+      else if (cat.includes('assur') || cat.includes('santé') || cat.includes('sante') || cat.includes('mutuelle') || cat.includes('prévoyance')) groupId = 'sante';
+      else if (cat.includes('alim') || cat.includes('course') || cat.includes('supermarché') || cat.includes('resto') || cat.includes('restaurant')) groupId = 'alimentation';
+      else if (cat.includes('transp') || cat.includes('carburant') || cat.includes('essence') || cat.includes('péage') || cat.includes('peage') || cat.includes('sncf') || cat.includes('train')) groupId = 'transport';
+      else if (cat.includes('abonn') || cat.includes('télécom') || cat.includes('telecom') || cat.includes('loisir') || cat.includes('sport') || cat.includes('forfait') || cat.includes('box')) groupId = 'abonnements';
+
+      if (monthlyGroupTotals[groupId]) {
+        monthlyGroupTotals[groupId][m] = (monthlyGroupTotals[groupId][m] || 0) + Math.abs(Number(t.amount) || 0);
+      }
+    });
+
+    const result: Record<string, number> = {};
+    Object.keys(monthlyGroupTotals).forEach(gid => {
+      const monthlyValues = Object.values(monthlyGroupTotals[gid]);
+      if (monthlyValues.length > 0) {
+        monthlyValues.sort((a, b) => a - b);
+        const mid = Math.floor(monthlyValues.length / 2);
+        const med = monthlyValues.length % 2 !== 0 ? monthlyValues[mid] : (monthlyValues[mid - 1] + monthlyValues[mid]) / 2;
+        result[gid] = Math.round(med);
+      } else {
+        // Fallback arithmétique : somme des médianes des items par défaut de ce groupe
+        const defaultItemsForGroup = DEFAULT_ITEMS.filter(d => d.categoryGroup === gid);
+        const sumDefaultMedians = defaultItemsForGroup.reduce((acc, d) => {
+          const med = getEstimatedMedian(d);
+          return acc + med;
+        }, 0);
+        result[gid] = Math.round(sumDefaultMedians);
+      }
+    });
+
+    return result;
+  }, [bankTransactions, categoryMedians]);
+
+  // Initialisation avec les médianes calculées par l'IA
   const initializeItems = () => {
     const initItems = DEFAULT_ITEMS.map(item => {
-      // 1. Priorité au calcul de la médiane par poste via les synonymes
-      let avgAmount = categoryMedians[item.name]?.median;
-
-      // 2. Si non trouvé directement par le nom du poste, tester le getter de catégorie
-      if (avgAmount === undefined) {
-        const targetCat = getCategoryForExpenseItem(item.name);
-        if (targetCat && categoryMedians[targetCat]) {
-          avgAmount = categoryMedians[targetCat].median;
-        }
-      }
-
-      // 3. Fallbacks historiques de compatibilité
-      if (avgAmount === undefined || avgAmount === 0) {
-        if (item.name.includes('Loyer')) avgAmount = categoryMedians['Loyer / Charges']?.median || categoryMedians['Logement & Énergie']?.median || 0;
-        else if (item.name.includes('Assurance')) avgAmount = categoryMedians['Assurances']?.median || 0;
-        else if (item.name.includes('Santé')) avgAmount = categoryMedians['Santé & Mutuelle']?.median || categoryMedians['Santé']?.median || 0;
-        else if (item.name.includes('Courses')) avgAmount = categoryMedians['Alimentation & Courses']?.median || 0;
-        else if (item.name.includes('Carburant')) avgAmount = categoryMedians['Carburant & Péages']?.median || categoryMedians['Transports & Carburant']?.median || 0;
-        else if (item.name.includes('Transports en commun')) avgAmount = categoryMedians['Transports']?.median || 0;
-        else if (item.name.includes('Abonnements')) avgAmount = categoryMedians['Abonnements & Télécom']?.median || 0;
-      }
-
-      return { ...item, amount: Math.round(avgAmount || 0) };
+      const avgAmount = getEstimatedMedian(item);
+      return { ...item, amount: Math.round(avgAmount || 0), isAutoCalculated: true };
     });
-    setItems(initItems);
+    saveItems(initItems);
+  };
+
+  // Remise à zéro stricte de tous les montants (exigence utilisateur explicite)
+  const handleResetToZero = () => {
+    const zeroed = items.map(item => ({
+      ...item,
+      amount: 0
+    }));
+    saveItems(zeroed);
   };
 
   // Load from local storage or initialize
@@ -160,7 +229,7 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
         initializeItems();
       }
     }
-  }, [isOpen, categoryMedians]);
+  }, [isOpen]);
 
   const saveItems = (newItems: ExpenseItem[]) => {
     setItems(newItems);
@@ -168,12 +237,19 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
   };
 
   const handleUpdateItem = (id: string, newAmount: number) => {
-    saveItems(items.map(item => item.id === id ? { ...item, amount: newAmount, isAutoCalculated: false } : item));
+    saveItems(items.map(item => item.id === id ? { ...item, amount: newAmount } : item));
     setIsEditing(null);
   };
 
   const handleRemoveItem = (id: string) => {
-    saveItems(items.filter(item => item.id !== id));
+    const isDefault = DEFAULT_ITEMS.some(d => d.id === id);
+    if (isDefault) {
+      // Pour les postes par défaut, on remet le montant à 0 € sans supprimer la ligne ni l'œil
+      saveItems(items.map(item => item.id === id ? { ...item, amount: 0 } : item));
+    } else {
+      // Pour les postes personnalisés créés par l'utilisateur, suppression de la ligne
+      saveItems(items.filter(item => item.id !== id));
+    }
   };
 
   const handleAddItem = (e: React.FormEvent) => {
@@ -233,13 +309,13 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
                   Simulateur : Coût de la vie
                 </h2>
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  Estimez vos charges incompressibles mensuelles. Les montants initiaux sont basés sur la médiane de vos dépenses réelles par catégorie.
+                  Estimez vos charges incompressibles mensuelles. Chaque catégorie affiche sa médiane constatée afin de guider votre budget moyen.
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors shrink-0"
+              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors shrink-0 cursor-pointer"
               title="Fermer"
             >
               <X className="w-5 h-5" />
@@ -249,7 +325,7 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
 
         {/* Total Summary */}
         <div className="p-5 border-b border-border/60 bg-secondary/15 shrink-0">
-          <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <span className="text-xs uppercase font-bold text-emerald-500/90 block mb-1">
                 Coût de la vie Mensuel Estimé
@@ -258,19 +334,24 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
                 {formatCurrency(totalCost, { showSign: false })}
               </span>
             </div>
-            <button 
-              onClick={() => {
-                if (window.confirm("Voulez-vous réinitialiser toutes les valeurs avec les moyennes calculées par l'IA ?")) {
-                  initializeItems();
-                  localStorage.removeItem('cashpilot_cost_of_living');
-                }
-              }}
-              className="px-3 py-2 text-xs font-semibold rounded-xl bg-secondary/80 hover:bg-secondary text-foreground flex items-center gap-2 transition-colors border border-border/50"
-              title="Réinitialiser avec les médianes constatées"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Réinitialiser
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button 
+                onClick={handleResetToZero}
+                className="px-3 py-2 text-xs font-bold rounded-xl bg-secondary/80 hover:bg-secondary text-foreground flex items-center gap-1.5 transition-all border border-border/60 hover:border-border cursor-pointer shadow-sm active:scale-95"
+                title="Remettre tous les comptes et postes à 0 €"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
+                <span>Réinitialiser (0 €)</span>
+              </button>
+              <button 
+                onClick={initializeItems}
+                className="px-3 py-2 text-xs font-bold rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 transition-all border border-emerald-500/30 cursor-pointer shadow-sm active:scale-95"
+                title="Remplir automatiquement avec les médianes constatées par l'IA"
+              >
+                <Calculator className="w-3.5 h-3.5" />
+                <span>Médianes IA</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -300,133 +381,190 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
 
             return (
               <div key={group.id} className="space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-border/40">
+                {/* Header de catégorie avec Médiane constatée du groupe (budget moyen) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-border/40 gap-2">
                   <div className="flex items-center gap-2">
                     <div className={`w-6 h-6 rounded-lg ${group.bg} ${group.color} flex items-center justify-center`}>
                       <GroupIcon className="w-3.5 h-3.5" />
                     </div>
                     <h3 className="font-bold text-sm text-foreground">{group.label}</h3>
                   </div>
-                  <span className="font-mono font-bold text-sm text-muted-foreground">
-                    {formatCurrency(groupTotal, { showSign: false })}
-                  </span>
+                  
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary/80 border border-border/60 text-xs shadow-sm">
+                      <span className="text-muted-foreground font-medium text-[11px]">Budget moyen / Médiane :</span>
+                      <span className="font-mono font-extrabold text-foreground text-xs">
+                        {formatCurrency(categoryGroupMedians[group.id] || 0, { showSign: false })}/mois
+                      </span>
+                    </div>
+                    <span className="font-mono font-bold text-sm text-foreground">
+                      {formatCurrency(groupTotal, { showSign: false })}
+                    </span>
+                  </div>
                 </div>
+
                 {discrepancyAlert}
 
                 <div className="space-y-2">
-                  {groupItems.map(item => (
-                    <div key={item.id} className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-card border border-border/50 hover:border-border transition-colors group/item">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm text-foreground/90">{item.name}</span>
-                          {item.isAutoCalculated && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground uppercase font-bold tracking-wider">
-                              Médiane Constatée
-                            </span>
-                          )}
-                          {item.isAutoCalculated && (
+                  {groupItems.map(item => {
+                    const estimatedMedian = getEstimatedMedian(item);
+                    const medianDetail = getMedianDetailObj(item);
+
+                    return (
+                      <div key={item.id} className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-card border border-border/50 hover:border-border transition-colors group/item">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm text-foreground/90">{item.name}</span>
+                            
+                            {/* Badge Médiane Constatée avec valeur estimée, toujours visible même si montant à 0 € */}
+                            {estimatedMedian > 0 && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/90 text-muted-foreground font-semibold flex items-center gap-1 border border-border/40">
+                                <span className="hidden sm:inline">Médiane constatée :</span>
+                                <span className="sm:hidden">Médiane :</span>
+                                <span className="font-mono font-bold text-foreground">
+                                  {formatCurrency(estimatedMedian, { showSign: false })}
+                                </span>
+                              </span>
+                            )}
+
+                            {/* Bouton Œil : TOUJOURS visible pour consulter le détail et les transactions */}
                             <button
                               onClick={() => setOpenDrillDownId(openDrillDownId === item.id ? null : item.id)}
-                              className="p-1 rounded-md text-primary hover:bg-primary/10 transition-colors ml-1"
-                              title="Voir le détail de la médiane"
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                openDrillDownId === item.id 
+                                  ? 'bg-primary text-primary-foreground shadow-sm' 
+                                  : 'text-primary hover:bg-primary/10'
+                              }`}
+                              title="Voir le détail de la médiane et les transactions du relevé"
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
-                          )}
+                          </div>
+                          
+                          <div className="flex items-center gap-3">
+                            {/* Bouton rapide d'application de la médiane si le montant est à 0 € */}
+                            {item.amount === 0 && estimatedMedian > 0 && (
+                              <button
+                                onClick={() => handleUpdateItem(item.id, estimatedMedian)}
+                                className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                                title={`Appliquer directement la médiane constatée (${formatCurrency(estimatedMedian, { showSign: false })})`}
+                              >
+                                <span>+ {formatCurrency(estimatedMedian, { showSign: false })}</span>
+                              </button>
+                            )}
+
+                            {isEditing === item.id ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  className="w-20 px-2 py-1 text-sm bg-background border border-primary/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono text-right"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleUpdateItem(item.id, parseFloat(editValue) || 0);
+                                    if (e.key === 'Escape') setIsEditing(null);
+                                  }}
+                                />
+                                <button
+                                  onClick={() => handleUpdateItem(item.id, parseFloat(editValue) || 0)}
+                                  className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer"
+                                  title="Enregistrer"
+                                >
+                                  <Save className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span className={`font-black font-mono text-sm ${item.amount === 0 ? 'text-muted-foreground' : 'text-foreground'}`}>
+                                  {formatCurrency(item.amount, { showSign: false })}
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    setIsEditing(item.id);
+                                    setEditValue(String(item.amount));
+                                  }}
+                                  className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary opacity-0 group-hover/item:opacity-100 transition-opacity cursor-pointer"
+                                  title="Modifier le montant"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveItem(item.id)}
+                                  className="p-1.5 rounded-lg text-rose-500/70 hover:text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover/item:opacity-100 transition-opacity cursor-pointer"
+                                  title={DEFAULT_ITEMS.some(d => d.id === item.id) ? "Mettre à 0 €" : "Supprimer cette charge"}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
-                        <div className="flex items-center gap-3">
-                          {isEditing === item.id ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                className="w-20 px-2 py-1 text-sm bg-background border border-primary/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono text-right"
-                                autoFocus
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleUpdateItem(item.id, parseFloat(editValue) || 0);
-                                  if (e.key === 'Escape') setIsEditing(null);
-                                }}
-                              />
-                              <button
-                                onClick={() => handleUpdateItem(item.id, parseFloat(editValue) || 0)}
-                                className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20"
-                              >
-                                <Save className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <span className="font-black font-mono text-sm">
-                                {formatCurrency(item.amount, { showSign: false })}
-                              </span>
-                              <button
-                                onClick={() => {
-                                  setIsEditing(item.id);
-                                  setEditValue(String(item.amount));
-                                }}
-                                className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary opacity-0 group-hover/item:opacity-100 transition-opacity"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleRemoveItem(item.id)}
-                                className="p-1.5 rounded-lg text-rose-500/50 hover:text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover/item:opacity-100 transition-opacity"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {openDrillDownId === item.id && (() => {
-                        const targetCat = getCategoryForExpenseItem(item.name);
-                        const medianObj = targetCat ? categoryMedians[targetCat] : null;
-                        
-                        if (!medianObj || medianObj.sampleTx.length === 0) {
+                        {/* Drill-down de la médiane (détail & historique de transactions) */}
+                        {openDrillDownId === item.id && (() => {
+                          const sampleTx = medianDetail?.sampleTx || [];
+                          
+                          if (sampleTx.length === 0) {
+                            return (
+                              <div className="mx-4 p-3 rounded-xl bg-secondary/50 text-xs text-muted-foreground border border-border/50 animate-in slide-in-from-top-2 flex items-center justify-between">
+                                <span>
+                                  {estimatedMedian > 0 
+                                    ? `Médiane de référence calculée : ${formatCurrency(estimatedMedian, { showSign: false })}/mois.` 
+                                    : 'Aucun historique récent pour calculer la médiane.'}
+                                </span>
+                                {estimatedMedian > 0 && (
+                                  <button
+                                    onClick={() => {
+                                      handleUpdateItem(item.id, estimatedMedian);
+                                      setOpenDrillDownId(null);
+                                    }}
+                                    className="text-[10px] font-bold px-2.5 py-1 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors cursor-pointer"
+                                  >
+                                    Appliquer {formatCurrency(estimatedMedian, { showSign: false })}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          }
+
                           return (
-                            <div className="mx-4 p-3 rounded-lg bg-secondary/50 text-xs text-muted-foreground border border-border/50 animate-in slide-in-from-top-2">
-                              Aucun historique récent pour calculer la médiane.
+                            <div className="mx-4 p-3 rounded-xl bg-secondary/50 border border-border/50 animate-in slide-in-from-top-2 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                  Transactions récentes de référence ({sampleTx.length})
+                                </span>
+                                {estimatedMedian > 0 && (
+                                  <button
+                                    onClick={() => {
+                                      handleUpdateItem(item.id, estimatedMedian);
+                                      setOpenDrillDownId(null);
+                                    }}
+                                    className="text-[10px] font-bold px-2.5 py-1 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors cursor-pointer"
+                                  >
+                                    Appliquer la médiane : {formatCurrency(estimatedMedian, { showSign: false })}
+                                  </button>
+                                )}
+                              </div>
+                              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                {sampleTx.slice(0, 6).map(tx => (
+                                  <div key={tx.id || `${tx.date}_${tx.amount}`} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg hover:bg-background/50 transition-colors">
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="font-medium text-foreground truncate">{tx.cleanLabel || (tx as any).rawLabel || (tx as any).description}</span>
+                                      <span className="text-[10px] text-muted-foreground">{tx.date}</span>
+                                    </div>
+                                    <span className="font-mono font-bold text-foreground shrink-0 ml-2">
+                                      {formatCurrency(Math.abs(tx.amount), { showSign: false })}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           );
-                        }
-
-                        return (
-                          <div className="mx-4 p-3 rounded-lg bg-secondary/50 border border-border/50 animate-in slide-in-from-top-2">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                Historique récent
-                              </span>
-                              <button
-                                onClick={() => {
-                                  handleUpdateItem(item.id, medianObj.median);
-                                  setOpenDrillDownId(null);
-                                }}
-                                className="text-[10px] font-bold px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-                              >
-                                Appliquer la médiane : {formatCurrency(medianObj.median, { showSign: false })}
-                              </button>
-                            </div>
-                            <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                              {medianObj.sampleTx.slice(0, 5).map(tx => (
-                                <div key={tx.id || tx.date} className="flex items-center justify-between text-xs py-1 px-2 rounded-md hover:bg-background/50 transition-colors">
-                                  <div className="flex flex-col min-w-0">
-                                    <span className="font-medium text-foreground truncate">{tx.cleanLabel || tx.rawLabel}</span>
-                                    <span className="text-[10px] text-muted-foreground">{tx.date}</span>
-                                  </div>
-                                  <span className="font-mono font-semibold text-foreground shrink-0 ml-2">
-                                    {formatCurrency(Math.abs(tx.amount), { showSign: false })}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ))}
+                        })()}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -474,7 +612,7 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
             <button
               type="submit"
               disabled={!newItemName || !newItemAmount}
-              className="h-[38px] px-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold flex items-center gap-1 transition-colors"
+              className="h-[38px] px-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
             </button>
