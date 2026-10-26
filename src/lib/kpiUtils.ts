@@ -89,7 +89,7 @@ export const calculateTotalFlows = (
   return Math.round(sum * 100) / 100;
 };
 
-import { categorizeTransactionWithRule, CATEGORIES_METADATA } from './categorizationRules';
+import { categorizeTransactionWithRule, CATEGORIES_METADATA } from './categorizationRules.ts';
 
 /**
  * Fallback logique pour enrichir une transaction si l'IA a échoué
