@@ -1062,12 +1062,28 @@ RÈGLES COMPTABLES STRICTES ET PRIORITAIRES :
 2. NETTOYAGE DU MARCHAND (merchantName) :
    - Extrais le nom réel et standardisé du commerçant, organisme ou tiers (ex: "PRLV SEPA NETFLIX 12345" -> "Netflix", "CARTE 15/04 MONOPRIX 4567" -> "Monoprix", "VIR SEPA SALAIRE ACME INC" -> "Acme Inc", "TOTAL DIRECT ENERGIE 998" -> "TotalEnergies", "PRLV FREE TELECOM 883" -> "Free", "CB SNCF CONNECT" -> "SNCF").
    - Élimine tout bruit technique : codes bancaires (CARTE, CB, VIR, PRLV, SEPA, FACTURE, RETRAIT DAB, COMMERCE ELECTRONIQUE, etc.), dates intégrées, numéros de mandat ou de carte.
-3. CATÉGORIES COMPTABLES STANDARDISÉES (category) :
-   Attribue STRICTEMENT l'une des 4 catégories suivantes pour CHAQUE transaction :
-   - "Charges fixes" : Dépenses récurrentes incompressibles ou contractuelles (Loyer, charges de copropriété, électricité, gaz, eau, internet/box, forfaits mobiles, assurances santé/auto/habitation, abonnements récurrents, remboursements de crédit/prêt, cotisations bancaires).
-   - "Charges variables courantes" : Dépenses indispensables de vie courante dont le montant varie (Courses en supermarché, alimentation générale, boucherie, boulangerie, transports, carburant, frais de santé/pharmacie).
-   - "Dépenses de confort" : Dépenses non essentielles de plaisir, loisirs ou bien-être (Restaurants, cafés, bars, fast-foods, livraisons de repas Deliveroo/Uber Eats, shopping vêtements, décoration, high-tech, cinéma, jeux vidéo, vacances, sorties).
-   - "Revenus" : Tout flux financier positif entrant (Salaires, primes, allocations familiales CAF, indemnités France Travail / chômage, remboursements de mutuelle / sécurité sociale, rentrées d'argent réelles).
+3. CATÉGORIES ET NATURES DE FLUX COMPTABLES :
+   - flowType : 'FIXED_EXPENSE' pour les charges fixes incompressibles ou récurrentes (logement, énergie, abonnements, télécom, assurances, frais bancaires, impôts, paiements fractionnés) ; 'VARIABLE_EXPENSE' pour les dépenses courantes et arbitrables ; 'INCOME' pour les revenus ; 'SAVINGS_TRANSFER' pour l'épargne.
+   - category : Attribue STRICTEMENT l'une des catégories précises officielles suivantes (RÈGLE ABSOLUE : NE JAMAIS renvoyer 'Charges fixes', 'Charges variables' ou 'Revenus' comme nom de catégorie) :
+     * "Logement & Énergie" : Loyer, charges, électricité, gaz, eau (EDF, Engie, TotalEnergies)
+     * "Abonnements & Télécom" : Forfaits mobiles, box, streaming, salle de sport (Free, Orange, SFR, Netflix, Spotify, Basic-Fit)
+     * "Assurances" : Assurance auto, habitation, santé, prévoyance (Macif, Maif, Axa, Allianz)
+     * "Paiement fractionné" : Klarna, Alma, PayPal 4x, mensualités de prêts, Amex
+     * "Frais bancaires" : Cotisations carte, tenue de compte, commissions, agios
+     * "Impôts & Amendes" : Impôt revenu, taxe foncière, amendes, DGFIP
+     * "Alimentation & Courses" : Supermarchés, hypermarchés, épiceries, boucheries, boulangeries (Carrefour, Leclerc, Intermarché, Lidl)
+     * "Transports & Carburant" : Carburant, péage, parking, train, bus, métro, Uber (Total, BP, SNCF, RATP)
+     * "Restaurants & Sorties" : Restaurants, fast-food, cafés, livraisons repas (McDonald's, Deliveroo, Uber Eats)
+     * "Shopping & Maison" : Vêtements, déco, ameublement, high-tech, bricolage (Amazon, Zara, Ikea, Fnac)
+     * "Loisirs & Activités" : Cinéma, sport, concerts, parcs, voyages, jeux vidéo (Booking, Airbnb, Steam)
+     * "Santé" : Pharmacie, médecins, dentiste, optique, hôpital
+     * "Retrait Espèces" : Retraits au distributeur DAB
+     * "Virements Famille & Proches" : Virements vers amis ou proches (Wero, Paylib, proches)
+     * "Salaire & Revenus" : Salaires, honoraires, primes employeur
+     * "Aides & Allocations" : CAF, France Travail, remboursements mutuelle / CPAM
+     * "Épargne & Investissement" : Livrets A, LDDS, PEA, assurance-vie
+     * "Virements Internes" : Virements entre comptes bancaires propres
+     * "Autre" : Opération inclassable
 4. DÉTECTION DES ABONNEMENTS (isSubscription) :
    - Assigne "isSubscription: true" EXCLUSIVEMENT aux abonnements et prélèvements mensuels/récurrents (charges fixes) qui constituent des contrats reconductibles et potentiellement renégociables ou résiliables (ex: Netflix, Spotify, Disney+, salle de sport Basic-Fit, box internet Orange/Free/SFR, forfait mobile, Amazon Prime, abonnements SaaS/logiciels, assurances).
    - Pour tout achat ponctuel, plein d'essence, course en supermarché, restaurant, virement ponctuel ou salaire : assigne "isSubscription: false".
@@ -1093,7 +1109,7 @@ RÈGLES COMPTABLES STRICTES ET PRIORITAIRES :
               },
               category: { 
                 type: Type.STRING, 
-                description: "Catégorie standardisée: 'Charges fixes', 'Charges variables courantes', 'Dépenses de confort', ou 'Revenus'" 
+                description: "Sous-catégorie officielle précise (ex: 'Alimentation & Courses', 'Transports & Carburant', 'Abonnements & Télécom', etc.)" 
               },
               isSubscription: { 
                 type: Type.BOOLEAN, 
@@ -1115,17 +1131,33 @@ RÈGLES COMPTABLES STRICTES ET PRIORITAIRES :
           const raw = String(t.rawLabel || '').trim();
           const amt = Number(t.amount) || 0;
           const isIncome = amt > 0;
-          let cat = isIncome ? 'Revenus' : 'Charges variables courantes';
+          let cat = isIncome ? 'Salaire & Revenus' : 'Alimentation & Courses';
           let isSub = false;
           const lower = raw.toLowerCase();
 
-          if (lower.includes('netflix') || lower.includes('spotify') || lower.includes('freebox') || lower.includes('orange') || lower.includes('sfr') || lower.includes('bouygues') || lower.includes('basic fit') || lower.includes('assurance') || lower.includes('edf') || lower.includes('totalenergies') || lower.includes('loyer')) {
-            cat = 'Charges fixes';
+          if (lower.includes('netflix') || lower.includes('spotify') || lower.includes('freebox') || lower.includes('orange') || lower.includes('sfr') || lower.includes('bouygues') || lower.includes('basic fit')) {
+            cat = 'Abonnements & Télécom';
             isSub = true;
-          } else if (lower.includes('restaurant') || lower.includes('mcdo') || lower.includes('burger') || lower.includes('uber eats') || lower.includes('deliveroo') || lower.includes('zara') || lower.includes('fnac') || lower.includes('cinema')) {
-            cat = 'Dépenses de confort';
+          } else if (lower.includes('assurance') || lower.includes('macif') || lower.includes('maif') || lower.includes('axa')) {
+            cat = 'Assurances';
+            isSub = true;
+          } else if (lower.includes('edf') || lower.includes('engie') || lower.includes('totalenergies') || lower.includes('loyer')) {
+            cat = 'Logement & Énergie';
+            isSub = true;
+          } else if (lower.includes('restaurant') || lower.includes('mcdo') || lower.includes('burger') || lower.includes('uber eats') || lower.includes('deliveroo')) {
+            cat = 'Restaurants & Sorties';
+          } else if (lower.includes('total ') || lower.includes('carburant') || lower.includes('sncf') || lower.includes('ratp') || lower.includes('peage')) {
+            cat = 'Transports & Carburant';
+          } else if (lower.includes('zara') || lower.includes('fnac') || lower.includes('amazon') || lower.includes('ikea')) {
+            cat = 'Shopping & Maison';
+          } else if (lower.includes('pharmacie') || lower.includes('doctolib') || lower.includes('medecin')) {
+            cat = 'Santé';
+          } else if (lower.includes('cinema') || lower.includes('steam') || lower.includes('playstation')) {
+            cat = 'Loisirs & Activités';
+          } else if (lower.includes('caf ') || lower.includes('pole emploi') || lower.includes('france travail') || lower.includes('cpam')) {
+            cat = 'Aides & Allocations';
           } else if (isIncome) {
-            cat = 'Revenus';
+            cat = 'Salaire & Revenus';
           }
 
           const cleanedMerchant = raw.replace(/^(CARTE\s+\d{2}\/\d{2}|VIR\s+SEPA|PRLV\s+SEPA|PAIEMENT\s+CB)\s*/i, '').trim() || raw;

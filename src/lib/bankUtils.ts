@@ -486,11 +486,11 @@ export function getStatementDisplayStatus(
     kpiTitle: 'Flux Net',
     kpiSubtitle: 'Total mouvements (CSV)',
     kpiBadge: 'Solde non dispo',
-    displayAmount: netCashFlow,
-    formattedAmount: formatCurrency(netCashFlow, { showSign: true, currency: currSym }),
-    isPositive: netCashFlow > 0,
-    isNegative: netCashFlow < 0,
-    explanation: "Relevé CSV : seules les opérations sont répertoriées. Aucun solde ni disponible certifié n'y figurant, seul le total des mouvements (flux net) est affiché."
+    displayAmount: null as any,
+    formattedAmount: '—',
+    isPositive: false,
+    isNegative: false,
+    explanation: "Relevé CSV : seules les opérations sont répertoriées. Aucun solde certifié n'y figurant, aucun montant n'est affiché dans le flux net."
   };
 }
 

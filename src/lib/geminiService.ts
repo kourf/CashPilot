@@ -2204,15 +2204,32 @@ DONNÉES À EXTRAIRE :
   * rawLabel : Libellé brut complet figurant sur le relevé
   * cleanLabel : Nom normalisé et épuré du commerçant ou de l'organisme (ex: "Netflix", "Carrefour", "TotalEnergies", "CAF", "France Travail")
   * amount : Montant décimal signé en devise (NÉGATIF pour les débits/paiements/prélèvements, POSITIF pour les crédits/virements reçus/salaires)
-  * category : Choisir STRICTEMENT dans :
-    - "Charges fixes" (loyer, énergie, abonnements récurrents, assurances, box, mobile, prêts)
-    - "Charges variables courantes" (courses alimentaires, supermarchés, pharmacie, santé, carburant)
-    - "Dépenses de confort" (restaurants, shopping, loisirs, fast-food, voyages)
-    - "Revenus" (salaires, aides, CAF, France Travail, remboursements santé)
-    - "Virements Famille & Proches" (virements émis ou reçus avec des proches/personnes physiques)
-    - "Virements Internes" (virements entre comptes propres du même titulaire)
-  * flowType : STRICTEMENT 'INCOME' si amount > 0, 'FIXED_EXPENSE' pour charges fixes, 'VARIABLE_EXPENSE' pour charges courantes/confort, 'SAVINGS_TRANSFER' pour virements internes.
-  * isSubscription : VRAI uniquement pour les abonnements mensuels fixes résiliables (Netflix, Spotify, box, mobile, salle de sport).
+  * flowType : STRICTEMENT l'une des 4 natures de flux :
+    - 'FIXED_EXPENSE' pour les charges fixes incompressibles ou contractuelles (logement, énergie, abonnements, télécom, assurances, frais bancaires, impôts, paiements fractionnés)
+    - 'VARIABLE_EXPENSE' pour les dépenses variables du quotidien et de loisirs (alimentation, carburant, restaurants, shopping, loisirs, santé, retraits DAB, virements proches émis)
+    - 'INCOME' pour les revenus et encaissements (salaires, aides, allocations, remboursements mutuelle, virements reçus de proches)
+    - 'SAVINGS_TRANSFER' pour l'épargne et virements entre comptes propres
+  * category : Choisir STRICTEMENT la catégorie précise la plus adaptée parmi la liste officielle suivante (RÈGLE ABSOLUE : NE JAMAIS renvoyer 'Charges fixes', 'Charges variables' ou 'Revenus' comme catégorie) :
+    - "Logement & Énergie"
+    - "Abonnements & Télécom"
+    - "Assurances"
+    - "Paiement fractionné"
+    - "Frais bancaires"
+    - "Impôts & Amendes"
+    - "Alimentation & Courses"
+    - "Transports & Carburant"
+    - "Restaurants & Sorties"
+    - "Shopping & Maison"
+    - "Loisirs & Activités"
+    - "Santé"
+    - "Retrait Espèces"
+    - "Virements Famille & Proches"
+    - "Salaire & Revenus"
+    - "Aides & Allocations"
+    - "Épargne & Investissement"
+    - "Virements Internes"
+    - "Autre"
+  * isSubscription : VRAI (true) uniquement pour les abonnements mensuels fixes résiliables (Netflix, Spotify, box, mobile, salle de sport, assurances).
 
 RÉPONDS STRICTEMENT EN JSON VALIDE AU FORMAT :
 {
@@ -2230,7 +2247,7 @@ RÉPONDS STRICTEMENT EN JSON VALIDE AU FORMAT :
       "rawLabel": "PRLV SEPA NETFLIX",
       "cleanLabel": "Netflix",
       "amount": -17.99,
-      "category": "Charges fixes",
+      "category": "Abonnements & Télécom",
       "flowType": "FIXED_EXPENSE",
       "isSubscription": true
     }

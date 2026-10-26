@@ -106,7 +106,7 @@ export interface StatementDisplayStatus {
   kpiTitle: string; // 'Solde Vérifié' ou 'Flux Net'
   kpiSubtitle: string; // 'Certifié relevé PDF' ou 'Total mouvements (CSV)'
   kpiBadge: string | null; // null ou 'Solde non dispo'
-  displayAmount: number;
+  displayAmount: number | null;
   formattedAmount: string;
   isPositive: boolean;
   isNegative: boolean;
@@ -127,10 +127,11 @@ function formatCurrencyAmount(amount: number, currency: 'EUR' | 'CHF' = 'EUR', s
 
 /**
  * RÈGLE FONDAMENTALE COMPTABLE :
- * Un relevé CSV ne contenant ni solde initial ni solde final officiel, il ne doit JAMAIS afficher de "Solde" ou "Dispo".
+ * Un relevé CSV ne contenant ni solde initial ni solde final officiel certifié par la banque,
+ * il ne doit JAMAIS afficher de montant dans le Flux Net ni afficher de Solde/Dispo.
  * L'interface doit refléter fidèlement la réalité bancaire :
- * - CSV sans ancre certifiée : affiche strictement le « Flux Net » (total des mouvements) et indique « Solde non disponible ».
- * - PDF avec ancre vérifiée : affiche le « Solde Vérifié ».
+ * - CSV sans ancre certifiée : n'affiche AUCUN montant dans le Flux Net ('—') et indique « Solde non dispo ».
+ * - PDF avec ancre vérifiée : affiche le « Solde Vérifié » officiel.
  */
 export function getStatementDisplayStatus(
   transactions: { source_type?: string; sourceType?: string; importFormat?: string }[],
@@ -165,10 +166,10 @@ export function getStatementDisplayStatus(
     kpiTitle: 'Flux Net',
     kpiSubtitle: 'Total mouvements (CSV)',
     kpiBadge: 'Solde non dispo',
-    displayAmount: netCashFlow,
-    formattedAmount: formatCurrencyAmount(netCashFlow, currency, true),
-    isPositive: netCashFlow > 0,
-    isNegative: netCashFlow < 0,
-    explanation: "Relevé CSV : seules les opérations sont répertoriées. Aucun solde ni disponible certifié n'y figurant, seul le total des mouvements (flux net) est affiché."
+    displayAmount: null,
+    formattedAmount: '—',
+    isPositive: false,
+    isNegative: false,
+    explanation: "Relevé CSV : seules les opérations sont répertoriées. Aucun solde certifié n'y figurant, aucun montant n'est affiché dans le flux net."
   };
 }

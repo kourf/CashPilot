@@ -22,33 +22,33 @@ export interface BankTransaction {
 }
 
 export const CATEGORIES = [
-  'Charges fixes',
-  'Charges variables courantes',
-  'Dépenses de confort',
-  'Revenus',
-  'Salaire & Revenus',
-  'Aides & Allocations',
-  'Virement Reçu (Proches)',
+  // --- Charges Fixes (Incompressibles / Récurrentes) ---
   'Logement & Énergie',
-  'Assurances',
   'Abonnements & Télécom',
+  'Assurances',
+  'Paiement fractionné',
+  'Frais bancaires',
+  'Impôts & Amendes',
+
+  // --- Dépenses Variables (Vie quotidienne & Loisirs) ---
   'Alimentation & Courses',
   'Transports & Carburant',
   'Restaurants & Sorties',
   'Shopping & Maison',
   'Loisirs & Activités',
   'Santé',
-  'Impôts & Amendes',
-  'Paiement fractionné',
-  'Frais bancaires',
-  'Remboursement Carte (Amex)',
-  'Virement vers Fortuneo',
-  'Virement reçu de Fortuneo',
-  'Virement vers Revolut',
+  'Retrait Espèces',
+  'Virements Famille & Proches',
+
+  // --- Revenus & Rentrées ---
+  'Salaire & Revenus',
+  'Aides & Allocations',
+
+  // --- Épargne & Trésorerie Inter-Comptes ---
   'Épargne & Investissement',
   'Virements Internes',
-  'Virements Famille & Proches',
-  'Retrait Espèces',
+
+  // --- Autre ---
   'Autre'
 ];
 
@@ -455,7 +455,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     return {
       cleanDesc: 'Remboursement American Express',
       flowType: 'FIXED_EXPENSE',
-      category: 'Remboursement Carte (Amex)',
+      category: 'Paiement fractionné',
       isSubscription: true
     };
   }

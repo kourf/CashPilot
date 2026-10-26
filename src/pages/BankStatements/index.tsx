@@ -499,24 +499,35 @@ export const BankStatements: React.FC = () => {
       // Correction proactive : si un montant positif a été indûment étiqueté en SAVINGS_TRANSFER alors qu'il s'agit d'un revenu réel (tiers, proche, alloc)
       const isSuspectSavings = amount > 0 && (t.flowType === 'SAVINGS_TRANSFER' || t.category === 'Épargne & Investissement') && smart.flowType === 'INCOME';
       
-      const isGenericCategory = !t.category || 
+      const isGenericOrMacroCategory = !t.category || 
         t.category === 'Autre' || 
         t.category === 'Charges variables courantes' || 
+        t.category === 'Charges variables' || 
         t.category === 'Charges fixes' || 
         t.category === 'Dépenses de confort' || 
-        t.category === 'Revenus';
+        t.category === 'Revenus' ||
+        t.category === 'Revenu';
 
-      const category = isSuspectSavings
-        ? smart.category
-        : (isGenericCategory && smart.category && smart.category !== 'Autre'
-            ? smart.category
-            : (t.category || smart.category));
-      const flowType: FlowType = isSuspectSavings
-        ? 'INCOME'
-        : (t.flowType || (category === smart.category ? smart.flowType : classifyFlowType(category, amount, rawDesc)));
-      const account = t.accountName || t.account || 'Compte Principal';
-      const bankName = t.bankName || (account.includes(' - ') ? account.split(' - ')[0] : account);
-            let isSubscription = t.isSubscription !== undefined 
+      let category = t.category;
+      if (isSuspectSavings) {
+        category = smart.category;
+      } else if (isGenericOrMacroCategory) {
+        if (smart.category && smart.category !== 'Autre') {
+          category = smart.category;
+        } else if (amount > 0) {
+          category = 'Salaire & Revenus';
+        } else if (t.category === 'Charges fixes' || t.isSubscription) {
+          category = 'Abonnements & Télécom';
+        } else if (t.category === 'Charges variables courantes') {
+          category = 'Alimentation & Courses';
+        } else if (t.category === 'Dépenses de confort') {
+          category = 'Restaurants & Sorties';
+        } else {
+          category = 'Autre';
+        }
+      }
+
+      let isSubscription = t.isSubscription !== undefined 
         ? Boolean(t.isSubscription) 
         : (category === 'Abonnements & Télécom' || smart.isSubscription);
 
@@ -525,6 +536,29 @@ export const BankStatements: React.FC = () => {
       if (amount > 0 || ((rawTextUpperCheck.includes('VIR ') || rawTextUpperCheck.includes('VIREMENT')) && !rawTextUpperCheck.includes('PERMANENT'))) {
         isSubscription = false;
       }
+
+      // Règle comptable : Définition de la nature (Fixe vs Variable vs Revenu vs Épargne)
+      let flowType: FlowType = isSuspectSavings ? 'INCOME' : 'VARIABLE_EXPENSE';
+      if (amount > 0) {
+        flowType = 'INCOME';
+      } else if (
+        category === 'Logement & Énergie' || 
+        category === 'Abonnements & Télécom' || 
+        category === 'Assurances' || 
+        category === 'Frais bancaires' || 
+        category === 'Impôts & Amendes' || 
+        category === 'Paiement fractionné' ||
+        isSubscription
+      ) {
+        flowType = 'FIXED_EXPENSE';
+      } else if (category === 'Épargne & Investissement' || category === 'Virements Internes') {
+        flowType = 'SAVINGS_TRANSFER';
+      } else {
+        flowType = 'VARIABLE_EXPENSE';
+      }
+
+      const account = t.accountName || t.account || 'Compte Principal';
+      const bankName = t.bankName || (account.includes(' - ') ? account.split(' - ')[0] : account);
       const subscriptionDay = t.subscriptionDay !== undefined && t.subscriptionDay !== null
         ? Number(t.subscriptionDay)
         : (smart.subscriptionDay || (t.date ? parseInt(t.date.split('-')[2], 10) : undefined));
@@ -1660,27 +1694,35 @@ export const BankStatements: React.FC = () => {
             const localClass = classifyTransaction(row.rawLabel, row.amount);
             const merchantName = ai?.merchantName || localClass.cleanDesc || cleanMerchantDescription(row.rawLabel);
             
-            // Catégorisation intelligente priorisant l'audit IA précis ou le moteur local
+            // Catégorisation intelligente : Exclusion stricte des macro-catégories
             let category = ai?.category;
             const isMacroOrGeneric = !category || 
               category === 'Autre' || 
               category === 'Charges variables courantes' || 
+              category === 'Charges variables' || 
               category === 'Charges fixes' || 
               category === 'Dépenses de confort' || 
-              category === 'Revenus';
+              category === 'Revenus' ||
+              category === 'Revenu';
+
+            const isSub = ai?.isSubscription !== undefined ? Boolean(ai.isSubscription) : Boolean(localClass.isSubscription);
+            const isPositive = Number(row.amount) > 0;
 
             if (isMacroOrGeneric) {
               if (localClass.category && localClass.category !== 'Autre') {
                 category = localClass.category;
-              } else if (Number(row.amount) > 0) {
+              } else if (isPositive) {
                 category = 'Salaire & Revenus';
+              } else if (category === 'Charges fixes' || isSub) {
+                category = 'Abonnements & Télécom';
+              } else if (category === 'Charges variables courantes') {
+                category = 'Alimentation & Courses';
+              } else if (category === 'Dépenses de confort') {
+                category = 'Restaurants & Sorties';
               } else {
-                category = category || 'Alimentation & Courses';
+                category = 'Alimentation & Courses';
               }
             }
-
-            const isSub = ai?.isSubscription !== undefined ? Boolean(ai.isSubscription) : Boolean(localClass.isSubscription);
-            const isPositive = Number(row.amount) > 0;
             
             // Affinement des virements proches
             if (isPositive) {
@@ -1788,8 +1830,28 @@ export const BankStatements: React.FC = () => {
               const amt = Number(t.amount) || 0;
               const desc = t.cleanLabel || t.rawLabel || 'Opération';
               const smart = smartCategorizeTransaction(desc, amt, t.date);
-              const cat = (t.category && t.category !== 'Autre') ? t.category : smart.category;
-              const flow = t.flowType || (cat === smart.category ? smart.flowType : classifyFlowType(cat, amt, desc));
+              const isMacro = !t.category || 
+                t.category === 'Charges fixes' || 
+                t.category === 'Charges variables courantes' || 
+                t.category === 'Charges variables' || 
+                t.category === 'Dépenses de confort' || 
+                t.category === 'Revenus' || 
+                t.category === 'Autre';
+
+              let cat = (!isMacro && t.category) ? t.category : smart.category;
+              if (cat === 'Charges fixes' || (!cat && t.isSubscription)) cat = 'Abonnements & Télécom';
+              if (cat === 'Charges variables courantes' || !cat) cat = amt > 0 ? 'Salaire & Revenus' : 'Alimentation & Courses';
+              if (cat === 'Dépenses de confort') cat = 'Restaurants & Sorties';
+
+              const isFixed = cat === 'Logement & Énergie' || 
+                cat === 'Abonnements & Télécom' || 
+                cat === 'Assurances' || 
+                cat === 'Frais bancaires' || 
+                cat === 'Impôts & Amendes' || 
+                cat === 'Paiement fractionné' || 
+                Boolean(t.isSubscription);
+
+              const flow: FlowType = amt > 0 ? 'INCOME' : (isFixed ? 'FIXED_EXPENSE' : (cat === 'Épargne & Investissement' || cat === 'Virements Internes' ? 'SAVINGS_TRANSFER' : 'VARIABLE_EXPENSE'));
               return {
                 id: `direct_${Date.now()}_${i}`,
                 date: t.date || new Date().toISOString().substring(0, 10),
@@ -2045,7 +2107,34 @@ export const BankStatements: React.FC = () => {
       if (t.isInternalTransfer || t.flowType === 'SAVINGS_TRANSFER') return;
 
       const amt = Math.abs(Number(t.amount) || 0);
-      const cat = t.category || 'Autres';
+      let cat = t.category;
+      
+      // Exclusion stricte des macro-catégories pour les graphiques et synthèses
+      const isMacroOrEmpty = !cat || 
+        cat === 'Charges fixes' || 
+        cat === 'Charges variables courantes' || 
+        cat === 'Charges variables' || 
+        cat === 'Dépenses de confort' || 
+        cat === 'Revenus' ||
+        cat === 'Revenu' ||
+        cat === 'Autre' ||
+        cat === 'Autres';
+
+      if (isMacroOrEmpty) {
+        const smart = smartCategorizeTransaction(t.rawLabel || t.description, t.amount, t.date);
+        if (smart.category && smart.category !== 'Autre') {
+          cat = smart.category;
+        } else if (cat === 'Charges fixes' || t.isSubscription) {
+          cat = 'Abonnements & Télécom';
+        } else if (cat === 'Charges variables courantes') {
+          cat = 'Alimentation & Courses';
+        } else if (cat === 'Dépenses de confort') {
+          cat = 'Restaurants & Sorties';
+        } else {
+          cat = 'Autre';
+        }
+      }
+
       totals[cat] = (totals[cat] || 0) + amt;
     });
     const categories = Object.entries(totals)
@@ -2255,7 +2344,7 @@ export const BankStatements: React.FC = () => {
                  <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center">
                    <Activity size={12} className="mr-1 text-blue-500"/> {statementStatus.kpiTitle}
                  </div>
-                 <div className={`font-bold text-lg ${statementStatus.isPositive ? 'text-emerald-600 dark:text-emerald-400' : statementStatus.isNegative ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                 <div className={`font-bold text-lg ${statementStatus.isPositive ? 'text-emerald-600 dark:text-emerald-400' : statementStatus.isNegative ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
                    {statementStatus.formattedAmount}
                  </div>
                  <div className="flex items-center gap-1 mt-0.5">

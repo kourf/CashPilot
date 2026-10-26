@@ -7,7 +7,8 @@ import {
   extractCleanBankStatementRows,
   isBankCategoryHeader,
   isBankDescriptionHeader,
-  classifyTransaction
+  classifyTransaction,
+  CATEGORIES
 } from '../src/lib/bankParser.ts';
 import { 
   validateBankStatementFile, 
@@ -133,7 +134,7 @@ test('4. ASSAINISSEMENT DES MESSAGES D\'ERREUR (sanitizeImportErrorMessage)', ()
   assert.match(msg3, /Erreur de connexion réseau/);
 });
 
-test('5. CONFORMITÉ AU FORMAT RB : RÈGLE STRICTE CSV SANS SOLDE NI DISPO (FIDÉLITÉ À LA RÉALITÉ)', () => {
+test('5. CONFORMITÉ AU FORMAT RB : RÈGLE STRICTE CSV SANS SOLDE NI DISPO (AUCUN MONTANT DANS FLUX NET)', () => {
   // Cas 1 : Relevé CSV pur (opérations bancaires sans solde certifié)
   const csvTransactions = [
     { source_type: 'CSV', libelle: 'Salaire', montant: 3000 },
@@ -153,19 +154,19 @@ test('5. CONFORMITÉ AU FORMAT RB : RÈGLE STRICTE CSV SANS SOLDE NI DISPO (FID�
   assert.notEqual(csvStatus.kpiTitle.toLowerCase(), 'solde', 'Le titre ne doit JAMAIS être Solde');
   assert.equal(csvStatus.kpiTitle, 'Flux Net', 'Le KPI doit fidèlement afficher Flux Net');
   
-  // Affiche le total signé des mouvements
+  // RÈGLE CRUCIALE : Pour un CSV sans solde officiel, AUCUN montant ne doit être affiché dans Flux Net ('—')
   assert.equal(csvStatus.kpiSubtitle, 'Total mouvements (CSV)');
   assert.equal(csvStatus.kpiBadge, 'Solde non dispo');
-  assert.match(csvStatus.formattedAmount, /\+1 350,00 €/);
-  assert.equal(csvStatus.isPositive, true);
+  assert.equal(csvStatus.formattedAmount, '—', 'Aucun montant ne doit être affiché dans le flux net pour un CSV');
+  assert.equal(csvStatus.displayAmount, null);
   assert.match(csvStatus.explanation, /Relevé CSV/);
 
-  // Cas 2 : Relevé CSV avec flux négatif
+  // Cas 2 : Relevé CSV avec flux négatif (aucun montant affiché également)
   const negativeNetFlow = -650.40;
   const csvNegativeStatus = getStatementDisplayStatus(csvTransactions, negativeNetFlow, null, 'EUR');
-  assert.equal(csvNegativeStatus.isNegative, true);
-  assert.match(csvNegativeStatus.formattedAmount, /-650,40 €/);
+  assert.equal(csvNegativeStatus.formattedAmount, '—');
   assert.equal(csvNegativeStatus.kpiTitle, 'Flux Net');
+  assert.equal(csvNegativeStatus.kpiBadge, 'Solde non dispo');
 
   // Cas 3 : Relevé bancaire officiel PDF avec solde vérifié
   const pdfTransactions = [
@@ -271,4 +272,38 @@ test('7. DISTINCTION PRÉCISE ET GRANULAIRE DES CATÉGORIES BASÉE EXCLUSIVEMENT
   const txVirementFamille = classifyTransaction('VIR WERO NAYSSA', -50.00);
   assert.equal(txVirementFamille.category, 'Virements Famille & Proches');
   assert.equal(txVirementFamille.flowType, 'VARIABLE_EXPENSE');
+});
+
+test('8. STRUCTURE DES CATÉGORIES : AUCUNE MACRO-CATÉGORIE ET REGROUPEMENT PROPRE', () => {
+  // RÈGLE : La liste CATEGORIES ne doit JAMAIS comporter de macro-catégorie
+  assert.equal(CATEGORIES.includes('Charges fixes'), false, 'Charges fixes est une nature, pas une catégorie');
+  assert.equal(CATEGORIES.includes('Charges variables courantes'), false, 'Charges variables courantes est une nature');
+  assert.equal(CATEGORIES.includes('Dépenses de confort'), false, 'Dépenses de confort est une nature');
+  assert.equal(CATEGORIES.includes('Revenus'), false, 'Revenus est une nature');
+
+  // RÈGLE : Regroupement propre des catégories similaires
+  assert.equal(CATEGORIES.includes('Logement & Énergie'), true);
+  assert.equal(CATEGORIES.includes('Abonnements & Télécom'), true);
+  assert.equal(CATEGORIES.includes('Assurances'), true);
+  assert.equal(CATEGORIES.includes('Paiement fractionné'), true);
+  assert.equal(CATEGORIES.includes('Frais bancaires'), true);
+  assert.equal(CATEGORIES.includes('Impôts & Amendes'), true);
+  assert.equal(CATEGORIES.includes('Alimentation & Courses'), true);
+  assert.equal(CATEGORIES.includes('Transports & Carburant'), true);
+  assert.equal(CATEGORIES.includes('Restaurants & Sorties'), true);
+  assert.equal(CATEGORIES.includes('Shopping & Maison'), true);
+  assert.equal(CATEGORIES.includes('Loisirs & Activités'), true);
+  assert.equal(CATEGORIES.includes('Santé'), true);
+  assert.equal(CATEGORIES.includes('Retrait Espèces'), true);
+  assert.equal(CATEGORIES.includes('Virements Famille & Proches'), true);
+  assert.equal(CATEGORIES.includes('Salaire & Revenus'), true);
+  assert.equal(CATEGORIES.includes('Aides & Allocations'), true);
+  assert.equal(CATEGORIES.includes('Épargne & Investissement'), true);
+  assert.equal(CATEGORIES.includes('Virements Internes'), true);
+  assert.equal(CATEGORIES.includes('Autre'), true);
+
+  // Amex doit être classé dans Paiement fractionné (charge fixe) et non dans une catégorie fragmentée
+  const amexTx = classifyTransaction('PRELEVEMENT AMERICAN EXPRESS CARTE', -125.00);
+  assert.equal(amexTx.category, 'Paiement fractionné');
+  assert.equal(amexTx.flowType, 'FIXED_EXPENSE');
 });

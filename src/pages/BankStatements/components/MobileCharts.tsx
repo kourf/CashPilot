@@ -9,22 +9,51 @@ interface MobileChartsProps {
 
 const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'];
 
+/**
+ * RÈGLE D'AFFICHAGE STRICTE :
+ * Les diagrammes (en beignet, en bâtons, Sankey) ne doivent JAMAIS afficher de macro-catégorie
+ * comme "Charges fixes" ou "Charges variables courantes". Seules les vraies sous-catégories
+ * de dépenses (Carburant, Alimentation, Abonnements, Logement, Santé, etc.) sont visualisées.
+ */
+function isExcludedMacroCategory(categoryName: string): boolean {
+  const norm = (categoryName || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+  return (
+    norm === 'charges fixes' ||
+    norm === 'charges variables' ||
+    norm === 'charges variables courantes' ||
+    norm === 'depenses de confort' ||
+    norm === 'revenus' ||
+    norm === 'revenu'
+  );
+}
+
 export const MobileCharts: React.FC<MobileChartsProps> = ({ metrics, categoryStats, onCategoryClick }) => {
   const [activeTab, setActiveTab] = useState<'sankey' | 'donut' | 'bar'>('donut');
 
+  // Filtrage strict : Aucune macro-catégorie autorisée dans les graphiques
+  const validExpenseCategories = useMemo(() => {
+    return (categoryStats.categories || []).filter(
+      c => !isExcludedMacroCategory(c.category) && c.total > 0.01
+    );
+  }, [categoryStats]);
+
   const donutData = useMemo(() => {
-    return categoryStats.categories.slice(0, 6).map(c => ({
+    return validExpenseCategories.slice(0, 8).map(c => ({
       name: c.category,
       value: c.total
     }));
-  }, [categoryStats]);
+  }, [validExpenseCategories]);
 
   const barData = useMemo(() => {
-    return categoryStats.categories.slice(0, 10).map(c => ({
+    return validExpenseCategories.slice(0, 10).map(c => ({
       name: c.category,
       Dépenses: c.total
     }));
-  }, [categoryStats]);
+  }, [validExpenseCategories]);
 
   const sankeyContainerRef = useRef<HTMLDivElement>(null);
   const [googleLoaded, setGoogleLoaded] = useState(false);
@@ -79,7 +108,7 @@ export const MobileCharts: React.FC<MobileChartsProps> = ({ metrics, categorySta
       
       const incomeNodeLabel = totalInc > 0 ? `Revenus (${totalInc.toFixed(0)} €)` : `Dépenses Totales (${totalExp.toFixed(0)} €)`;
 
-      categoryStats.categories.forEach((c: any) => {
+      validExpenseCategories.forEach((c: any) => {
         if (c.total > 0.01) {
           const pct = totalInc > 0 ? (c.total / totalInc) * 100 : (totalExp > 0 ? (c.total / totalExp) * 100 : 0);
           rows.push([incomeNodeLabel, `${c.category} (${c.total.toFixed(0)} € • ${pct.toFixed(0)}%)`, Number(c.total.toFixed(2))]);
@@ -235,7 +264,7 @@ export const MobileCharts: React.FC<MobileChartsProps> = ({ metrics, categorySta
       {/* Legend / Category list with % vs Income and vs Expenses */}
       {activeTab === 'donut' && (
         <div className="mt-4 space-y-2 max-h-40 overflow-y-auto hide-scrollbar">
-          {categoryStats.categories.slice(0, 8).map((cat, i) => (
+          {validExpenseCategories.slice(0, 8).map((cat, i) => (
             <div key={cat.category} onClick={() => onCategoryClick(cat.category)} className="flex items-center justify-between text-xs cursor-pointer active:scale-95 transition-transform p-1 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800">
               <div className="flex items-center space-x-2 truncate">
                 <div className="w-3 h-3 rounded-full flex-shrink-0" style={{backgroundColor: COLORS[i % COLORS.length]}}></div>
