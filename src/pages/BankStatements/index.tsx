@@ -494,13 +494,23 @@ export const BankStatements: React.FC = () => {
       const cleanDesc = t.cleanLabel || (t.description && t.description !== t.rawLabel ? t.description : cleanMerchantDescription(rawDesc));
       const amount = Number(t.amount) || 0;
       
-      // Auto-analyse intelligente du libellé complet si catégorie manquante ou 'Autre'
+      // Auto-analyse intelligente du libellé complet si catégorie manquante, 'Autre' ou macro-catégorie non distinguée
       const smart = smartCategorizeTransaction(rawDesc, amount, t.date);
       // Correction proactive : si un montant positif a été indûment étiqueté en SAVINGS_TRANSFER alors qu'il s'agit d'un revenu réel (tiers, proche, alloc)
       const isSuspectSavings = amount > 0 && (t.flowType === 'SAVINGS_TRANSFER' || t.category === 'Épargne & Investissement') && smart.flowType === 'INCOME';
+      
+      const isGenericCategory = !t.category || 
+        t.category === 'Autre' || 
+        t.category === 'Charges variables courantes' || 
+        t.category === 'Charges fixes' || 
+        t.category === 'Dépenses de confort' || 
+        t.category === 'Revenus';
+
       const category = isSuspectSavings
         ? smart.category
-        : ((t.category && t.category !== 'Autre') ? t.category : smart.category);
+        : (isGenericCategory && smart.category && smart.category !== 'Autre'
+            ? smart.category
+            : (t.category || smart.category));
       const flowType: FlowType = isSuspectSavings
         ? 'INCOME'
         : (t.flowType || (category === smart.category ? smart.flowType : classifyFlowType(category, amount, rawDesc)));
@@ -1614,12 +1624,15 @@ export const BankStatements: React.FC = () => {
             );
           } catch (auditErr: any) {
             console.warn("Audit Gemini en lot avec repli local instantané :", auditErr);
-            aiResults = cleanRows.map(r => ({
-              index: r.index,
-              merchantName: cleanMerchantDescription(r.rawLabel),
-              category: r.amount > 0 ? 'Revenus' : 'Charges variables courantes',
-              isSubscription: false
-            }));
+            aiResults = cleanRows.map(r => {
+              const localClass = classifyTransaction(r.rawLabel, r.amount);
+              return {
+                index: r.index,
+                merchantName: localClass.cleanDesc || cleanMerchantDescription(r.rawLabel),
+                category: localClass.category !== 'Autre' ? localClass.category : (r.amount > 0 ? 'Salaire & Revenus' : 'Alimentation & Courses'),
+                isSubscription: Boolean(localClass.isSubscription)
+              };
+            });
           }
 
           // Arrêt du chronomètre
@@ -1644,15 +1657,32 @@ export const BankStatements: React.FC = () => {
           });
           extractedTxs = cleanRows.map((row, idx) => {
             const ai = resultMap.get(row.index) || resultMap.get(idx);
-            const merchantName = ai?.merchantName || cleanMerchantDescription(row.rawLabel);
-            const rawCat = ai?.category || (row.amount > 0 ? 'Revenus' : 'Charges variables courantes');
-            const isSub = Boolean(ai?.isSubscription);
+            const localClass = classifyTransaction(row.rawLabel, row.amount);
+            const merchantName = ai?.merchantName || localClass.cleanDesc || cleanMerchantDescription(row.rawLabel);
             
-            const isPositive = Number(row.amount) > 0;
-            // RÈGLE COMPTABLE ABSOLUE : Un montant positif est TOUJOURS un flux INCOME (Revenu/Encaissement)
-            const flow: FlowType = isPositive ? 'INCOME' : (rawCat === 'Charges fixes' ? 'FIXED_EXPENSE' : 'VARIABLE_EXPENSE');
+            // Catégorisation intelligente priorisant l'audit IA précis ou le moteur local
+            let category = ai?.category;
+            const isMacroOrGeneric = !category || 
+              category === 'Autre' || 
+              category === 'Charges variables courantes' || 
+              category === 'Charges fixes' || 
+              category === 'Dépenses de confort' || 
+              category === 'Revenus';
 
-            let category = rawCat;
+            if (isMacroOrGeneric) {
+              if (localClass.category && localClass.category !== 'Autre') {
+                category = localClass.category;
+              } else if (Number(row.amount) > 0) {
+                category = 'Salaire & Revenus';
+              } else {
+                category = category || 'Alimentation & Courses';
+              }
+            }
+
+            const isSub = ai?.isSubscription !== undefined ? Boolean(ai.isSubscription) : Boolean(localClass.isSubscription);
+            const isPositive = Number(row.amount) > 0;
+            
+            // Affinement des virements proches
             if (isPositive) {
               const rawUp = (row.rawLabel || '').toUpperCase();
               if (
@@ -1663,7 +1693,7 @@ export const BankStatements: React.FC = () => {
                 )
               ) {
                 category = 'Virement Reçu (Proches)';
-              } else if (category === 'Virements Famille & Proches' || category === 'Charges variables courantes' || category === 'Charges fixes' || category === 'Dépenses de confort') {
+              } else if (category === 'Virements Famille & Proches') {
                 category = 'Virement Reçu (Proches)';
               }
             } else {
@@ -1677,6 +1707,25 @@ export const BankStatements: React.FC = () => {
               ) {
                 category = 'Virements Famille & Proches';
               }
+            }
+
+            // RÈGLE COMPTABLE ABSOLUE DU SENS DU FLUX :
+            let flow: FlowType = 'VARIABLE_EXPENSE';
+            if (isPositive) {
+              flow = 'INCOME';
+            } else if (
+              category === 'Logement & Énergie' || 
+              category === 'Abonnements & Télécom' || 
+              category === 'Assurances' || 
+              category === 'Frais bancaires' || 
+              category === 'Paiement fractionné' ||
+              isSub
+            ) {
+              flow = 'FIXED_EXPENSE';
+            } else if (category === 'Épargne & Investissement') {
+              flow = 'SAVINGS_TRANSFER';
+            } else {
+              flow = 'VARIABLE_EXPENSE';
             }
 
             const dayOfMonth = row.date ? parseInt(row.date.split('-')[2], 10) : undefined;

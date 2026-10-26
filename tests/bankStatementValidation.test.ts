@@ -2,7 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 // Import direct avec extension .ts pour le test runner Node.js ESM
-import { detectBankName } from '../src/lib/bankParser.ts';
+import { 
+  detectBankName,
+  extractCleanBankStatementRows,
+  isBankCategoryHeader,
+  isBankDescriptionHeader,
+  classifyTransaction
+} from '../src/lib/bankParser.ts';
 import { 
   validateBankStatementFile, 
   validateBankStatementCSVContent, 
@@ -174,4 +180,95 @@ test('5. CONFORMITÉ AU FORMAT RB : RÈGLE STRICTE CSV SANS SOLDE NI DISPO (FID�
   assert.equal(pdfStatus.kpiSubtitle, 'Certifié relevé PDF');
   assert.equal(pdfStatus.kpiBadge, null);
   assert.match(pdfStatus.formattedAmount, /2 450,75 €/);
+});
+
+test('6. EXCLUSION STRICTE DES COLONNES CATÉGORIES DU RB LORS DE L\'IMPORT CSV', () => {
+  // Vérification de la fonction de détection des en-têtes à exclure
+  assert.equal(isBankCategoryHeader('Categorie'), true);
+  assert.equal(isBankCategoryHeader('Catégorie'), true);
+  assert.equal(isBankCategoryHeader('Sous-catégorie'), true);
+  assert.equal(isBankCategoryHeader('Rubrique'), true);
+  assert.equal(isBankCategoryHeader('Classification'), true);
+  assert.equal(isBankCategoryHeader('Type d\'opération'), true);
+  assert.equal(isBankCategoryHeader('Solde'), true);
+
+  // Vérification des vrais en-têtes de description
+  assert.equal(isBankDescriptionHeader('Libellé'), true);
+  assert.equal(isBankDescriptionHeader('Détail de l\'écriture'), true);
+  assert.equal(isBankDescriptionHeader('Description'), true);
+  assert.equal(isBankDescriptionHeader('Motif'), true);
+
+  // Cas A : CSV bancaire avec colonne Catégorie et Sous-catégorie trompeuses
+  const csvWithBankCategories = `Date;Libellé de l'opération;Catégorie;Sous-catégorie;Montant
+01/03/2026;CARTE 28/02 INTERMARCHE GAILLARD;Vie quotidienne;Divers;-45.20
+02/03/2026;PRLV TOTALENERGIES;Habitat;Énergie;-85.00
+03/03/2026;PAIEMENT TOTAL RELAIS DU MONT;Automobile;Carburant;-60.00`;
+
+  const rowsA = extractCleanBankStatementRows(csvWithBankCategories);
+  assert.equal(rowsA.length, 3);
+  assert.match(rowsA[0].rawLabel, /INTERMARCHE GAILLARD/);
+  assert.doesNotMatch(rowsA[0].rawLabel, /Vie quotidienne|Divers/);
+  assert.match(rowsA[1].rawLabel, /TOTALENERGIES/);
+  assert.doesNotMatch(rowsA[1].rawLabel, /Habitat/);
+  assert.match(rowsA[2].rawLabel, /TOTAL RELAIS/);
+
+  // Cas B : CSV où la colonne Catégorie est placée avant la colonne Libellé
+  const csvCategoryBeforeLabel = `Date;Catégorie;Description;Montant
+01/03/2026;Non catégorisé;MCDONALDS ANNEMASSE;-18.50
+02/03/2026;Autre;FREE MOBILE FORFAIT;-19.99`;
+
+  const rowsB = extractCleanBankStatementRows(csvCategoryBeforeLabel);
+  assert.equal(rowsB.length, 2);
+  assert.equal(rowsB[0].rawLabel, 'MCDONALDS ANNEMASSE');
+  assert.equal(rowsB[1].rawLabel, 'FREE MOBILE FORFAIT');
+
+  // Cas C : CSV multi-colonnes de description (Libellé + Détail)
+  const csvMultiDesc = `Date;Libellé;Détail de l'écriture;Catégorie de la banque;Montant
+01/03/2026;CARTE X7791;PHARMACIE DE LA GARE ANNEMASSE;Santé & Prévoyance;-22.40`;
+
+  const rowsC = extractCleanBankStatementRows(csvMultiDesc);
+  assert.equal(rowsC.length, 1);
+  assert.match(rowsC[0].rawLabel, /PHARMACIE DE LA GARE/);
+  assert.doesNotMatch(rowsC[0].rawLabel, /Santé & Prévoyance/);
+});
+
+test('7. DISTINCTION PRÉCISE ET GRANULAIRE DES CATÉGORIES BASÉE EXCLUSIVEMENT SUR LE LIBELLÉ', () => {
+  // Chaque opération doit être distinguée selon son vrai poste financier et non pas fondue dans une macro-catégorie
+  const txAlim = classifyTransaction('CARTE 28/02 INTERMARCHE GAILLARD', -45.20);
+  assert.equal(txAlim.category, 'Alimentation & Courses');
+  assert.equal(txAlim.flowType, 'VARIABLE_EXPENSE');
+
+  const txCarburant = classifyTransaction('PAIEMENT TOTAL RELAIS DU MONT', -60.00);
+  assert.equal(txCarburant.category, 'Transports & Carburant');
+  assert.equal(txCarburant.flowType, 'VARIABLE_EXPENSE');
+
+  const txResto = classifyTransaction('CARTE MCDONALDS ANNEMASSE', -18.50);
+  assert.equal(txResto.category, 'Restaurants & Sorties');
+  assert.equal(txResto.flowType, 'VARIABLE_EXPENSE');
+
+  const txEnergie = classifyTransaction('PRLV SEPA TOTALENERGIES ELEC', -85.00);
+  assert.equal(txEnergie.category, 'Logement & Énergie');
+  assert.equal(txEnergie.flowType, 'FIXED_EXPENSE');
+  assert.equal(txEnergie.isSubscription, true);
+
+  const txTelecom = classifyTransaction('PRLV SEPA FREE MOBILE', -19.99);
+  assert.equal(txTelecom.category, 'Abonnements & Télécom');
+  assert.equal(txTelecom.flowType, 'FIXED_EXPENSE');
+  assert.equal(txTelecom.isSubscription, true);
+
+  const txSante = classifyTransaction('CARTE PHARMACIE DE LA GARE', -24.80);
+  assert.equal(txSante.category, 'Santé');
+  assert.equal(txSante.flowType, 'VARIABLE_EXPENSE');
+
+  const txShopping = classifyTransaction('AMAZON EU SARL PAY LUX', -39.99);
+  assert.equal(txShopping.category, 'Shopping & Maison');
+  assert.equal(txShopping.flowType, 'VARIABLE_EXPENSE');
+
+  const txSalaire = classifyTransaction('VIR SALAIRE ACME CORP', 3200.00);
+  assert.equal(txSalaire.category, 'Salaire & Revenus');
+  assert.equal(txSalaire.flowType, 'INCOME');
+
+  const txVirementFamille = classifyTransaction('VIR WERO NAYSSA', -50.00);
+  assert.equal(txVirementFamille.category, 'Virements Famille & Proches');
+  assert.equal(txVirementFamille.flowType, 'VARIABLE_EXPENSE');
 });

@@ -1059,9 +1059,73 @@ export interface CleanBankStatementRow {
   amount: number;   // Montant numérique signé
 }
 
+function normalizeBankHeader(h: string): string {
+  return (h || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
 /**
- * Filtre et supprime TOUTES les colonnes inutiles de la banque.
- * Ne conserve strictement que 3 informations : Date, Libellé brut, et Montant.
+ * RÈGLE FONDAMENTALE : L'analyse et l'IA ne doivent JAMAIS se fier aux colonnes Catégorie du relevé bancaire (RB).
+ * Les banques catégorisent mal (catégories trompeuses, "Autre", "Divers", etc.).
+ * Toute colonne de catégorie, type, statut, solde ou méta-donnée bancaire est formellement exclue.
+ */
+export function isBankCategoryHeader(h: string): boolean {
+  const norm = normalizeBankHeader(h);
+  return (
+    norm.includes('cat') || // categorie, category, categories, sous-cat, etc.
+    norm.includes('rubrique') ||
+    norm.includes('classif') ||
+    norm.includes('famille') ||
+    norm.includes('groupe') ||
+    norm.includes('nature') ||
+    norm.includes('statut') ||
+    norm.includes('pointage') ||
+    norm.includes('solde') ||
+    norm.includes('balance') ||
+    norm.includes('devise') ||
+    norm.includes('currency') ||
+    norm.includes('monnaie') ||
+    norm.includes('compte') ||
+    norm.includes('iban') ||
+    norm.includes('bic') ||
+    norm === 'type' ||
+    norm.startsWith('type ') ||
+    norm.includes('type op') ||
+    norm.includes('type de')
+  );
+}
+
+/**
+ * Détecte si un en-tête correspond à un libellé ou une description de l'opération
+ */
+export function isBankDescriptionHeader(h: string): boolean {
+  if (isBankCategoryHeader(h)) return false;
+  const norm = normalizeBankHeader(h);
+  if (norm.includes('date')) return false;
+  if (norm.includes('montant') || norm.includes('debit') || norm.includes('credit') || norm.includes('valeur')) return false;
+  return (
+    norm.includes('libelle') ||
+    norm.includes('label') ||
+    norm.includes('description') ||
+    norm.includes('detail') ||
+    norm.includes('motif') ||
+    norm.includes('texte') ||
+    norm.includes('operation') ||
+    norm.includes('marchand') ||
+    norm.includes('commerce') ||
+    norm.includes('beneficiaire') ||
+    norm.includes('emetteur') ||
+    norm.includes('communication') ||
+    norm.includes('remarque')
+  );
+}
+
+/**
+ * Filtre et supprime TOUTES les colonnes inutiles ou trompeuses de la banque (y compris les catégories bancaires fausses).
+ * Ne conserve strictement que 3 informations fiables : Date, Libellé de compte brut, et Montant.
  */
 export function extractCleanBankStatementRows(csvContent: string): CleanBankStatementRow[] {
   const parsed = Papa.parse(csvContent.trim(), {
@@ -1101,25 +1165,25 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
   );
   if (dateIdx === -1) dateIdx = headers.findIndex(h => h.includes('date'));
 
-  let rawLabelIdx = headers.findIndex(h => 
-    (h.includes('libelle') && h.includes('complet')) ||
-    (h.includes('libelle') && h.includes('detail')) ||
-    (h.includes('libelle') && h.includes('complementaire')) ||
-    (h.includes('libelle') && h.includes('enrichi')) ||
-    (h.includes('libelle') && h.includes('etendu'))
-  );
-  if (rawLabelIdx === -1) {
-    rawLabelIdx = headers.findIndex((h, idx) => {
-      if (dateColIndices.has(idx)) return false;
-      if (h.includes('categorie') || h.includes('sous cat') || h.includes('rubrique') || h.includes('classification')) return false;
-      return h.includes('libelle operation') || 
-             h.includes('libelle') || 
-             h.includes('description') || 
-             h.includes('motif') || 
-             h.includes('detail') ||
-             h.includes('texte');
-    });
-  }
+  // Détection des colonnes de libellés / descriptions (en excluant formellement toute catégorie ou métadonnée)
+  const descColIndices: number[] = [];
+  headers.forEach((h, idx) => {
+    if (dateColIndices.has(idx)) return;
+    if (isBankCategoryHeader(h)) return; // EXCLUSION STRICTE DES CATÉGORIES BANCAIRES
+    if (isBankDescriptionHeader(h)) {
+      descColIndices.push(idx);
+    }
+  });
+
+  // Si plusieurs colonnes descriptives existent (ex: Libellé + Détail de l'écriture), on les ordonne
+  // en plaçant les détails les plus complets
+  descColIndices.sort((a, b) => {
+    const ha = headers[a];
+    const hb = headers[b];
+    const scoreA = (ha.includes('detail') || ha.includes('complet') || ha.includes('complementaire') || ha.includes('enrichi')) ? 2 : 1;
+    const scoreB = (hb.includes('detail') || hb.includes('complet') || hb.includes('complementaire') || hb.includes('enrichi')) ? 2 : 1;
+    return scoreB - scoreA;
+  });
 
   const amountIdx = headers.findIndex(h => h.includes('montant') || (h.includes('valeur') && !h.includes('date')));
   const debitIdx = headers.findIndex(h => h.includes('debit'));
@@ -1146,14 +1210,29 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
     }
     if (!formattedDate) continue;
 
-    // 2. Libellé brut d'origine
+    // 2. Libellé brut d'origine (capturé UNIQUEMENT depuis les vraies colonnes de compte, sans colonne catégorie)
     let rawLabel = '';
-    if (rawLabelIdx >= 0 && cols[rawLabelIdx] && String(cols[rawLabelIdx]).trim()) {
-      rawLabel = String(cols[rawLabelIdx]).trim();
-    } else {
+    if (descColIndices.length > 0) {
+      const parts: string[] = [];
+      for (const idx of descColIndices) {
+        const val = String(cols[idx] || '').trim();
+        if (
+          val &&
+          val.length > 1 &&
+          !parts.some(p => p.toLowerCase().includes(val.toLowerCase()) || val.toLowerCase().includes(p.toLowerCase()))
+        ) {
+          parts.push(val);
+        }
+      }
+      rawLabel = parts.join(' ').trim();
+    }
+
+    // Fallback de sécurité : chercher une cellule textuelle en ignorant STRICTEMENT toute colonne catégorie
+    if (!rawLabel) {
       for (let c = 0; c < cols.length; c++) {
         if (dateColIndices.has(c)) continue;
         if (c === amountIdx || c === debitIdx || c === creditIdx) continue;
+        if (isBankCategoryHeader(headers[c])) continue; // NE JAMAIS PRENDRE UNE COLONNE CATÉGORIE
         const val = String(cols[c] || '').trim();
         if (
           val.length > 2 && 
@@ -1166,6 +1245,7 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
         }
       }
     }
+
     if (!rawLabel) continue;
     const sanitizedLabel = sanitizeRawBankLabel(rawLabel);
     if (!sanitizedLabel) continue;
@@ -1277,13 +1357,8 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
   if (fullDescIdx === -1) {
     fallbackDescIdx = headers.findIndex((h, idx) => {
       if (dateColIndices.has(idx)) return false; // JAMAIS UNE COLONNE DATE
-      if (h.includes('categorie') || h.includes('sous cat') || h.includes('rubrique') || h.includes('classification')) return false; // STRICTEMENT IGNORÉ
-      return h.includes('libelle operation') || 
-             h.includes('libelle') || 
-             h.includes('description') || 
-             h.includes('motif') || 
-             h.includes('detail') ||
-             h.includes('texte');
+      if (isBankCategoryHeader(h)) return false; // STRICTEMENT IGNORÉ (Catégories bancaires fausses)
+      return isBankDescriptionHeader(h);
     });
   }
 
@@ -1324,7 +1399,7 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
         if (dateColIndices.has(c)) continue; // STRICTEMENT IGNORER LES DATES
         if (c === amountIdx || c === debitIdx || c === creditIdx) continue;
         const hName = headers[c] || '';
-        if (hName.includes('categorie') || hName.includes('sous cat') || hName.includes('rubrique') || hName.includes('classification')) continue; // STRICTEMENT IGNORÉ
+        if (isBankCategoryHeader(hName)) continue; // STRICTEMENT IGNORÉ (Catégories bancaires fausses)
         const val = String(cols[c] || '').trim();
         // Le libellé ne doit être ni un nombre, ni une date au format JJ/MM/AAAA ou AAAA-MM-JJ
         if (

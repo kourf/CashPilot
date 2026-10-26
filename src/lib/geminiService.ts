@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { CATEGORIES } from './bankParser.ts';
+import { CATEGORIES, classifyTransaction, cleanMerchantDescription } from './bankParser.ts';
 import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from './receiptClassifier';
 import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey, generateGenericNeedKey, sanitizeGenericDisplayName, correctFrenchSpelling, normalizeProductNeed } from '../types/receipts';
 import { resolvePhysicalStore, TARGET_PHYSICAL_STORES } from './storeRegistry.ts';
@@ -286,22 +286,36 @@ export async function batchAuditStatementWithGemini(
 
     const prompt = `Tu es un auditeur financier et expert-comptable d'élite pour l'application CashPilot.
 MISSION :
-Analyse ces transactions bancaires brutes (Date, Libellé brut, Montant) :
+Analyse et catégorise avec une haute précision ces transactions bancaires brutes (Date, Libellé brut, Montant) :
 ${JSON.stringify(chunk)}
 
-RÈGLES COMPTABLES STRICTES :
-1. Base-toi UNIQUEMENT sur le libellé brut "rawLabel" et le montant "amount".
-2. merchantName : nom réel et standardisé du commerçant/organisme sans aucun code technique bancaire (ex: "Netflix", "Carrefour", "TotalEnergies").
-3. category : STRICTEMENT l'une des 4 catégories suivantes :
-   - "Charges fixes" (loyer, énergie, forfaits, abonnements récurrents, assurances, prêts)
-   - "Charges variables courantes" (courses alimentaires, supermarchés, carburant, pharmacie, santé)
-   - "Dépenses de confort" (restaurants, fast-food, shopping, loisirs, jeux vidéo, vacances, sorties)
-   - "Revenus" (salaires, primes, CAF, indemnités chômage, remboursements mutuelle/sécu)
-4. isSubscription : VRAI uniquement pour les abonnements mensuels renégociables/résiliables (Netflix, Spotify, box, mobile, sport, etc.), FAUX sinon.
+RÈGLES COMPTABLES ET DE CATÉGORISATION STRICTES :
+1. Base-toi EXCLUSIVEMENT sur le libellé brut "rawLabel" (nom de l'opération / du compte) et le montant "amount". Ne te fie à AUCUNE catégorie bancaire externe préexistante (les catégories de banques étant fausses ou vagues).
+2. merchantName : Nom réel, nettoyé et standardisé du commerçant, enseigne ou organisme (sans aucun code technique bancaire, numéro de carte, date ou ville).
+   Exemples : "Carrefour", "TotalEnergies", "Free Mobile", "Netflix", "Pharmacie", "McDonald's", "SNCF", "CAF", "EDF".
+3. category : DISTINGUE CLAIREMENT chaque opération en lui assignant la catégorie précise la plus adaptée parmi la liste officielle suivante (STRICTEMENT l'une d'elles) :
+   - "Alimentation & Courses" : supermarchés, hypermarchés, épiceries, boulangeries, boucheries (Carrefour, Leclerc, Intermarché, Lidl, Aldi, Auchan, Monoprix, Picard, etc.)
+   - "Transports & Carburant" : stations essence, carburant, péages, parkings, transports, train, taxis, Uber (Total, BP, Shell, Esso, Vinci, APRR, SNCF, RATP, Uber, Bolt, etc.)
+   - "Restaurants & Sorties" : restaurants, fast-food, livraisons repas, cafés, bars (McDonald's, Burger King, KFC, Subway, Deliveroo, Uber Eats, etc.)
+   - "Logement & Énergie" : loyer, électricité, gaz, eau, charges (EDF, Engie, TotalEnergies, Veolia, etc.)
+   - "Abonnements & Télécom" : forfaits mobile, box internet, streaming, salle de sport, logiciels (Free, Orange, SFR, Bouygues, Netflix, Spotify, Disney+, Basic-Fit, etc.)
+   - "Assurances" : assurance auto, habitation, santé, prévoyance (Macif, Maif, Allianz, Axa, Groupama, Matmut, etc.)
+   - "Santé" : pharmacies, médecins, dentistes, optique, laboratoires, hôpitaux
+   - "Shopping & Maison" : habillement, équipement, bricolage, bazar, high-tech (Amazon, Fnac, Darty, Zara, H&M, Ikea, Leroy Merlin, Action, etc.)
+   - "Loisirs & Activités" : cinéma, parcs, vacances, jeux vidéo, culture (UGC, Pathé, Steam, PlayStation, Booking, Airbnb, etc.)
+   - "Frais bancaires" : cotisations carte, frais de tenue de compte, commissions, agios
+   - "Impôts & Amendes" : impôts, taxes, trésor public, amendes, DGFIP
+   - "Paiement fractionné" : paiements en plusieurs fois (Klarna, Alma, PayPal 4x, Oney)
+   - "Virements Famille & Proches" : virements émis ou reçus entre proches, amis, Wero, Paylib, Lydia, prénoms de proches
+   - "Salaire & Revenus" : salaires, paie employeur, virements de revenus professionnels
+   - "Aides & Allocations" : CAF, France Travail / Pôle Emploi, indemnités, sécurité sociale
+   - "Épargne & Investissement" : virements vers livrets (Livret A, LDDS, PEA, assurance-vie)
+   - "Autre" : uniquement si totalement impossible à déterminer
+4. isSubscription : VRAI (true) uniquement pour les abonnements ou prélèvements récurrents mensuels (télécom, box, streaming, assurances, énergie, loyer, salle de sport). FAUX (false) pour les achats par carte ou paiements ponctuels.
 
 Renvoie UNIQUEMENT un tableau JSON d'objets :
 [
-  { "index": 0, "merchantName": "Netflix", "category": "Charges fixes", "isSubscription": true }
+  { "index": 0, "merchantName": "Carrefour", "category": "Alimentation & Courses", "isSubscription": false }
 ]`;
 
     let chunkSuccess = false;
@@ -337,11 +351,12 @@ Renvoie UNIQUEMENT un tableau JSON d'objets :
     if (!chunkSuccess) {
       console.warn(`Fallback local appliqué pour le lot ${i} à ${i + chunk.length}:`, lastError);
       chunk.forEach(row => {
+        const localClass = classifyTransaction(row.rawLabel, row.amount);
         allResults.push({
           index: row.index,
-          merchantName: cleanMerchantDescription(row.rawLabel),
-          category: row.amount > 0 ? 'Revenus' : 'Charges variables courantes',
-          isSubscription: false
+          merchantName: localClass.cleanDesc || cleanMerchantDescription(row.rawLabel),
+          category: localClass.category !== 'Autre' ? localClass.category : (row.amount > 0 ? 'Salaire & Revenus' : 'Alimentation & Courses'),
+          isSubscription: Boolean(localClass.isSubscription)
         });
       });
     }
