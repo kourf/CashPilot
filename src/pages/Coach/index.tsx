@@ -20,17 +20,114 @@ import {
   Scale, 
   ShoppingBag, 
   CreditCard, 
-  SlidersHorizontal
+  SlidersHorizontal,
+  History,
+  Trash2,
+  X,
+  MessageSquare
 } from 'lucide-react';
 
-const STORAGE_KEY_CHAT = 'cashpilot_coach_chat_v2';
+export interface SavedConversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatMessage[];
+  scope: string;
+}
+
+const STORAGE_CONVERSATIONS = 'cashpilot_coach_conversations_v3';
+const STORAGE_ACTIVE_ID = 'cashpilot_coach_active_id_v3';
+const LEGACY_STORAGE_CHAT = 'cashpilot_coach_chat_v2';
 
 export default function Coach() {
   const { transactions = [], currency = 'EUR', availableMonths = [] } = useTransactions();
   const { receipts = [], products = [] } = useReceipts();
 
-  // Filtre de portée : 'all' (toute la base) ou mois spécifique
-  const [selectedScope, setSelectedScope] = useState<string>('all');
+  // Liste de toutes les conversations enregistrées
+  const [conversations, setConversations] = useState<SavedConversation[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_CONVERSATIONS);
+      if (saved) {
+        const parsed: SavedConversation[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(c => ({
+            ...c,
+            messages: c.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }))
+          }));
+        }
+      }
+
+      // Migration fluide de l'ancienne conversation v2 si elle existe
+      const legacy = localStorage.getItem(LEGACY_STORAGE_CHAT);
+      if (legacy) {
+        const parsedLegacy = JSON.parse(legacy);
+        if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
+          const firstUserMsg = parsedLegacy.find((m: any) => m.role === 'user');
+          const title = firstUserMsg ? firstUserMsg.content.slice(0, 40) + '...' : 'Discussion existante';
+          const conv: SavedConversation = {
+            id: `conv-${Date.now()}`,
+            title,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            messages: parsedLegacy.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })),
+            scope: 'all'
+          };
+          return [conv];
+        }
+      }
+    } catch (e) {
+      console.warn("Erreur chargement conversations coach:", e);
+    }
+
+    // Nouvelle conversation par défaut
+    const defaultConv: SavedConversation = {
+      id: `conv-${Date.now()}`,
+      title: 'Nouvelle discussion',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: [],
+      scope: 'all'
+    };
+    return [defaultConv];
+  });
+
+  // ID de la conversation active
+  const [activeConversationId, setActiveConversationId] = useState<string>(() => {
+    try {
+      const savedId = localStorage.getItem(STORAGE_ACTIVE_ID);
+      if (savedId) return savedId;
+    } catch {}
+    return conversations[0]?.id || `conv-${Date.now()}`;
+  });
+
+  // Drawer d'historique ouvert/fermé
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // Conversation courante
+  const currentConversation = useMemo(() => {
+    return conversations.find(c => c.id === activeConversationId) || conversations[0] || {
+      id: `conv-${Date.now()}`,
+      title: 'Nouvelle discussion',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: [],
+      scope: 'all'
+    };
+  }, [conversations, activeConversationId]);
+
+  const messages = currentConversation.messages;
+  const selectedScope = currentConversation.scope || 'all';
+
+  // Sauvegarde automatique des conversations
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_CONVERSATIONS, JSON.stringify(conversations));
+      localStorage.setItem(STORAGE_ACTIVE_ID, activeConversationId);
+    } catch (e) {
+      console.warn("Erreur sauvegarde conversations coach:", e);
+    }
+  }, [conversations, activeConversationId]);
 
   // Filtrage des transactions selon la portée choisie
   const scopedTransactions = useMemo(() => {
@@ -38,38 +135,10 @@ export default function Coach() {
     return transactions.filter(t => t.monthKey === selectedScope || (t.date && t.date.startsWith(selectedScope)));
   }, [transactions, selectedScope]);
 
-  // Profil financier déterministe compilé en direct
+  // Profil financier déterministe
   const financialProfile: FinancialProfile = useMemo(() => {
     return buildFinancialProfile(scopedTransactions, receipts, products, currency);
   }, [scopedTransactions, receipts, products, currency]);
-
-  // Messages de chat (avec persistance localStorage)
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_CHAT);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((m: any) => ({
-            ...m,
-            timestamp: new Date(m.timestamp)
-          }));
-        }
-      }
-    } catch (e) {
-      console.warn("Erreur chargement historique chat coach:", e);
-    }
-    return [];
-  });
-
-  // Sauvegarde automatique du chat
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages));
-    } catch (e) {
-      console.warn("Erreur sauvegarde chat coach:", e);
-    }
-  }, [messages]);
 
   const [inputPrompt, setInputPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -79,7 +148,6 @@ export default function Coach() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll vers le bas
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -88,10 +156,9 @@ export default function Coach() {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Modèle actuel
   const activeModel = getGeminiModelName();
 
-  // Suggestions de questions principales inspirées de Gemini
+  // Suggestions de questions épurées
   const suggestions = [
     {
       icon: Calendar,
@@ -125,7 +192,73 @@ export default function Coach() {
     }
   ];
 
-  // Envoi d'un message au coach
+  // Gestion de la portée (mois ou all) pour la conversation active
+  const handleScopeChange = (newScope: string) => {
+    setConversations(prev => prev.map(c => {
+      if (c.id === activeConversationId) {
+        return { ...c, scope: newScope, updatedAt: Date.now() };
+      }
+      return c;
+    }));
+  };
+
+  // Créer une nouvelle conversation
+  const handleCreateNewConversation = () => {
+    const newConv: SavedConversation = {
+      id: `conv-${Date.now()}`,
+      title: 'Nouvelle discussion',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: [],
+      scope: selectedScope
+    };
+    setConversations(prev => [newConv, ...prev]);
+    setActiveConversationId(newConv.id);
+    setIsHistoryOpen(false);
+  };
+
+  // Supprimer UNE conversation entière de l'historique
+  const handleDeleteConversation = (e: React.MouseEvent, convId: string) => {
+    e.stopPropagation();
+    if (conversations.length <= 1) {
+      // S'il ne reste qu'une seule discussion, on la réinitialise
+      const resetConv: SavedConversation = {
+        id: `conv-${Date.now()}`,
+        title: 'Nouvelle discussion',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messages: [],
+        scope: 'all'
+      };
+      setConversations([resetConv]);
+      setActiveConversationId(resetConv.id);
+      return;
+    }
+
+    const updated = conversations.filter(c => c.id !== convId);
+    setConversations(updated);
+
+    if (activeConversationId === convId) {
+      setActiveConversationId(updated[0].id);
+    }
+  };
+
+  // Supprimer UNE RÉPONSE / UN MESSAGE spécifique dans la conversation active
+  const handleDeleteMessage = (messageId: string) => {
+    setConversations(prev => prev.map(c => {
+      if (c.id === activeConversationId) {
+        const filtered = c.messages.filter(m => m.id !== messageId);
+        return {
+          ...c,
+          messages: filtered,
+          updatedAt: Date.now()
+        };
+      }
+      return c;
+    }));
+  };
+
+  // Envoyer un message
   const handleSendMessage = async (textToSend?: string) => {
     const prompt = (textToSend || inputPrompt).trim();
     if (!prompt || isLoading) return;
@@ -143,7 +276,21 @@ export default function Coach() {
       status: 'done'
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    // Mise à jour de la conversation active
+    const newTitle = messages.length === 0 ? prompt.slice(0, 42) + (prompt.length > 42 ? '...' : '') : currentConversation.title;
+
+    setConversations(prev => prev.map(c => {
+      if (c.id === activeConversationId) {
+        return {
+          ...c,
+          title: newTitle,
+          messages: [...c.messages, userMessage],
+          updatedAt: Date.now()
+        };
+      }
+      return c;
+    }));
+
     setIsLoading(true);
     setLoadingStep("Exploration de l'ensemble de votre base bancaire...");
 
@@ -172,7 +319,16 @@ export default function Coach() {
         status: 'done'
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
+      setConversations(prev => prev.map(c => {
+        if (c.id === activeConversationId) {
+          return {
+            ...c,
+            messages: [...c.messages, assistantMessage],
+            updatedAt: Date.now()
+          };
+        }
+        return c;
+      }));
     } catch (err: any) {
       const errorMessage: ChatMessage = {
         id: `assistant-err-${Date.now()}`,
@@ -181,7 +337,17 @@ export default function Coach() {
         timestamp: new Date(),
         status: 'error'
       };
-      setMessages(prev => [...prev, errorMessage]);
+
+      setConversations(prev => prev.map(c => {
+        if (c.id === activeConversationId) {
+          return {
+            ...c,
+            messages: [...c.messages, errorMessage],
+            updatedAt: Date.now()
+          };
+        }
+        return c;
+      }));
     } finally {
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
@@ -202,38 +368,43 @@ export default function Coach() {
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  const handleNewChat = () => {
-    setMessages([]);
-    localStorage.removeItem(STORAGE_KEY_CHAT);
-  };
-
   return (
-    <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-background text-foreground relative selection:bg-primary/20 selection:text-primary">
+    <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-background text-foreground relative selection:bg-primary/20 selection:text-primary overflow-x-hidden">
       
-      {/* Barre Supérieure Épurée (Top Bar Gemini) */}
+      {/* 1. TOP BAR ÉPURÉE */}
       <div className="sticky top-0 z-20 backdrop-blur-xl bg-background/80 dark:bg-[#0a0d14]/75 border-b border-border/40 dark:border-white/[0.04] px-4 md:px-8 py-3 flex items-center justify-between">
         
-        {/* Modèle & Statut Base */}
+        {/* Modèle & Base */}
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/60 dark:bg-white/[0.04] border border-border/60 dark:border-white/[0.06] text-xs font-semibold">
+          {/* Bouton d'accès à l'historique des discussions */}
+          <button
+            onClick={() => setIsHistoryOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/60 dark:bg-white/[0.05] hover:bg-secondary dark:hover:bg-white/[0.09] border border-border/60 dark:border-white/[0.08] text-xs font-semibold text-foreground transition-all group"
+            title="Ouvrir l'historique des conversations"
+          >
+            <History size={14} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+            <span>Historique ({conversations.length})</span>
+          </button>
+
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/40 dark:bg-white/[0.03] border border-border/50 dark:border-white/[0.05] text-xs font-medium">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
             <span className="text-foreground">{activeModel}</span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground px-2">
+          <div className="hidden lg:flex items-center gap-1.5 text-xs text-muted-foreground px-2">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span>{scopedTransactions.length} transactions connectées</span>
+            <span>{scopedTransactions.length} transactions</span>
           </div>
         </div>
 
-        {/* Contrôles : Portée & Nouvelle discussion */}
+        {/* Portée & Nouvelle discussion */}
         <div className="flex items-center gap-2">
-          {/* Sélecteur de mois / période */}
+          {/* Sélecteur de portée */}
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary/40 dark:bg-white/[0.03] border border-border/50 dark:border-white/[0.05] text-xs">
             <SlidersHorizontal size={12} className="text-muted-foreground" />
             <select
               value={selectedScope}
-              onChange={(e) => setSelectedScope(e.target.value)}
+              onChange={(e) => handleScopeChange(e.target.value)}
               className="bg-transparent text-xs font-medium text-foreground focus:outline-none cursor-pointer"
             >
               <option value="all" className="bg-card text-foreground">Toute la base ({transactions.length} ops)</option>
@@ -246,28 +417,122 @@ export default function Coach() {
           </div>
 
           {/* Bouton Nouvelle Discussion */}
-          {messages.length > 0 && (
-            <button
-              onClick={handleNewChat}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/60 dark:bg-white/[0.05] hover:bg-secondary dark:hover:bg-white/[0.1] border border-border/60 dark:border-white/[0.08] text-xs font-semibold text-foreground transition-all"
-              title="Commencer une nouvelle discussion"
-            >
-              <Plus size={14} className="text-primary" />
-              <span className="hidden sm:inline">Nouvelle discussion</span>
-            </button>
-          )}
+          <button
+            onClick={handleCreateNewConversation}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/10 to-primary/10 hover:from-cyan-500/20 hover:to-primary/20 border border-cyan-500/30 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-all shadow-sm"
+            title="Créer une nouvelle discussion"
+          >
+            <Plus size={14} />
+            <span className="hidden sm:inline">Nouvelle discussion</span>
+          </button>
         </div>
 
       </div>
 
-      {/* ZONE CENTRALE */}
+      {/* 2. DRAWER HISTORIQUE LATÉRAL ÉPURÉ (SLIDE-OVER) */}
+      {isHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end animate-in fade-in duration-200">
+          {/* Backdrop sombre flouté */}
+          <div 
+            onClick={() => setIsHistoryOpen(false)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-pointer"
+          />
+
+          {/* Panneau latéral */}
+          <div className="relative w-full max-w-sm md:max-w-md bg-[#0f131f]/95 dark:bg-[#0c101a]/95 border-l border-border/80 dark:border-white/[0.08] backdrop-blur-2xl h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-right duration-300">
+            
+            {/* Header du Drawer */}
+            <div className="p-4 md:p-5 border-b border-border/60 dark:border-white/[0.06] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History size={18} className="text-cyan-400" />
+                <h3 className="text-sm font-bold text-foreground">Historique des discussions</h3>
+              </div>
+              <button
+                onClick={() => setIsHistoryOpen(false)}
+                className="w-8 h-8 rounded-full bg-secondary/50 dark:bg-white/[0.05] hover:bg-secondary dark:hover:bg-white/[0.1] text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Liste des conversations */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              <button
+                onClick={handleCreateNewConversation}
+                className="w-full p-3 rounded-2xl border border-dashed border-cyan-500/40 hover:border-cyan-500/80 bg-cyan-500/[0.04] hover:bg-cyan-500/[0.08] text-cyan-400 text-xs font-semibold flex items-center justify-center gap-2 transition-all mb-3"
+              >
+                <Plus size={15} />
+                Nouvelle discussion
+              </button>
+
+              {conversations.map((conv) => {
+                const isActive = conv.id === activeConversationId;
+                const dateStr = new Date(conv.updatedAt).toLocaleDateString('fr-FR', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+
+                return (
+                  <div
+                    key={conv.id}
+                    onClick={() => {
+                      setActiveConversationId(conv.id);
+                      setIsHistoryOpen(false);
+                    }}
+                    className={`group w-full p-3 rounded-2xl text-left border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      isActive
+                        ? 'bg-cyan-500/[0.12] border-cyan-500/40 text-foreground shadow-sm'
+                        : 'bg-secondary/30 dark:bg-white/[0.02] hover:bg-secondary/60 dark:hover:bg-white/[0.05] border-border/50 dark:border-white/[0.05] text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare size={13} className={isActive ? 'text-cyan-400 shrink-0' : 'text-muted-foreground/60 shrink-0'} />
+                        <h4 className="text-xs font-semibold truncate text-foreground">
+                          {conv.title || 'Discussion sans titre'}
+                        </h4>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground/80 mt-1 pl-5">
+                        <span>{dateStr}</span>
+                        <span>•</span>
+                        <span>{conv.messages.length} messages</span>
+                      </div>
+                    </div>
+
+                    {/* Bouton de suppression d'UNE conversation */}
+                    <button
+                      onClick={(e) => handleDeleteConversation(e, conv.id)}
+                      className="p-1.5 rounded-lg text-muted-foreground/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-70 group-hover:opacity-100"
+                      title="Supprimer cette conversation"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer du Drawer */}
+            <div className="p-4 border-t border-border/60 dark:border-white/[0.06] text-center">
+              <span className="text-[11px] text-muted-foreground">
+                Toutes vos discussions sont sauvegardées localement.
+              </span>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 3. ZONE CENTRALE (STREAMING GEMINI) */}
       <div className="flex-1 flex flex-col justify-between max-w-4xl w-full mx-auto px-4 md:px-6">
         
-        {/* ÉTAT 1 : ACCUEIL ÉPURÉ GEMINI (Aucun message) */}
+        {/* ÉTAT 1 : AUCUN MESSAGE DANS LA DISCUSSION */}
         {messages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-12 md:py-20 space-y-8 animate-in fade-in duration-500">
             
-            {/* Titre Principal Type Gemini */}
+            {/* Titre Principal */}
             <div className="text-center space-y-3 max-w-2xl px-2">
               <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-cyan-500/10 via-primary/10 to-indigo-500/10 border border-primary/20 mb-1">
                 <Sparkles className="w-8 h-8 text-cyan-400 animate-pulse" />
@@ -280,7 +545,7 @@ export default function Coach() {
               </p>
             </div>
 
-            {/* Boîte de Saisie Gemini (Au Centre) */}
+            {/* Boîte de Saisie Centrale */}
             <div className="w-full max-w-2xl">
               <div className="relative rounded-3xl bg-[#1e2330]/80 dark:bg-[#131722]/90 border border-border/80 dark:border-white/[0.1] shadow-2xl p-3 focus-within:border-cyan-500/50 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all backdrop-blur-2xl">
                 <textarea
@@ -340,17 +605,17 @@ export default function Coach() {
           </div>
         ) : (
           
-          /* ÉTAT 2 : DISCUSSION ACTIVE (Style Gemini Stream) */
+          /* ÉTAT 2 : DISCUSSION ACTIVE */
           <div className="flex-1 flex flex-col py-6 space-y-6">
             
             {/* Flux des messages */}
-            <div className="space-y-6 pb-32">
+            <div className="space-y-6 pb-36">
               {messages.map((msg) => {
                 const isUser = msg.role === 'user';
                 return (
                   <div
                     key={msg.id}
-                    className={`flex items-start gap-3.5 ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-300`}
+                    className={`flex items-start gap-3.5 group ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-300`}
                   >
                     {!isUser && (
                       <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-cyan-500 via-primary to-indigo-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-cyan-500/20 mt-1">
@@ -373,9 +638,10 @@ export default function Coach() {
                         )}
                       </div>
 
-                      {/* Actions sous la bulle du Coach */}
-                      {!isUser && (
-                        <div className="flex items-center gap-3 pt-2 text-xs text-muted-foreground px-1">
+                      {/* Barre d'action sous le message : Copier + SUPPRIMER CE MESSAGE */}
+                      <div className={`flex items-center gap-3 pt-1 text-xs text-muted-foreground px-1 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                        {/* Bouton Copier */}
+                        {!isUser && (
                           <button
                             onClick={() => handleCopyMessage(msg.id, msg.content)}
                             className="hover:text-foreground flex items-center gap-1.5 transition-colors text-[11px]"
@@ -393,14 +659,24 @@ export default function Coach() {
                               </>
                             )}
                           </button>
-                        </div>
-                      )}
+                        )}
+
+                        {/* Bouton SUPPRIMER CETTE RÉPONSE / CE MESSAGE */}
+                        <button
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          className="hover:text-rose-400 flex items-center gap-1 transition-colors text-[11px] opacity-40 hover:opacity-100 group-hover:opacity-75"
+                          title="Supprimer ce message de la discussion"
+                        >
+                          <Trash2 size={12} />
+                          <span>Supprimer</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
               })}
 
-              {/* Indicateur de chargement Gemini */}
+              {/* Indicateur de chargement */}
               {isLoading && (
                 <div className="flex items-start gap-3.5 animate-in fade-in duration-300">
                   <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-cyan-500 to-primary text-white flex items-center justify-center shrink-0 shadow-md shadow-cyan-500/20 mt-1">
@@ -423,7 +699,7 @@ export default function Coach() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Zone de Saisie Flottante Pinned en Bas (Gemini Style) */}
+            {/* Zone de Saisie Flottante Pinned en Bas */}
             <div className="fixed bottom-0 left-0 right-0 md:left-64 z-30 p-4 bg-gradient-to-t from-background via-background/95 to-transparent backdrop-blur-md">
               <div className="max-w-3xl mx-auto space-y-2">
                 
