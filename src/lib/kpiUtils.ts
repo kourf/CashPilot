@@ -502,6 +502,52 @@ export const detectStatementCurrency = (contentOrHeader?: string): 'CHF' | 'EUR'
   return isChf ? 'CHF' : 'EUR';
 };
 
+export interface CostOfLivingCategoryGroup {
+  id: string;
+  label: string;
+  color: string;
+  bg: string;
+}
+
+export const CATEGORY_GROUPS_CONFIG: CostOfLivingCategoryGroup[] = [
+  { id: 'logement', label: 'Logement & Énergie', color: 'text-blue-400', bg: 'bg-blue-500/10' },
+  { id: 'sante', label: 'Assurances & Santé', color: 'text-rose-400', bg: 'bg-rose-500/10' },
+  { id: 'alimentation', label: 'Alimentation & Courses', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+  { id: 'restaurants', label: 'Restaurants & Sorties', color: 'text-amber-400', bg: 'bg-amber-500/10' },
+  { id: 'transport', label: 'Transports & Mobilité', color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+  { id: 'abonnements', label: 'Abonnements & Numérique', color: 'text-purple-400', bg: 'bg-purple-500/10' },
+  { id: 'loisirs', label: 'Loisirs, Sport & Culture', color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/10' },
+  { id: 'shopping', label: 'Shopping & Vie Quotidienne', color: 'text-teal-400', bg: 'bg-teal-500/10' },
+  { id: 'bancaire', label: 'Frais & Services bancaires', color: 'text-slate-400', bg: 'bg-slate-500/10' }
+];
+
+export interface CostOfLivingExpenseItem {
+  id: string;
+  name: string;
+  amount: number;
+  categoryGroup: string;
+  isAutoCalculated?: boolean;
+}
+
+export const DEFAULT_COST_OF_LIVING_ITEMS: CostOfLivingExpenseItem[] = [
+  { id: 'loyer', name: 'Loyer / Crédit Immobilier', amount: 0, categoryGroup: 'logement', isAutoCalculated: true },
+  { id: 'elec', name: 'Électricité / Gaz', amount: 0, categoryGroup: 'logement', isAutoCalculated: true },
+  { id: 'eau', name: 'Eau & Charges', amount: 0, categoryGroup: 'logement', isAutoCalculated: true },
+  { id: 'assurance', name: 'Assurances', amount: 0, categoryGroup: 'sante', isAutoCalculated: true },
+  { id: 'sante', name: 'Santé & Mutuelle', amount: 0, categoryGroup: 'sante', isAutoCalculated: true },
+  { id: 'courses', name: 'Courses Alimentaires', amount: 0, categoryGroup: 'alimentation', isAutoCalculated: true },
+  { id: 'restaurants', name: 'Restaurants & Restauration', amount: 0, categoryGroup: 'restaurants', isAutoCalculated: true },
+  { id: 'cafes', name: 'Cafés, Bars & Sorties', amount: 0, categoryGroup: 'restaurants', isAutoCalculated: true },
+  { id: 'carburant', name: 'Carburant & Péages', amount: 0, categoryGroup: 'transport', isAutoCalculated: true },
+  { id: 'transports', name: 'Transports en commun', amount: 0, categoryGroup: 'transport', isAutoCalculated: true },
+  { id: 'telecom', name: 'Box Internet & Mobiles', amount: 0, categoryGroup: 'abonnements', isAutoCalculated: true },
+  { id: 'streaming', name: 'Streaming, Cloud & Services', amount: 0, categoryGroup: 'abonnements', isAutoCalculated: true },
+  { id: 'loisirs', name: 'Loisirs, Sorties & Culture', amount: 0, categoryGroup: 'loisirs', isAutoCalculated: true },
+  { id: 'sport', name: 'Sport & Bien-être', amount: 0, categoryGroup: 'loisirs', isAutoCalculated: true },
+  { id: 'shopping', name: 'Shopping & Équipement', amount: 0, categoryGroup: 'shopping', isAutoCalculated: true },
+  { id: 'frais_bancaires', name: 'Frais bancaires & Cotisations', amount: 0, categoryGroup: 'bancaire', isAutoCalculated: true },
+];
+
 /**
  * Dictionnaire statique de synonymes et mots-clés pour le calcul des médianes du simulateur "Coût de la vie".
  * Permet de rattacher avec rigueur les opérations réelles de relevés bancaires aux postes budgétaires.

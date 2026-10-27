@@ -27,7 +27,11 @@ import {
   parseInstallmentDetails,
   getSubscriptionMetadata
 } from '../src/lib/bankUtils.ts';
-import { matchesCostOfLivingItem } from '../src/lib/kpiUtils.ts';
+import { 
+  matchesCostOfLivingItem, 
+  DEFAULT_COST_OF_LIVING_ITEMS, 
+  CATEGORY_GROUPS_CONFIG 
+} from '../src/lib/kpiUtils.ts';
 
 test('1. DÉTECTION DU NOM DE BANQUE (detectBankName)', () => {
   assert.equal(
@@ -867,4 +871,52 @@ test('13. COÛT DE LA VIE ET HARMONISATION UNIVERSELLE DES DATES', () => {
     false,
     'Le cinéma ne doit pas être affecté aux abonnements streaming'
   );
+});
+
+test('14. FUSION ET COMPLÉMENTARITÉ : COÛT DE LA VIE ET FIXATION DU BUDGET DANS UNE INTERFACE UNIFIÉE', () => {
+  // 14.1: Vérification de l exhaustivité des 9 univers de dépenses
+  assert.equal(CATEGORY_GROUPS_CONFIG.length, 9, 'Il doit y avoir exactement 9 univers thématiques');
+  const groupIds = CATEGORY_GROUPS_CONFIG.map(g => g.id);
+  assert.ok(groupIds.includes('restaurants'), 'Les restaurants doivent avoir leur univers dédié');
+  assert.ok(groupIds.includes('abonnements'), 'Les abonnements numériques doivent avoir leur univers dédié');
+  assert.ok(groupIds.includes('loisirs'), 'Les loisirs & sport doivent avoir leur univers dédié');
+
+  // 14.2: Les 16 postes par défaut couvrent l ensemble des univers
+  assert.equal(DEFAULT_COST_OF_LIVING_ITEMS.length, 16, 'Il doit y avoir 16 postes de charges par défaut');
+  assert.ok(DEFAULT_COST_OF_LIVING_ITEMS.some(i => i.name === 'Cafés, Bars & Sorties'), 'Le poste Cafés doit exister');
+  assert.ok(DEFAULT_COST_OF_LIVING_ITEMS.some(i => i.name === 'Carburant & Péages'), 'Le poste Carburant & Péages doit exister');
+  assert.ok(DEFAULT_COST_OF_LIVING_ITEMS.some(i => i.name === 'Transports en commun'), 'Le poste Transports en commun doit exister');
+
+  // 14.3: Synchronisation directe : Le Budget Alloué est la somme des charges fixées dans Coût de la vie
+  const userConfiguredItems = DEFAULT_COST_OF_LIVING_ITEMS.map(item => {
+    if (item.name === 'Loyer / Crédit Immobilier') return { ...item, amount: 750 };
+    if (item.name === 'Courses Alimentaires') return { ...item, amount: 350 };
+    if (item.name === 'Carburant & Péages') return { ...item, amount: 120 };
+    return { ...item, amount: 0 };
+  });
+
+  const totalAllocated = userConfiguredItems.reduce((sum, i) => sum + i.amount, 0);
+  assert.equal(totalAllocated, 1220, 'Le Budget Alloué total doit être la somme exacte des postes calibrés (750 + 350 + 120 = 1220 €)');
+
+  // 14.4: Confronter avec les dépenses réelles du mois
+  const monthTransactions = [
+    { id: 't1', date: '2026-10-02', rawLabel: 'VIR LOYER', cleanLabel: 'Loyer', amount: 750, rawAmount: -750, category: 'Logement' },
+    { id: 't2', date: '2026-10-05', rawLabel: 'CB INTERMARCHE', cleanLabel: 'Intermarché', amount: 92.50, rawAmount: -92.50, category: 'Alimentation & Courses' },
+    { id: 't3', date: '2026-10-07', rawLabel: 'CB APRR AUTOROUTE', cleanLabel: 'Aprr Autoroute', amount: 20.50, rawAmount: -20.50, category: 'Transports & Carburant' },
+    { id: 't4', date: '2026-10-10', rawLabel: 'CB TOTAL STATION', cleanLabel: 'Total', amount: 45.00, rawAmount: -45.00, category: 'Transports & Carburant' }
+  ];
+
+  // Calcul du réel pour Carburant & Péages
+  let realSpentCarburant = 0;
+  monthTransactions.forEach(tx => {
+    if (matchesCostOfLivingItem(tx as any, 'Carburant & Péages')) {
+      realSpentCarburant += tx.amount;
+    }
+  });
+
+  assert.equal(realSpentCarburant, 65.50, 'Aprr (20.50) + Total (45.00) = 65.50 € dépensés en Carburant & Péages');
+  const carburantItem = userConfiguredItems.find(i => i.name === 'Carburant & Péages');
+  assert.ok(carburantItem);
+  const diffCarburant = carburantItem.amount - realSpentCarburant; // 120 - 65.50 = +54.50 € restant
+  assert.equal(diffCarburant, 54.50, 'L écart budgétaire restant doit être de 54.50 €');
 });

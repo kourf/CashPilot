@@ -2957,7 +2957,9 @@ export const BankStatements: React.FC = () => {
           isOpen={isCostOfLivingDrawerOpen} 
           onClose={() => setIsCostOfLivingDrawerOpen(false)} 
           onBack={handleBackToTools}
-          bankTransactions={bankTransactions} 
+          bankTransactions={bankTransactions}
+          monthTransactions={monthScopedTransactions}
+          allTransactions={bankTransactions} 
         />
       )}
       {isSpendingHabitsDrawerOpen && (
