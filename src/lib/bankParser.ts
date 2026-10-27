@@ -706,6 +706,27 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     return { cleanDesc: cleanDesc || 'Frais Bancaires', flowType: 'FIXED_EXPENSE', category: 'Frais bancaires', isSubscription: false };
   }
 
+  // Prélèvements et Abonnements récurrents génériques (PRLV, PRELEVEMENT, ECHEANCE, ABONNEMENT, FORFAIT)
+  if (
+    amount < 0 && (
+      norm.includes('prlv') ||
+      norm.includes('prelevement') ||
+      norm.includes('abonnement') ||
+      norm.includes('forfait') ||
+      norm.includes('echeance') ||
+      norm.includes('cotis')
+    )
+  ) {
+    if (!norm.includes('vir ') && !norm.includes('virement')) {
+      return {
+        cleanDesc: cleanDesc || 'Prélèvement Récurrent',
+        flowType: 'FIXED_EXPENSE',
+        category: 'Abonnements & Télécom',
+        isSubscription: true
+      };
+    }
+  }
+
   // 9. Dépenses Variables (Consommation courante)
   // Alimentation & Courses
   if (

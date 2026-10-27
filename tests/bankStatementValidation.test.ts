@@ -393,6 +393,26 @@ test('9. OUTIL ABONNEMENTS : DÉTECTION ÉVOLUTION DES PRIX, HISTORIQUE ET AIDE 
   const netflixRep = uniqueSubs.find(s => normalizeSubscriptionServiceKey(s) === 'netflix');
   assert.equal(Math.abs(netflixRep?.amount || 0), 15.99, 'La transaction représentative doit être celle au tarif le plus récent');
   assert.ok(totalMonthly > 0, 'Le total mensuel doit être strictement positif');
+
+  // Test 9.9: Modèle BankTransaction (avec amount positif absolu et rawAmount négatif) & Prélèvement générique CSV
+  const txBankModel = {
+    id: 'tx_csv_1',
+    date: '2026-03-12',
+    description: 'Prélèvement Abonnement',
+    rawLabel: 'PRLV SEPA 987654 ADHESION MENSUELLE',
+    amount: 29.90, // format stocké positif dans bankTransactions
+    rawAmount: -29.90,
+    type: 'debit',
+    flowType: 'FIXED_EXPENSE',
+    isSubscription: true
+  };
+  assert.equal(isSubscriptionOrRecurringDebit(txBankModel as any), true, 'Doit reconnaître le modèle BankTransaction avec amount positif');
+
+  // Test 9.10: Classification automatique des prélèvements génériques dans classifyTransaction
+  const classifiedGeneric = classifyTransaction('PRLV SEPA 987654 ADHESION MENSUELLE', -29.90);
+  assert.equal(classifiedGeneric.isSubscription, true, 'Tout prélèvement SEPA débit doit être automatiquement flaggué isSubscription');
+  assert.equal(classifiedGeneric.flowType, 'FIXED_EXPENSE');
+  assert.equal(classifiedGeneric.category, 'Abonnements & Télécom');
 });
 
 test('10. SIMULATEUR COÛT DE LA VIE : RÉINITIALISATION À 0 € ET PRÉSERVATION DES POSTES PAR DÉFAUT', () => {

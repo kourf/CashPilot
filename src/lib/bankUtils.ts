@@ -760,23 +760,61 @@ export function areSubscriptionKeysMatching(key1: string, key2: string): boolean
 }
 
 /**
+ * Détermine si une transaction est un débit (dépense/sortie d'argent)
+ * Prend en compte les montants négatifs (rawAmount < 0 ou amount < 0)
+ * ainsi que les montants positifs absolus (amount > 0 avec type='debit' ou flowType!='INCOME')
+ */
+export function isDebitTransaction(tx: any): boolean {
+  if (!tx) return false;
+
+  // 1. Rejet explicite des crédits et revenus
+  if (tx.type === 'credit' || tx.direction === 'credit') return false;
+  if (typeof tx.rawAmount === 'number' && tx.rawAmount > 0) return false;
+  if (tx.flowType === 'INCOME') return false;
+
+  // 2. Débit explicite
+  if (tx.type === 'debit' || tx.direction === 'debit') return true;
+  if (typeof tx.rawAmount === 'number' && tx.rawAmount < 0) return true;
+  if (typeof tx.amount === 'number' && tx.amount < 0) return true;
+  if (tx.flowType === 'FIXED_EXPENSE' || tx.flowType === 'VARIABLE_EXPENSE') return true;
+
+  // 3. Montant positif sans mention INCOME
+  if (typeof tx.amount === 'number' && tx.amount > 0) return true;
+
+  return true;
+}
+
+/**
  * Détermine si une opération correspond à un abonnement ou un prélèvement récurrent
  */
 export function isSubscriptionOrRecurringDebit(tx: {
   amount?: number;
+  rawAmount?: number;
+  type?: string;
+  direction?: string;
+  flowType?: string;
   rawLabel?: string;
   cleanLabel?: string;
   description?: string;
   category?: string;
   isSubscription?: boolean;
 }): boolean {
-  if ((Number(tx.amount) || 0) >= 0) return false;
-  if (tx.isSubscription) return true;
+  // Sécurité absolue : doit être un débit
+  if (!isDebitTransaction(tx)) return false;
+
+  // Flag explicite
+  if (tx.isSubscription === true) return true;
 
   const cat = (tx.category || '').toLowerCase();
-  if (cat.includes('abonnement') || cat.includes('télécom') || cat.includes('telecom')) return true;
+  if (
+    cat.includes('abonnement') || 
+    cat.includes('télécom') || 
+    cat.includes('telecom')
+  ) {
+    return true;
+  }
 
-  const raw = `${tx.rawLabel || ''} ${tx.cleanLabel || ''} ${tx.description || ''}`.toLowerCase();
+  const raw = `${tx.rawLabel || ''} ${tx.cleanLabel || ''} ${tx.description || ''} ${tx.category || ''}`.toLowerCase();
 
   // Mots-clés de prélèvements et contrats réguliers
   if (
@@ -786,8 +824,14 @@ export function isSubscriptionOrRecurringDebit(tx: {
     raw.includes('cotisation') ||
     raw.includes('abonnement') ||
     raw.includes('forfait') ||
-    raw.includes('echeance')
+    raw.includes('echeance') ||
+    raw.includes('sepa') ||
+    raw.includes('mensuel')
   ) {
+    // Exclure les virements ponctuels
+    if ((raw.includes('vir ') || raw.includes('virement')) && !raw.includes('permanent')) {
+      return false;
+    }
     return true;
   }
 
@@ -797,10 +841,17 @@ export function isSubscriptionOrRecurringDebit(tx: {
     'canal', 'free mobile', 'freebox', 'orange', 'sfr', 'bouygues',
     'totalenergies', 'edf', 'engie', 'veolia', 'suez', 'sogessur',
     'macif', 'maif', 'matmut', 'allianz', 'axa', 'alan', 'basic fit',
-    'fitness park', 'swype', 'sobrio', 'icloud', 'chatgpt'
+    'fitness park', 'keep cool', 'swype', 'sobrio', 'icloud', 'chatgpt', 'apple.com'
   ];
 
-  return knownServices.some(s => raw.includes(s));
+  if (knownServices.some(s => raw.includes(s))) return true;
+
+  // Charges récurrentes (Assurances, Logement & Énergie)
+  if (cat.includes('assurance') || cat.includes('logement & énergie') || cat.includes('energie') || cat.includes('frais bancaires')) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -808,17 +859,17 @@ export function isSubscriptionOrRecurringDebit(tx: {
  * Compare l'ensemble des mois disponibles (pas seulement les deux derniers) pour détecter toute hausse ou baisse.
  */
 export function detectSubscriptionEvolution(
-  currentTx: { amount: number; date?: string; cleanLabel?: string; rawLabel?: string; description?: string; category?: string; isSubscription?: boolean },
-  allTransactions: Array<{ amount: number; date: string; cleanLabel?: string; rawLabel?: string; description?: string; category?: string; isSubscription?: boolean }>
+  currentTx: { amount: number; rawAmount?: number; date?: string; cleanLabel?: string; rawLabel?: string; description?: string; category?: string; isSubscription?: boolean; type?: string; flowType?: string },
+  allTransactions: Array<{ amount: number; rawAmount?: number; date: string; cleanLabel?: string; rawLabel?: string; description?: string; category?: string; isSubscription?: boolean; type?: string; flowType?: string }>
 ): SubscriptionPriceEvolution {
   const serviceKey = normalizeSubscriptionServiceKey(currentTx);
   const serviceName = currentTx.cleanLabel || cleanMerchantDescription(currentTx.rawLabel || currentTx.description || '') || currentTx.description || currentTx.rawLabel || 'Abonnement';
-  const currAmt = Math.abs(Number(currentTx.amount) || 0);
+  const currAmt = Math.abs(Number(currentTx.amount !== undefined ? currentTx.amount : currentTx.rawAmount) || 0);
 
   // Rechercher toutes les opérations correspondantes dans l'historique (débits uniquement)
   const matches = (allTransactions || [])
     .filter(t => {
-      if ((Number(t.amount) || 0) >= 0) return false;
+      if (!isDebitTransaction(t)) return false;
       const k = normalizeSubscriptionServiceKey(t);
       return areSubscriptionKeysMatching(k, serviceKey);
     })
@@ -830,7 +881,7 @@ export function detectSubscriptionEvolution(
   matches.forEach(m => {
     const d = m.date || '';
     const monthKey = d.substring(0, 7) || 'releve';
-    const amt = Math.abs(Number(m.amount) || 0);
+    const amt = Math.abs(Number(m.amount !== undefined ? m.amount : m.rawAmount) || 0);
     monthMap.set(monthKey, {
       date: d,
       amount: amt,
@@ -956,7 +1007,20 @@ export function extractUniqueActiveSubscriptions(
   const pool = (allTransactions && allTransactions.length > 0) ? allTransactions : scopedTransactions;
 
   // Filtrer les débits récurrents / abonnements / prélèvements
-  const recurringTxs = pool.filter(t => isSubscriptionOrRecurringDebit(t));
+  let recurringTxs = pool.filter(t => isSubscriptionOrRecurringDebit(t));
+
+  // Fallback de sécurité : si aucun prélèvement n'a été détecté avec les filtres stricts,
+  // inclure tous les débits marqués isSubscription, ou avec category Abonnements / Assurances / Charges fixes
+  if (recurringTxs.length === 0) {
+    recurringTxs = pool.filter(t => isDebitTransaction(t) && (
+      Boolean(t.isSubscription) ||
+      t.category === 'Abonnements & Télécom' ||
+      t.category === 'Abonnements' ||
+      t.category === 'Assurances' ||
+      t.category === 'Charges fixes' ||
+      t.flowType === 'FIXED_EXPENSE'
+    ));
+  }
 
   // Regrouper par clé de service canonique
   const groups = new Map<string, BankTransaction[]>();
@@ -981,12 +1045,17 @@ export function extractUniqueActiveSubscriptions(
 
     if (representative) {
       uniqueSubs.push(representative);
-      totalMonthly += Math.abs(Number(representative.amount) || 0);
+      const amt = Math.abs(Number(representative.amount !== undefined ? representative.amount : representative.rawAmount) || 0);
+      totalMonthly += amt;
     }
   });
 
   // Trier par montant décroissant
-  uniqueSubs.sort((a, b) => Math.abs(Number(b.amount) || 0) - Math.abs(Number(a.amount) || 0));
+  uniqueSubs.sort((a, b) => {
+    const amtA = Math.abs(Number(a.amount !== undefined ? a.amount : a.rawAmount) || 0);
+    const amtB = Math.abs(Number(b.amount !== undefined ? b.amount : b.rawAmount) || 0);
+    return amtB - amtA;
+  });
 
   return {
     subscriptions: uniqueSubs,
@@ -998,7 +1067,18 @@ export function extractUniqueActiveSubscriptions(
  * Calcule les métriques d'abonnements récurrents et charges associées
  */
 export function calculateSubscriptionSummary(transactions: BankTransaction[]): SubscriptionSummary {
-  const recurring = transactions.filter(t => isSubscriptionOrRecurringDebit(t));
+  let recurring = transactions.filter(t => isSubscriptionOrRecurringDebit(t));
+
+  if (recurring.length === 0) {
+    recurring = transactions.filter(t => isDebitTransaction(t) && (
+      Boolean(t.isSubscription) ||
+      t.category === 'Abonnements & Télécom' ||
+      t.category === 'Abonnements' ||
+      t.category === 'Assurances' ||
+      t.category === 'Charges fixes' ||
+      t.flowType === 'FIXED_EXPENSE'
+    ));
+  }
 
   const seenKeys = new Set<string>();
   const uniqueItems: BankTransaction[] = [];
@@ -1009,7 +1089,8 @@ export function calculateSubscriptionSummary(transactions: BankTransaction[]): S
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       uniqueItems.push(t);
-      totalMonthly += Math.abs(Number(t.amount) || 0);
+      const amt = Math.abs(Number(t.amount !== undefined ? t.amount : t.rawAmount) || 0);
+      totalMonthly += amt;
     }
   });
 

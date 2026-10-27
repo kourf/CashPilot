@@ -97,6 +97,9 @@ import {
   cleanMerchantDescription,
   calculateSubscriptionSummary,
   extractUniqueActiveSubscriptions,
+  isSubscriptionOrRecurringDebit,
+  isDebitTransaction,
+  normalizeSubscriptionServiceKey,
   formatMonthLabel,
   formatDateFR,
   formatCurrency,
@@ -280,10 +283,35 @@ export const BankStatements: React.FC = () => {
 
   // AI Subscription Optimizer Drawer State
   const handleOpenSubscriptionsAudit = () => {
-    const { subscriptions, totalMonthly } = extractUniqueActiveSubscriptions(
+    let { subscriptions, totalMonthly } = extractUniqueActiveSubscriptions(
       monthScopedTransactions.length > 0 ? monthScopedTransactions : bankTransactions,
       bankTransactions
     );
+
+    // Fallback de sécurité : si subscriptions est vide, chercher directement dans bankTransactions
+    if (subscriptions.length === 0) {
+      const pool = bankTransactions.length > 0 ? bankTransactions : monthScopedTransactions;
+      const fallbackList = pool.filter(t => isDebitTransaction(t) && (
+        isSubscriptionOrRecurringDebit(t) ||
+        Boolean(t.isSubscription) ||
+        t.category === 'Abonnements & Télécom' ||
+        t.category === 'Abonnements' ||
+        t.category === 'Assurances' ||
+        t.category === 'Charges fixes' ||
+        t.flowType === 'FIXED_EXPENSE'
+      ));
+
+      const seen = new Set<string>();
+      fallbackList.forEach(t => {
+        const k = normalizeSubscriptionServiceKey(t);
+        if (!seen.has(k)) {
+          seen.add(k);
+          subscriptions.push(t);
+          totalMonthly += Math.abs(Number(t.amount !== undefined ? t.amount : t.rawAmount) || 0);
+        }
+      });
+      totalMonthly = Math.round(totalMonthly * 100) / 100;
+    }
 
     setAuditType('subscriptions');
     setAuditCustomTitle('Abonnements & Prélèvements');
@@ -524,12 +552,23 @@ export const BankStatements: React.FC = () => {
         }
       }
 
+      const rawTextUpperCheck = `${rawDesc} ${cleanDesc}`.toUpperCase();
       let isSubscription = t.isSubscription !== undefined 
         ? Boolean(t.isSubscription) 
-        : (category === 'Abonnements & Télécom' || smart.isSubscription);
+        : (category === 'Abonnements & Télécom' || category === 'Abonnements' || smart.isSubscription);
+
+      if (amount < 0 && (
+        rawTextUpperCheck.includes('PRLV') ||
+        rawTextUpperCheck.includes('PRELEVEMENT') ||
+        rawTextUpperCheck.includes('COTIS') ||
+        rawTextUpperCheck.includes('ABONNEMENT') ||
+        rawTextUpperCheck.includes('FORFAIT') ||
+        rawTextUpperCheck.includes('ECHEANCE')
+      )) {
+        isSubscription = true;
+      }
 
       // Sécurité anti-faux-positifs : Les encaissements et virements ponctuels ne sont JAMAIS des abonnements
-      const rawTextUpperCheck = `${rawDesc} ${cleanDesc}`.toUpperCase();
       if (amount > 0 || ((rawTextUpperCheck.includes('VIR ') || rawTextUpperCheck.includes('VIREMENT')) && !rawTextUpperCheck.includes('PERMANENT'))) {
         isSubscription = false;
       }
