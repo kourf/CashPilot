@@ -20,8 +20,10 @@ import {
   detectSubscriptionEvolution,
   normalizeSubscriptionServiceKey,
   extractUniqueActiveSubscriptions,
-  isSubscriptionOrRecurringDebit
+  isSubscriptionOrRecurringDebit,
+  isDebitTransaction
 } from '../src/lib/bankUtils.ts';
+import { matchesCostOfLivingItem } from '../src/lib/kpiUtils.ts';
 
 test('1. DÉTECTION DU NOM DE BANQUE (detectBankName)', () => {
   assert.equal(
@@ -432,4 +434,145 @@ test('10. SIMULATEUR COÛT DE LA VIE : RÉINITIALISATION À 0 € ET PRÉSERVATI
   const handledDefaultRemoval = defaultItems.map(item => item.id === 'loyer' ? { ...item, amount: 0 } : item);
   assert.equal(handledDefaultRemoval.find(i => i.id === 'loyer')?.amount, 0);
   assert.equal(handledDefaultRemoval.length, 3, 'La ligne Loyer ne doit pas disparaître');
+});
+
+test('11. FIXATION DU BUDGET : DÉPENSES RÉELLES DU RELEVÉ BANCAIRE (RB) ET ÉCART BUDGÉTAIRE', () => {
+  // Jeu d'opérations bancaires réelles issues d'un relevé bancaire (RB)
+  // Remarque : dans Firestore et l'état React, amount est stocké en valeur positive absolue,
+  // et la nature débit est portée par rawAmount < 0 ou flowType ou type: 'debit'.
+  const rbTransactions = [
+    {
+      id: 'tx_loyer_1',
+      date: '2026-03-05',
+      rawLabel: 'VIR SEPA LOYER MARS 2026',
+      cleanLabel: 'Loyer',
+      amount: 450.00,
+      rawAmount: -450.00,
+      flowType: 'FIXED_EXPENSE',
+      category: 'Logement'
+    },
+    {
+      id: 'tx_courses_1',
+      date: '2026-03-08',
+      rawLabel: 'CARTE 08/03 CARREFOUR MARKET ANNEMASSE',
+      cleanLabel: 'Carrefour Market',
+      amount: 65.50,
+      rawAmount: -65.50,
+      flowType: 'VARIABLE_EXPENSE',
+      category: 'Alimentation & Supermarché'
+    },
+    {
+      id: 'tx_resto_1',
+      date: '2026-03-12',
+      rawLabel: 'CARTE 12/03 RESTAURANT LE BISTROT',
+      cleanLabel: 'Le Bistrot',
+      amount: 42.00,
+      rawAmount: -42.00,
+      flowType: 'VARIABLE_EXPENSE',
+      category: 'Restaurants & Sorties'
+    },
+    {
+      id: 'tx_shopping_1',
+      date: '2026-03-15',
+      rawLabel: 'CARTE 15/03 ZARA VETEMENTS',
+      cleanLabel: 'Zara',
+      amount: 35.00,
+      rawAmount: -35.00,
+      flowType: 'VARIABLE_EXPENSE',
+      category: 'Shopping & Maison'
+    },
+    {
+      id: 'tx_salaire_1',
+      date: '2026-03-28',
+      rawLabel: 'VIR SEPA SALAIRE ENTREPRISE ACME',
+      cleanLabel: 'Salaire',
+      amount: 2100.00,
+      rawAmount: 2100.00,
+      flowType: 'INCOME',
+      category: 'Revenus'
+    },
+    {
+      id: 'tx_vir_interne_1',
+      date: '2026-03-10',
+      rawLabel: 'VIR INTERNE VERS LIVRET A',
+      cleanLabel: 'Virement vers Livret A',
+      amount: 200.00,
+      rawAmount: -200.00,
+      isInternalTransfer: true,
+      flowType: 'SAVINGS_TRANSFER',
+      category: 'Épargne'
+    }
+  ];
+
+  // 11.1: Détection universelle des transactions de dépense (isDebitTransaction)
+  // Doit identifier correctement les 4 dépenses et exclure salaire & virement interne
+  const isExpense = (t: any) => {
+    if (!isDebitTransaction(t)) return false;
+    if (t.isInternalTransfer) return false;
+    if (t.flowType === 'SAVINGS_TRANSFER' || t.flowType === 'INCOME') return false;
+    const cat = (t.category || '').toLowerCase();
+    if (cat.includes('virement interne') || cat.includes('épargne')) return false;
+    return true;
+  };
+
+  const detectedExpenses = rbTransactions.filter(isExpense);
+  assert.equal(detectedExpenses.length, 4, 'Doit détecter exactement 4 dépenses réelles');
+  assert.equal(detectedExpenses.some(t => t.id === 'tx_salaire_1'), false, 'Le salaire ne doit pas être une dépense');
+  assert.equal(detectedExpenses.some(t => t.id === 'tx_vir_interne_1'), false, 'Le virement interne ne doit pas être une dépense');
+
+  // 11.2: Rapprochement avec les postes budgétaires calibrés
+  const postList = [
+    { id: 'loyer', name: 'Loyer / Crédit Immobilier', group: 'logement', defaultBudget: 500 },
+    { id: 'courses', name: 'Courses Alimentaires', group: 'alimentation', defaultBudget: 200 }
+  ];
+
+  // Matched IDs pour ventiler les dépenses
+  const matchedTxIds = new Set<string>();
+
+  // Calcul poste Loyer
+  const loyerMatches = detectedExpenses.filter(t => {
+    const matches = matchesCostOfLivingItem(t as any, 'Loyer / Crédit Immobilier');
+    if (matches) matchedTxIds.add(t.id);
+    return matches;
+  });
+  assert.equal(loyerMatches.length, 1);
+  assert.equal(loyerMatches[0].amount, 450);
+
+  // Calcul poste Courses
+  const coursesMatches = detectedExpenses.filter(t => {
+    const matches = matchesCostOfLivingItem(t as any, 'Courses Alimentaires');
+    if (matches) matchedTxIds.add(t.id);
+    return matches;
+  });
+  assert.equal(coursesMatches.length, 1);
+  assert.equal(coursesMatches[0].amount, 65.50);
+
+  // 11.3: Dépenses réelles non budgétées issues directement du RB (Restaurants & Shopping)
+  // Ne doivent JAMAIS être ignorées ni mises à 0 €
+  const remainingExpenses = detectedExpenses.filter(t => !matchedTxIds.has(t.id));
+  assert.equal(remainingExpenses.length, 2, 'Les 2 dépenses hors budget de base doivent être capturées');
+
+  const rbCategoryGroups: Record<string, typeof rbTransactions> = {};
+  remainingExpenses.forEach(tx => {
+    const cat = tx.category || 'Autre';
+    if (!rbCategoryGroups[cat]) rbCategoryGroups[cat] = [];
+    rbCategoryGroups[cat].push(tx);
+  });
+
+  const restoTxs = rbCategoryGroups['Restaurants & Sorties'];
+  assert.ok(restoTxs, 'La catégorie "Restaurants & Sorties" issue du RB doit exister');
+  assert.equal(restoTxs.reduce((sum, t) => sum + t.amount, 0), 42.00, 'Dépense réelle restaurant = 42 €');
+
+  const shoppingTxs = rbCategoryGroups['Shopping & Maison'];
+  assert.ok(shoppingTxs, 'La catégorie "Shopping & Maison" issue du RB doit exister');
+  assert.equal(shoppingTxs.reduce((sum, t) => sum + t.amount, 0), 35.00, 'Dépense réelle shopping = 35 €');
+
+  // 11.4: Calcul exact de l'écart budgétaire global
+  const totalBudgetAllocated = postList.reduce((sum, p) => sum + p.defaultBudget, 0); // 500 + 200 = 700 €
+  const totalRealSpent = detectedExpenses.reduce((sum, t) => sum + t.amount, 0); // 450 + 65.5 + 42 + 35 = 592.50 €
+  const totalDiff = totalBudgetAllocated - totalRealSpent; // 700 - 592.50 = +107.50 € (reste à dépenser)
+
+  assert.equal(totalBudgetAllocated, 700.00);
+  assert.equal(totalRealSpent, 592.50, 'Les dépenses réelles ne doivent JAMAIS valoir 0,00 €');
+  assert.equal(totalDiff, 107.50, 'L écart budgétaire net doit être strictement exact');
 });

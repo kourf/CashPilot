@@ -589,7 +589,12 @@ export const COST_OF_LIVING_SYNONYMS: Record<string, {
  */
 export const matchesCostOfLivingItem = (tx: Transaction, itemName: string): boolean => {
   const mapping = COST_OF_LIVING_SYNONYMS[itemName];
-  if (!mapping) return false;
+  if (!mapping) {
+    const normItem = itemName.toLowerCase();
+    const rawLabel = (tx.cleanLabel || tx.rawLabel || tx.description || '').toLowerCase();
+    const txCat = (tx.category || '').toLowerCase();
+    return txCat === normItem || txCat.includes(normItem) || normItem.includes(txCat) || rawLabel.includes(normItem);
+  }
 
   const rawLabel = (tx.cleanLabel || tx.rawLabel || tx.description || '').toLowerCase();
   const txCat = (tx.category || '').toLowerCase();

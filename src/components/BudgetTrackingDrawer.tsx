@@ -16,9 +16,17 @@ import {
   Layers,
   ArrowUpRight,
   ArrowLeft,
-  TrendingDown
+  TrendingDown,
+  Utensils,
+  ShoppingBag,
+  Sparkles,
+  Landmark,
+  Scale,
+  Receipt,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
-import { formatCurrency, type BankTransaction } from '../lib/bankUtils';
+import { formatCurrency, formatDateFR, isDebitTransaction, type BankTransaction } from '../lib/bankUtils';
 import { matchesCostOfLivingItem } from '../lib/kpiUtils';
 
 export interface BudgetTrackingDrawerProps {
@@ -38,6 +46,9 @@ interface BudgetItemRow {
   diff: number; // budgetAllocated - realSpent (>0: restant, <0: dépassé)
   percentage: number;
   icon: React.ElementType;
+  isFromRB: boolean;
+  txCount: number;
+  transactions: BankTransaction[];
 }
 
 const DEFAULT_POSTS = [
@@ -52,6 +63,24 @@ const DEFAULT_POSTS = [
   { id: 'telecom', name: 'Abonnements & Télécom', group: 'abonnements', icon: Tv, defaultBudget: 0 }
 ];
 
+const getCategoryIcon = (name: string): React.ElementType => {
+  const norm = (name || '').toLowerCase();
+  if (norm.includes('loyer') || norm.includes('logement') || norm.includes('crédit immo') || norm.includes('credit immo')) return Home;
+  if (norm.includes('élec') || norm.includes('elec') || norm.includes('gaz') || norm.includes('energie') || norm.includes('énergie')) return Zap;
+  if (norm.includes('eau')) return Droplet;
+  if (norm.includes('assur')) return Shield;
+  if (norm.includes('santé') || norm.includes('mutuelle') || norm.includes('sante') || norm.includes('pharma')) return HeartPulse;
+  if (norm.includes('course') || norm.includes('aliment') || norm.includes('supermarché') || norm.includes('courses')) return ShoppingCart;
+  if (norm.includes('carburant') || norm.includes('transport') || norm.includes('péage') || norm.includes('peage') || norm.includes('essence')) return Car;
+  if (norm.includes('abonnement') || norm.includes('télécom') || norm.includes('telecom') || norm.includes('streaming') || norm.includes('forfait')) return Tv;
+  if (norm.includes('restaurant') || norm.includes('sortie') || norm.includes('bar') || norm.includes('café') || norm.includes('fast food') || norm.includes('boulangerie')) return Utensils;
+  if (norm.includes('shopping') || norm.includes('maison') || norm.includes('vêtement') || norm.includes('mode')) return ShoppingBag;
+  if (norm.includes('loisir') || norm.includes('activité') || norm.includes('sport') || norm.includes('vacances')) return Sparkles;
+  if (norm.includes('frais') || norm.includes('banque') || norm.includes('bancaire')) return Landmark;
+  if (norm.includes('impôt') || norm.includes('amende') || norm.includes('taxe')) return Scale;
+  return Receipt;
+};
+
 export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
   isOpen,
   onClose,
@@ -60,6 +89,20 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
   allTransactions
 }) => {
   const [costOfLivingItems, setCostOfLivingItems] = useState<any[]>([]);
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+
+  // Helper montant unifié
+  const getTxAmount = (t: BankTransaction) => Math.abs(Number(t.amount !== undefined ? t.amount : t.rawAmount) || 0);
+
+  // Helper filtre dépense universel
+  const isExpense = (t: BankTransaction) => {
+    if (!isDebitTransaction(t)) return false;
+    if (t.isInternalTransfer) return false;
+    if (t.flowType === 'SAVINGS_TRANSFER' || t.flowType === 'INCOME') return false;
+    const cat = (t.category || '').toLowerCase();
+    if (cat.includes('virement interne') || cat.includes('épargne')) return false;
+    return true;
+  };
 
   // 1. Charger les postes budgétés depuis l'outil Coût de la vie (localStorage)
   useEffect(() => {
@@ -79,10 +122,11 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
     // Fallback: calcul des moyennes historiques si l'utilisateur n'a pas encore calibré son coût de la vie
     const sums: Record<string, number> = {};
     const months = new Set<string>();
-    allTransactions.forEach(t => {
-      if (t.amount < 0 && !t.isInternalTransfer) {
-        const amt = Math.abs(t.amount);
-        sums[t.category] = (sums[t.category] || 0) + amt;
+    (allTransactions || []).forEach(t => {
+      if (isExpense(t)) {
+        const amt = getTxAmount(t);
+        const cat = t.category || 'Autre';
+        sums[cat] = (sums[cat] || 0) + amt;
         if (t.monthKey) months.add(t.monthKey);
       }
     });
@@ -111,38 +155,33 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
     setCostOfLivingItems(fallbackItems);
   }, [isOpen, allTransactions]);
 
-  // 2. Calcul dynamique ligne par ligne : Budget Alloué vs Dépense Réelle du mois
+  // 2. Calcul dynamique ligne par ligne : Budget Alloué vs Dépense Réelle du relevé
   const budgetRows: BudgetItemRow[] = useMemo(() => {
-    // Liste des dépenses réelles du mois
-    const expenseTxs = monthTransactions.filter(t => t.amount < 0 && !t.isInternalTransfer);
+    // Détecter toutes les dépenses réelles du relevé
+    const targetTxs = (monthTransactions && monthTransactions.length > 0) ? monthTransactions : (allTransactions || []);
+    const expenseTxs = targetTxs.filter(isExpense);
 
     const postList = costOfLivingItems.length > 0 ? costOfLivingItems : DEFAULT_POSTS;
     const matchedTxIds = new Set<string>();
 
+    // A. Traiter les postes calibrés au simulateur
     const rows: BudgetItemRow[] = postList.map((item, idx) => {
       const itemName = item.name || 'Poste';
       const budgeted = Number(item.amount) || 0;
 
-      // Calcul dynamique des dépenses réelles rattachées à ce poste via synonymes & catégories
       let realSpent = 0;
+      const rowTxs: BankTransaction[] = [];
+
       expenseTxs.forEach(tx => {
         if (matchesCostOfLivingItem(tx as any, itemName)) {
-          realSpent += Math.abs(tx.amount);
+          const amt = getTxAmount(tx);
+          realSpent += amt;
+          rowTxs.push(tx);
           if (tx.id) matchedTxIds.add(tx.id);
         }
       });
 
-      // Icône contextuelle
-      let Icon = Layers;
-      if (itemName.includes('Loyer') || itemName.includes('Logement')) Icon = Home;
-      else if (itemName.includes('Électricité') || itemName.includes('Gaz')) Icon = Zap;
-      else if (itemName.includes('Eau')) Icon = Droplet;
-      else if (itemName.includes('Assurance')) Icon = Shield;
-      else if (itemName.includes('Santé') || itemName.includes('Mutuelle')) Icon = HeartPulse;
-      else if (itemName.includes('Courses') || itemName.includes('Alimentation')) Icon = ShoppingCart;
-      else if (itemName.includes('Carburant') || itemName.includes('Transports')) Icon = Car;
-      else if (itemName.includes('Abonnement') || itemName.includes('Télécom')) Icon = Tv;
-
+      const Icon = getCategoryIcon(itemName);
       const diff = budgeted - realSpent;
       const percentage = budgeted > 0 ? (realSpent / budgeted) * 100 : (realSpent > 0 ? 100 : 0);
 
@@ -154,28 +193,50 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
         realSpent: Math.round(realSpent * 100) / 100,
         diff: Math.round(diff * 100) / 100,
         percentage,
-        icon: Icon
+        icon: Icon,
+        isFromRB: false,
+        txCount: rowTxs.length,
+        transactions: rowTxs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       };
     });
 
-    // Optionnel: ajouter les autres dépenses réelles non ventilées dans les postes de base
-    const otherExpenses = expenseTxs.filter(t => !t.id || !matchedTxIds.has(t.id));
-    if (otherExpenses.length > 0) {
-      const otherTotal = otherExpenses.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    // B. Ventiler TOUTES les autres dépenses réelles du relevé par leur vraie catégorie du RB !
+    const remainingExpenses = expenseTxs.filter(t => !t.id || !matchedTxIds.has(t.id));
+    const rbCategoryGroups = new Map<string, BankTransaction[]>();
+
+    remainingExpenses.forEach(tx => {
+      const cat = tx.category || 'Autre';
+      const list = rbCategoryGroups.get(cat) || [];
+      list.push(tx);
+      rbCategoryGroups.set(cat, list);
+    });
+
+    // Trier les catégories réelles du RB par montant dépensé décroissant
+    const sortedRBCategories = Array.from(rbCategoryGroups.entries())
+      .map(([catName, txList]) => {
+        const spent = txList.reduce((sum, tx) => sum + getTxAmount(tx), 0);
+        return { catName, txList, spent };
+      })
+      .sort((a, b) => b.spent - a.spent);
+
+    sortedRBCategories.forEach(({ catName, txList, spent }, idx) => {
       rows.push({
-        id: 'autres_depenses',
-        name: 'Autres Dépenses Courantes',
-        categoryGroup: 'autre',
+        id: `rb_cat_${idx}_${catName}`,
+        name: catName,
+        categoryGroup: 'rb_real',
         budgetAllocated: 0,
-        realSpent: Math.round(otherTotal * 100) / 100,
-        diff: -Math.round(otherTotal * 100) / 100,
+        realSpent: Math.round(spent * 100) / 100,
+        diff: -Math.round(spent * 100) / 100,
         percentage: 100,
-        icon: ArrowUpRight
+        icon: getCategoryIcon(catName),
+        isFromRB: true,
+        txCount: txList.length,
+        transactions: txList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       });
-    }
+    });
 
     return rows;
-  }, [costOfLivingItems, monthTransactions]);
+  }, [costOfLivingItems, monthTransactions, allTransactions]);
 
   // 3. Totaux globaux réconciliés
   const totalAllocated = useMemo(() => {
@@ -248,14 +309,14 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
             {isGlobalOverBudget ? (
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-400">
                 <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                <span className="font-bold text-xs sm:text-sm">
-                  Attention, dépassement global de {formatCurrency(Math.abs(totalRemaining), { showSign: false })}.
+                <span className="text-xs font-extrabold">
+                  Budget dépassé de {formatCurrency(Math.abs(totalRemaining), { showSign: false })} sur ce relevé
                 </span>
               </div>
             ) : (
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
-                <Target className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span className="font-bold text-xs sm:text-sm">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span className="text-xs font-extrabold">
                   Il vous reste {formatCurrency(totalRemaining, { showSign: false })} sur votre budget de ce mois.
                 </span>
               </div>
@@ -310,7 +371,7 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
         <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 overscroll-contain">
           <div className="flex items-center justify-between pb-1">
             <h3 className="text-xs uppercase font-extrabold text-muted-foreground tracking-wider">
-              Ventilation par poste de dépense
+              Ventilation par poste et catégorie réelle du relevé
             </h3>
             <span className="text-[11px] text-muted-foreground font-medium">
               {budgetRows.length} postes audités
@@ -321,7 +382,7 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
           <div className="space-y-2">
             {/* Header du tableau */}
             <div className="hidden sm:grid sm:grid-cols-12 gap-3 px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border/40">
-              <div className="col-span-4">Poste</div>
+              <div className="col-span-4">Poste / Catégorie Relevé</div>
               <div className="col-span-2 text-right">Budget Alloué</div>
               <div className="col-span-2 text-right">Dépense Réelle</div>
               <div className="col-span-2 text-right">Écart</div>
@@ -331,88 +392,144 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
             {budgetRows.map((row) => {
               const Icon = row.icon;
               const isOver = row.diff < 0;
-              const isUnder85 = row.percentage < 85;
               const isAmber = row.percentage >= 85 && row.percentage <= 100;
               
               const progressWidth = Math.min(row.percentage, 100);
               const barColor = isOver ? 'bg-rose-500' : (isAmber ? 'bg-amber-500' : 'bg-emerald-500');
               const badgeBg = isOver ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+              const isExpanded = expandedRowId === row.id;
 
               return (
                 <div 
                   key={row.id}
-                  className="p-3 sm:px-3 sm:py-2.5 rounded-xl bg-card border border-border/70 hover:border-border transition-all flex flex-col sm:grid sm:grid-cols-12 sm:items-center gap-2.5"
+                  className="rounded-xl bg-card border border-border/70 hover:border-border transition-all overflow-hidden"
                 >
-                  {/* Colonne Poste */}
-                  <div className="col-span-4 flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-secondary/80 text-foreground flex items-center justify-center shrink-0 border border-border/50">
-                      <Icon className="w-4 h-4 text-primary" />
+                  <div 
+                    onClick={() => setExpandedRowId(isExpanded ? null : row.id)}
+                    className="p-3 sm:px-3 sm:py-2.5 flex flex-col sm:grid sm:grid-cols-12 sm:items-center gap-2.5 cursor-pointer select-none hover:bg-secondary/20 transition-colors"
+                  >
+                    {/* Colonne Poste */}
+                    <div className="col-span-4 flex items-center gap-2.5 min-w-0">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                        row.isFromRB ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400' : 'bg-secondary/80 border-border/50 text-primary'
+                      }`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-xs sm:text-sm text-foreground truncate block">
+                            {row.name}
+                          </span>
+                          {row.isFromRB && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-400 border border-indigo-500/25">
+                              Relevé Bancaire
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                          <span>{row.txCount} opération{row.txCount > 1 ? 's' : ''}</span>
+                          {row.budgetAllocated === 0 && row.realSpent > 0 && !row.isFromRB && (
+                            <span className="text-amber-500 font-semibold">
+                              Non calibré au simulateur
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <span className="font-bold text-xs sm:text-sm text-foreground truncate block">
-                        {row.name}
-                      </span>
-                      {row.budgetAllocated === 0 && row.realSpent > 0 && (
-                        <span className="text-[9px] text-amber-500 font-semibold block">
-                          Non calibré au simulateur
-                        </span>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Mobile Row : Données récapitulatives sur téléphone */}
-                  <div className="grid grid-cols-3 gap-2 sm:hidden text-center pt-1 border-t border-border/40">
-                    <div>
-                      <span className="text-[9px] text-muted-foreground uppercase block">Alloué</span>
-                      <span className="font-mono text-xs font-bold text-foreground">
-                        {formatCurrency(row.budgetAllocated, { showSign: false })}
-                      </span>
+                    {/* Mobile Row : Données récapitulatives sur téléphone */}
+                    <div className="grid grid-cols-3 gap-2 sm:hidden text-center pt-1 border-t border-border/40">
+                      <div>
+                        <span className="text-[9px] text-muted-foreground uppercase block">Alloué</span>
+                        <span className="font-mono text-xs font-bold text-foreground">
+                          {formatCurrency(row.budgetAllocated, { showSign: false })}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-muted-foreground uppercase block">Réel</span>
+                        <span className="font-mono text-xs font-bold text-foreground">
+                          {formatCurrency(row.realSpent, { showSign: false })}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-muted-foreground uppercase block">Écart</span>
+                        <span className={`font-mono text-xs font-bold ${isOver ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {row.diff >= 0 ? '+' : '-'}{formatCurrency(Math.abs(row.diff), { showSign: false })}
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-[9px] text-muted-foreground uppercase block">Réel</span>
-                      <span className="font-mono text-xs font-bold text-foreground">
-                        {formatCurrency(row.realSpent, { showSign: false })}
-                      </span>
+
+                    {/* Desktop Colonne Budget Alloué */}
+                    <div className="hidden sm:block col-span-2 text-right font-mono text-xs sm:text-sm font-bold text-foreground">
+                      {formatCurrency(row.budgetAllocated, { showSign: false })}
                     </div>
-                    <div>
-                      <span className="text-[9px] text-muted-foreground uppercase block">Écart</span>
-                      <span className={`font-mono text-xs font-bold ${isOver ? 'text-rose-400' : 'text-emerald-400'}`}>
+
+                    {/* Desktop Colonne Dépense Réelle */}
+                    <div className="hidden sm:block col-span-2 text-right font-mono text-xs sm:text-sm font-bold text-foreground">
+                      {formatCurrency(row.realSpent, { showSign: false })}
+                    </div>
+
+                    {/* Desktop Colonne Écart */}
+                    <div className="hidden sm:flex col-span-2 justify-end">
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border font-mono ${badgeBg}`}>
                         {row.diff >= 0 ? '+' : '-'}{formatCurrency(Math.abs(row.diff), { showSign: false })}
                       </span>
                     </div>
-                  </div>
 
-                  {/* Desktop Colonne Budget Alloué */}
-                  <div className="hidden sm:block col-span-2 text-right font-mono text-xs sm:text-sm font-bold text-foreground">
-                    {formatCurrency(row.budgetAllocated, { showSign: false })}
-                  </div>
-
-                  {/* Desktop Colonne Dépense Réelle */}
-                  <div className="hidden sm:block col-span-2 text-right font-mono text-xs sm:text-sm font-bold text-foreground">
-                    {formatCurrency(row.realSpent, { showSign: false })}
-                  </div>
-
-                  {/* Desktop Colonne Écart */}
-                  <div className="hidden sm:flex col-span-2 justify-end">
-                    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border font-mono ${badgeBg}`}>
-                      {row.diff >= 0 ? '+' : '-'}{formatCurrency(Math.abs(row.diff), { showSign: false })}
-                    </span>
-                  </div>
-
-                  {/* Colonne Jauge Visuelle */}
-                  <div className="col-span-2 flex items-center gap-2 pt-1 sm:pt-0">
-                    <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden shadow-inner">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-                        style={{ width: `${progressWidth}%` }}
-                      />
+                    {/* Colonne Jauge Visuelle */}
+                    <div className="col-span-2 flex items-center gap-2 pt-1 sm:pt-0">
+                      <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden shadow-inner">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                          style={{ width: `${progressWidth}%` }}
+                        />
+                      </div>
+                      <span className={`text-[10px] font-mono font-bold shrink-0 w-8 text-right ${
+                        isOver ? 'text-rose-400' : (isAmber ? 'text-amber-400' : 'text-emerald-400')
+                      }`}>
+                        {row.percentage.toFixed(0)}%
+                      </span>
+                      <div className="text-muted-foreground">
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </div>
                     </div>
-                    <span className={`text-[10px] font-mono font-bold shrink-0 w-8 text-right ${
-                      isOver ? 'text-rose-400' : (isAmber ? 'text-amber-400' : 'text-emerald-400')
-                    }`}>
-                      {row.percentage.toFixed(0)}%
-                    </span>
                   </div>
+
+                  {/* Section Dépliante : Liste des opérations réelles du relevé */}
+                  {isExpanded && (
+                    <div className="p-3 bg-secondary/30 border-t border-border/50 text-xs space-y-2 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground uppercase tracking-wider pb-1 border-b border-border/30">
+                        <span>Écritures bancaires réelles associées ({row.txCount})</span>
+                        <span>Montant débit</span>
+                      </div>
+                      {row.transactions.length === 0 ? (
+                        <p className="text-muted-foreground text-center py-2 text-[11px]">
+                          Aucune écriture bancaire enregistrée sur ce poste pour ce relevé.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                          {row.transactions.map((tx, txIdx) => {
+                            const amt = getTxAmount(tx);
+                            return (
+                              <div key={tx.id || txIdx} className="flex items-center justify-between gap-2 py-1 px-2 rounded-lg bg-card/60 border border-border/40 hover:bg-card transition-colors">
+                                <div className="min-w-0 flex items-center gap-2">
+                                  <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                                    {formatDateFR(tx.date)}
+                                  </span>
+                                  <span className="font-semibold text-foreground truncate text-[11px]" title={tx.rawLabel || tx.description}>
+                                    {tx.cleanLabel || tx.description || tx.rawLabel || 'Opération'}
+                                  </span>
+                                </div>
+                                <span className="font-mono font-bold text-foreground shrink-0 text-xs">
+                                  -{formatCurrency(amt, { showSign: false })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -420,7 +537,7 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
 
           {/* Info note */}
           <div className="mt-6 text-center text-xs text-muted-foreground border-t border-border/50 pt-4 pb-2">
-            Le budget théorique est calculé à partir de l'outil <strong>Coût de la vie</strong>. Modifiez-y vos charges pour calibrer vos plafonds mensuels.
+            Le budget théorique est calibré à partir de l'outil <strong>Coût de la vie</strong>. Les catégories non budgétées sont issues directement de votre <strong>Relevé Bancaire (RB)</strong> afin de réconcilier 100% de vos dépenses réelles.
           </div>
         </div>
 
@@ -432,12 +549,11 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold rounded-xl bg-secondary hover:bg-secondary/80 text-foreground transition-colors border border-border/60"
+            className="px-4 py-2 text-xs font-semibold rounded-xl bg-secondary hover:bg-secondary/80 text-foreground transition-colors border border-border/60 cursor-pointer"
           >
             Fermer
           </button>
         </div>
-
       </div>
     </div>
   );
