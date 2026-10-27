@@ -54,13 +54,20 @@ interface BudgetItemRow {
 const DEFAULT_POSTS = [
   { id: 'loyer', name: 'Loyer / Crédit Immobilier', group: 'logement', icon: Home, defaultBudget: 0 },
   { id: 'elec', name: 'Électricité / Gaz', group: 'logement', icon: Zap, defaultBudget: 0 },
-  { id: 'eau', name: 'Eau', group: 'logement', icon: Droplet, defaultBudget: 0 },
+  { id: 'eau', name: 'Eau & Charges', group: 'logement', icon: Droplet, defaultBudget: 0 },
   { id: 'assurance', name: 'Assurances', group: 'sante', icon: Shield, defaultBudget: 0 },
   { id: 'sante', name: 'Santé & Mutuelle', group: 'sante', icon: HeartPulse, defaultBudget: 0 },
   { id: 'courses', name: 'Courses Alimentaires', group: 'alimentation', icon: ShoppingCart, defaultBudget: 0 },
-  { id: 'carburant', name: 'Carburant / Péages', group: 'transport', icon: Car, defaultBudget: 0 },
+  { id: 'restaurants', name: 'Restaurants & Restauration', group: 'restaurants', icon: Utensils, defaultBudget: 0 },
+  { id: 'cafes', name: 'Cafés, Bars & Sorties', group: 'restaurants', icon: Utensils, defaultBudget: 0 },
+  { id: 'carburant', name: 'Carburant & Péages', group: 'transport', icon: Car, defaultBudget: 0 },
   { id: 'transports', name: 'Transports en commun', group: 'transport', icon: Car, defaultBudget: 0 },
-  { id: 'telecom', name: 'Abonnements & Télécom', group: 'abonnements', icon: Tv, defaultBudget: 0 }
+  { id: 'telecom', name: 'Box Internet & Mobiles', group: 'abonnements', icon: Tv, defaultBudget: 0 },
+  { id: 'streaming', name: 'Streaming, Cloud & Services', group: 'abonnements', icon: Tv, defaultBudget: 0 },
+  { id: 'loisirs', name: 'Loisirs, Sorties & Culture', group: 'loisirs', icon: Sparkles, defaultBudget: 0 },
+  { id: 'sport', name: 'Sport & Bien-être', group: 'loisirs', icon: Sparkles, defaultBudget: 0 },
+  { id: 'shopping', name: 'Shopping & Équipement', group: 'shopping', icon: ShoppingBag, defaultBudget: 0 },
+  { id: 'frais_bancaires', name: 'Frais bancaires & Cotisations', group: 'bancaire', icon: Landmark, defaultBudget: 0 }
 ];
 
 const getCategoryIcon = (name: string): React.ElementType => {
@@ -108,7 +115,7 @@ export const BudgetTrackingDrawer: React.FC<BudgetTrackingDrawerProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    const saved = localStorage.getItem('cashpilot_cost_of_living');
+    const saved = localStorage.getItem('cashpilot_cost_of_living_v2') || localStorage.getItem('cashpilot_cost_of_living');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);

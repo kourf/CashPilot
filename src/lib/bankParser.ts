@@ -980,23 +980,21 @@ export function formatMonthLabel(monthKey: string): string {
 }
 
 /**
- * Formatage d'une date en format français complet avec jour de la semaine (ex: '2026-09-11' -> 'Vendredi 11 sept. 2026')
+ * Formatage d'une date en format français complet harmonisé : '10 juillet 2026'
  */
 export function formatDateFR(dateStr?: string | null): string {
   if (!dateStr) return '-';
   try {
     const trimmed = String(dateStr).trim();
     const formatFull = (d: Date) => {
-      const str = d.toLocaleDateString('fr-FR', {
-        weekday: 'long',
+      return d.toLocaleDateString('fr-FR', {
         day: 'numeric',
-        month: 'short',
+        month: 'long',
         year: 'numeric'
       });
-      return str.charAt(0).toUpperCase() + str.slice(1);
     };
 
-    // Format YYYY-MM-DD ou YYYY/MM/DD
+    // Format YYYY-MM-DD ou YYYY/MM/DD (avec heure optionnelle)
     const isoMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (isoMatch) {
       const year = parseInt(isoMatch[1], 10);
@@ -1008,7 +1006,7 @@ export function formatDateFR(dateStr?: string | null): string {
       }
     }
 
-    // Format DD/MM/YYYY ou DD-MM-YYYY
+    // Format DD/MM/YYYY ou DD-MM-YYYY (avec heure optionnelle)
     const frMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
     if (frMatch) {
       const day = parseInt(frMatch[1], 10);

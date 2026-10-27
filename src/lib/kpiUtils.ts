@@ -504,15 +504,14 @@ export const detectStatementCurrency = (contentOrHeader?: string): 'CHF' | 'EUR'
 
 /**
  * Dictionnaire statique de synonymes et mots-clés pour le calcul des médianes du simulateur "Coût de la vie".
- * Permet de rattacher avec rigueur les opérations réelles de relevés bancaires (EDF, ENGIE, VEOLIA, etc.)
- * aux postes de charges incompressibles du simulateur, sans aucun appel API externe.
+ * Permet de rattacher avec rigueur les opérations réelles de relevés bancaires aux postes budgétaires.
  */
 export const COST_OF_LIVING_SYNONYMS: Record<string, {
   categoryNames: string[];
   keywords: string[];
 }> = {
   'Loyer / Crédit Immobilier': {
-    categoryNames: ['Loyer / Charges', 'Logement & Énergie', 'Logement'],
+    categoryNames: ['Logement & Énergie', 'Logement', 'Loyer / Charges'],
     keywords: [
       'loyer', 'credit immobilier', 'crédit immobilier', 'pret immobilier', 'prêt immobilier',
       'bail', 'syndic', 'foncia', 'nexity', 'echeance pret', 'échéance prêt', 'mensualite pret',
@@ -520,18 +519,25 @@ export const COST_OF_LIVING_SYNONYMS: Record<string, {
     ]
   },
   'Électricité / Gaz': {
-    categoryNames: ['Électricité, Gaz, Eau', 'Logement & Énergie', 'Énergie'],
+    categoryNames: ['Logement & Énergie', 'Électricité, Gaz, Eau', 'Énergie'],
     keywords: [
-      'edf', 'engie', 'totalenergies', 'total energies', 'eni', 'gaz', 'electricite', 'électricité',
-      'gaz de bordeaux', 'direct energie', 'ekwateur', 'enercoop', 'sowee', 'enedis', 'grdf',
-      'ohm energie', 'alpiq', 'elec'
+      'edf', 'engie', 'totalenergies', 'total energies', 'eni', 'gaz de bordeaux', 'direct energie',
+      'ekwateur', 'enercoop', 'sowee', 'enedis', 'grdf', 'ohm energie', 'alpiq', 'gaz', 'electricite',
+      'électricité', 'elec'
+    ]
+  },
+  'Eau & Charges': {
+    categoryNames: ['Logement & Énergie', 'Électricité, Gaz, Eau', 'Eau'],
+    keywords: [
+      'veolia', 'suez', 'eau de paris', 'saur', 'distrib eau', 'societe des eaux', 'syndicat des eaux',
+      'eau du bassin', 'facture eau', 'regie des eaux', 'eau', 'eaux'
     ]
   },
   'Eau': {
-    categoryNames: ['Électricité, Gaz, Eau', 'Logement & Énergie', 'Eau'],
+    categoryNames: ['Logement & Énergie', 'Électricité, Gaz, Eau', 'Eau'],
     keywords: [
-      'eau', 'veolia', 'suez', 'eau de paris', 'eaux', 'saur', 'distrib eau', 'societe des eaux',
-      'syndicat des eaux', 'eau du bassin', 'facture eau'
+      'veolia', 'suez', 'eau de paris', 'saur', 'distrib eau', 'societe des eaux', 'syndicat des eaux',
+      'eau du bassin', 'facture eau', 'regie des eaux', 'eau', 'eaux'
     ]
   },
   'Assurances': {
@@ -539,15 +545,15 @@ export const COST_OF_LIVING_SYNONYMS: Record<string, {
     keywords: [
       'assurance', 'macif', 'maif', 'matmut', 'axa', 'allianz', 'mma', 'direct assurance',
       'generali', 'groupama', 'gmf', 'alan', 'pacifica', 'assur', 'abeille assurances',
-      'suravenir', 'cardif', 'aviva', 'swiss life', 'cnp'
+      'suravenir', 'cardif', 'aviva', 'swiss life', 'cnp', 'sogessur'
     ]
   },
   'Santé & Mutuelle': {
-    categoryNames: ['Santé & Mutuelle', 'Santé'],
+    categoryNames: ['Santé', 'Santé & Mutuelle'],
     keywords: [
-      'mutuelle', 'sante', 'santé', 'mgen', 'harmonie mutuelle', 'pro btp', 'pharmacie',
-      'doctolib', 'dentiste', 'laboratoire', 'cpam', 'medecin', 'kine', 'opticien', 'alain afflelou',
-      'optic 2000', 'krys', 'centre medical', 'hopital', 'clinique', 'solimut'
+      'mutuelle', 'mgen', 'harmonie mutuelle', 'pro btp', 'pharmacie', 'doctolib', 'dentiste',
+      'laboratoire', 'cpam', 'medecin', 'médecin', 'kine', 'kiné', 'opticien', 'alain afflelou',
+      'optic 2000', 'krys', 'centre medical', 'hopital', 'clinique', 'solimut', 'sante', 'santé'
     ]
   },
   'Courses Alimentaires': {
@@ -555,22 +561,63 @@ export const COST_OF_LIVING_SYNONYMS: Record<string, {
     keywords: [
       'courses', 'carrefour', 'auchan', 'leclerc', 'lidl', 'intermarche', 'intermarché',
       'monoprix', 'franprix', 'aldi', 'casino', 'picard', 'biocoop', 'boulangerie', 'boucherie',
-      'super u', 'hyper u', 'grand frais', 'naturalia', 'action', 'cora', 'match', 'leader price'
+      'super u', 'hyper u', 'grand frais', 'naturalia', 'cora', 'match', 'leader price',
+      'primeur', 'fromagerie', 'poissonnerie'
+    ]
+  },
+  'Restaurants & Restauration': {
+    categoryNames: ['Restaurants & Sorties', 'Restaurant', 'Restaurants'],
+    keywords: [
+      'restaurant', 'resto', 'brasserie', 'bistrot', 'pizzeria', 'pizza', 'sushi', 'wok',
+      'burger king', 'mcdonald', 'mc donald', 'kfc', 'o tacos', 'otacos', 'tacos', 'subway',
+      'uber eats', 'deliveroo', 'just eat', 'ca va smasher', 'koyao', 'tasty crousty', 'traiteur'
+    ]
+  },
+  'Cafés, Bars & Sorties': {
+    categoryNames: ['Restaurants & Sorties'],
+    keywords: [
+      'columbus', 'starbucks', 'cafe', 'café', 'bar', 'pub', 'salon de the', 'salon de thé',
+      'dallmayr', 'pause cafe', 'coffee'
+    ]
+  },
+  'Carburant & Péages': {
+    categoryNames: ['Transports & Carburant', 'Carburant & Péages', 'Carburant'],
+    keywords: [
+      'carburant', 'essence', 'gazole', 'diesel', 'station service', 'station', 'total access',
+      'totalenergies rel', 'relais', 'esso', 'bp', 'shell', 'avia', 'agip', 'aprr',
+      'vinci autoroutes', 'vinci', 'sanef', 'peage', 'péage', 'autoroute', 'parking',
+      'horodateur', 'stationnement', 'norauto', 'feu vert', 'speedy', 'midas', 'petro belmont'
     ]
   },
   'Carburant / Péages': {
-    categoryNames: ['Carburant & Péages', 'Transports & Carburant', 'Carburant'],
+    categoryNames: ['Transports & Carburant', 'Carburant & Péages', 'Carburant'],
     keywords: [
-      'carburant', 'essence', 'gazole', 'total access', 'totalenergies rel', 'station',
-      'bp ', 'esso', 'peage', 'péage', 'aprr', 'vinci', 'sanef', 'autoroute', 'avia', 'shell',
-      'relais', 'station service'
+      'carburant', 'essence', 'gazole', 'diesel', 'station service', 'station', 'total access',
+      'totalenergies rel', 'relais', 'esso', 'bp', 'shell', 'avia', 'agip', 'aprr',
+      'vinci autoroutes', 'vinci', 'sanef', 'peage', 'péage', 'autoroute', 'parking',
+      'horodateur', 'stationnement', 'norauto', 'feu vert', 'speedy', 'midas', 'petro belmont'
     ]
   },
   'Transports en commun': {
-    categoryNames: ['Transports', 'Transports & Carburant'],
+    categoryNames: ['Transports', 'Transports en commun'],
     keywords: [
-      'transports', 'sncf', 'ratp', 'navigo', 'tcl', 'transpole', 'ter', 'bus', 'tramway',
-      'metro', 'métro', 'train', 'ile de france mobilites', 'keolis', 'transdev'
+      'sncf', 'ratp', 'navigo', 'tcl', 'transpole', 'ter', 'bus', 'tramway', 'tram', 'metro',
+      'métro', 'train', 'ile de france mobilites', 'keolis', 'transdev', 'ouigo', 'tgv', 'rer'
+    ]
+  },
+  'Box Internet & Mobiles': {
+    categoryNames: ['Abonnements & Télécom', 'Abonnements'],
+    keywords: [
+      'orange', 'sfr', 'free mobile', 'freebox', 'free telecom', 'bouygues', 'bouygues telecom',
+      'sosh', 'red by sfr', 'forfait mobile', 'box internet'
+    ]
+  },
+  'Streaming, Cloud & Services': {
+    categoryNames: ['Abonnements & Télécom', 'Abonnements'],
+    keywords: [
+      'netflix', 'spotify', 'deezer', 'apple.com', 'apple music', 'google one', 'youtube',
+      'amazon prime', 'disney', 'canal+', 'canal plus', 'cloud', 'icloud', 'chatgpt', 'openai',
+      'midjourney'
     ]
   },
   'Abonnements & Télécom': {
@@ -578,9 +625,85 @@ export const COST_OF_LIVING_SYNONYMS: Record<string, {
     keywords: [
       'orange', 'sfr', 'free mobile', 'freebox', 'free telecom', 'bouygues', 'sosh', 'red by sfr',
       'netflix', 'spotify', 'deezer', 'apple', 'google one', 'youtube', 'amazon prime', 'disney',
-      'canal', 'basic fit', 'fitness park', 'forfait', 'cloud', 'icloud', 'chatgpt', 'openai'
+      'canal', 'forfait', 'cloud', 'icloud', 'chatgpt', 'openai'
+    ]
+  },
+  'Loisirs, Sorties & Culture': {
+    categoryNames: ['Loisirs & Activités', 'Loisirs'],
+    keywords: [
+      'cinema', 'cinéma', 'ugc', 'pathe', 'gaumont', 'theatre', 'théâtre', 'spectacle',
+      'concert', 'musee', 'musée', 'parc attraction', 'disneyland', 'asterix', 'billetterie',
+      'fnac spectacle'
+    ]
+  },
+  'Sport & Bien-être': {
+    categoryNames: ['Loisirs & Activités', 'Sport'],
+    keywords: [
+      'basic fit', 'fitness park', 'on air fitness', 'neoness', 'keep cool', 'salle de sport',
+      'escalade', 'piscine', 'club sportif', 'crossfit', 'yoga'
+    ]
+  },
+  'Shopping & Équipement': {
+    categoryNames: ['Shopping & Maison', 'Shopping'],
+    keywords: [
+      'zara', 'h&m', 'primark', 'kiabi', 'celio', 'jules', 'decathlon', 'intersport',
+      'ikea', 'leroy merlin', 'castorama', 'bricorama', 'but', 'conforama', 'action',
+      'gifi', 'noz', 'centrakor', 'amazon', 'fnac', 'darty', 'boulanger', 'electro depot',
+      'sephora', 'nocibe'
+    ]
+  },
+  'Frais bancaires & Cotisations': {
+    categoryNames: ['Frais bancaires'],
+    keywords: [
+      'cotisation', 'sobrio', 'jazz', 'tenue de compte', 'frais bancaires', 'commission intervention',
+      'arrete trimestriel', 'arrêté', 'carte bancaire', 'forfait bancaire'
     ]
   }
+};
+
+/**
+ * Teste si un mot-clé correspond strictement dans un texte en protégeant les mots courts
+ * via une frontière de mot (ex: \bter\b ne matche pas "intermarché", \bbus\b ne matche pas "columbus").
+ */
+export function matchesKeywordWithBoundary(text: string, kw: string): boolean {
+  const normText = (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normKw = (kw || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (!normKw) return false;
+
+  // Pour les mots courts (<= 4 caractères), exiger des frontières de mot pour éviter les faux positifs
+  if (normKw.length <= 4) {
+    const escaped = normKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, 'i');
+    return regex.test(normText);
+  }
+
+  return normText.includes(normKw);
+}
+
+/**
+ * Matrice stricte d'incompatibilité de catégorie pour empêcher toute contamination croisée
+ * (ex: une course alimentaire ne peut JAMAIS être assimilée à un transport ou à l'énergie).
+ */
+export const INCOMPATIBLE_CATEGORIES_FOR_ITEM: Record<string, string[]> = {
+  'Transports en commun': ['Alimentation & Courses', 'Restaurants & Sorties', 'Shopping & Maison', 'Logement & Énergie', 'Assurances', 'Santé', 'Frais bancaires'],
+  'Carburant & Péages': ['Alimentation & Courses', 'Restaurants & Sorties', 'Shopping & Maison', 'Logement & Énergie', 'Assurances', 'Santé', 'Frais bancaires'],
+  'Carburant / Péages': ['Alimentation & Courses', 'Restaurants & Sorties', 'Shopping & Maison', 'Logement & Énergie', 'Assurances', 'Santé', 'Frais bancaires'],
+  'Courses Alimentaires': ['Transports & Carburant', 'Restaurants & Sorties', 'Abonnements & Télécom', 'Logement & Énergie', 'Assurances', 'Santé'],
+  'Restaurants & Restauration': ['Alimentation & Courses', 'Transports & Carburant', 'Abonnements & Télécom', 'Logement & Énergie', 'Assurances'],
+  'Cafés, Bars & Sorties': ['Alimentation & Courses', 'Transports & Carburant', 'Abonnements & Télécom', 'Logement & Énergie', 'Assurances'],
+  'Électricité / Gaz': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison'],
+  'Eau & Charges': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison'],
+  'Eau': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison'],
+  'Loyer / Crédit Immobilier': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison'],
+  'Assurances': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison'],
+  'Santé & Mutuelle': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison'],
+  'Box Internet & Mobiles': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison'],
+  'Streaming, Cloud & Services': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison'],
+  'Abonnements & Télécom': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison'],
+  'Loisirs, Sorties & Culture': ['Alimentation & Courses', 'Transports & Carburant', 'Logement & Énergie', 'Assurances'],
+  'Sport & Bien-être': ['Alimentation & Courses', 'Transports & Carburant', 'Logement & Énergie', 'Assurances'],
+  'Shopping & Équipement': ['Alimentation & Courses', 'Transports & Carburant', 'Logement & Énergie', 'Assurances'],
+  'Frais bancaires & Cotisations': ['Alimentation & Courses', 'Restaurants & Sorties', 'Transports & Carburant', 'Shopping & Maison']
 };
 
 /**
@@ -599,25 +722,58 @@ export const matchesCostOfLivingItem = (tx: Transaction, itemName: string): bool
   const rawLabel = (tx.cleanLabel || tx.rawLabel || tx.description || '').toLowerCase();
   const txCat = (tx.category || '').toLowerCase();
 
-  // 1. Détection prioritaire par mot-clé dans le libellé bancaire
-  if (mapping.keywords.some(kw => rawLabel.includes(kw))) {
+  // 0. Vérification stricte des incompatibilités de catégorie
+  const incompatibleCats = INCOMPATIBLE_CATEGORIES_FOR_ITEM[itemName] || [];
+  if (incompatibleCats.some(ic => txCat === ic.toLowerCase() || txCat.includes(ic.toLowerCase()))) {
+    return false;
+  }
+
+  // 1. Spécificité Transport : Dissocier rigoureusement Transports en commun vs Carburant & Péages
+  if (itemName === 'Transports en commun') {
+    // Si c'est un péage, du carburant ou un parking, exclusion formelle de Transports en commun
+    const isFuelOrToll = ['aprr', 'vinci', 'sanef', 'peage', 'péage', 'autoroute', 'carburant', 'essence', 'gazole', 'station', 'relais', 'esso', 'shell', 'avia', 'parking'].some(kw => matchesKeywordWithBoundary(rawLabel, kw));
+    if (isFuelOrToll) return false;
+    
+    // Requiert un mot-clé explicite de transport public
+    return mapping.keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw));
+  }
+
+  if (itemName === 'Carburant & Péages' || itemName === 'Carburant / Péages') {
+    // Si c'est du train ou du transport public urbain explicite, exclusion formelle
+    const isPublicTransit = ['sncf', 'ratp', 'navigo', 'tcl', 'transpole', 'keolis', 'transdev', 'ouigo', 'tgv'].some(kw => matchesKeywordWithBoundary(rawLabel, kw));
+    if (isPublicTransit) return false;
+
+    if (mapping.keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw))) return true;
+    if (txCat === 'carburant & péages' || txCat === 'carburant') return true;
+    if (txCat === 'transports & carburant' && !isPublicTransit) return true;
+    return false;
+  }
+
+  // 2. Détection prioritaire par mot-clé avec frontière de mot
+  if (mapping.keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw))) {
+    // Désambiguïsation spécifique pour le logement
+    if (itemName === 'Loyer / Crédit Immobilier') {
+      const isElec = COST_OF_LIVING_SYNONYMS['Électricité / Gaz'].keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw));
+      const isEau = COST_OF_LIVING_SYNONYMS['Eau & Charges'].keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw));
+      if (isElec || isEau) return false;
+    }
     return true;
   }
 
-  // 2. Détection par nom de catégorie avec désambiguïsation
+  // 3. Détection par nom de catégorie avec désambiguïsation
   if (mapping.categoryNames.some(cat => txCat === cat.toLowerCase())) {
     if (txCat.includes('logement') || txCat.includes('energie') || txCat.includes('énergie') || txCat.includes('électricité')) {
-      if (itemName === 'Eau') {
-        return mapping.keywords.some(kw => rawLabel.includes(kw));
+      if (itemName === 'Eau' || itemName === 'Eau & Charges') {
+        return mapping.keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw));
       }
       if (itemName === 'Électricité / Gaz') {
-        const isEau = COST_OF_LIVING_SYNONYMS['Eau'].keywords.some(kw => rawLabel.includes(kw));
+        const isEau = COST_OF_LIVING_SYNONYMS['Eau & Charges'].keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw));
         if (isEau) return false;
-        return mapping.keywords.some(kw => rawLabel.includes(kw)) || !COST_OF_LIVING_SYNONYMS['Loyer / Crédit Immobilier'].keywords.some(kw => rawLabel.includes(kw));
+        return mapping.keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw)) || !COST_OF_LIVING_SYNONYMS['Loyer / Crédit Immobilier'].keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw));
       }
       if (itemName === 'Loyer / Crédit Immobilier') {
-        const isElec = COST_OF_LIVING_SYNONYMS['Électricité / Gaz'].keywords.some(kw => rawLabel.includes(kw));
-        const isEau = COST_OF_LIVING_SYNONYMS['Eau'].keywords.some(kw => rawLabel.includes(kw));
+        const isElec = COST_OF_LIVING_SYNONYMS['Électricité / Gaz'].keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw));
+        const isEau = COST_OF_LIVING_SYNONYMS['Eau & Charges'].keywords.some(kw => matchesKeywordWithBoundary(rawLabel, kw));
         return !isElec && !isEau;
       }
     }

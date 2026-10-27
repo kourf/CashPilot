@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { X, Calendar, ArrowLeft, TrendingUp, Tags, FileText, ChevronRight } from 'lucide-react';
-import { formatCurrency, type BankTransaction } from '../lib/bankUtils';
+import { formatCurrency, formatDateFR, type BankTransaction } from '../lib/bankUtils';
 
 export interface SpendingHabitsDrawerProps {
   isOpen: boolean;
@@ -277,7 +277,7 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
                              {t.category}
                            </span>
                            <span className="text-[11px] text-muted-foreground">
-                             {new Date(t.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                             {formatDateFR(t.date)}
                            </span>
                         </div>
                       </div>

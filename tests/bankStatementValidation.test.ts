@@ -8,6 +8,7 @@ import {
   isBankCategoryHeader,
   isBankDescriptionHeader,
   classifyTransaction,
+  formatDateFR,
   CATEGORIES
 } from '../src/lib/bankParser.ts';
 import { 
@@ -740,4 +741,130 @@ test('12. ABONNEMENTS ET PRÉLÈVEMENTS : SÉPARATION STRICTE GOOGLE, AMEX SANS 
     const meta = getSubscriptionMetadata(tx as any);
     assert.equal(meta.logicalGroup, expectedGroup, `Le contrat ${tx.rawLabel} doit être affecté au groupe logique ${expectedGroup}`);
   });
+});
+
+test('13. COÛT DE LA VIE ET HARMONISATION UNIVERSELLE DES DATES', () => {
+  // 13.1: Harmonisation stricte de toutes les dates au format français long '10 juillet 2026'
+  assert.equal(formatDateFR('2026-07-10'), '10 juillet 2026', 'Doit formater une date ISO au format "10 juillet 2026"');
+  assert.equal(formatDateFR('10/07/2026'), '10 juillet 2026', 'Doit formater une date FR slash au format "10 juillet 2026"');
+  assert.equal(formatDateFR('2026-10-05'), '5 octobre 2026', 'Doit formater "2026-10-05" en "5 octobre 2026"');
+  assert.equal(formatDateFR('05/08/2026'), '5 août 2026', 'Doit formater "05/08/2026" en "5 août 2026"');
+  assert.equal(formatDateFR('2026-09-07'), '7 septembre 2026', 'Doit formater "2026-09-07" en "7 septembre 2026"');
+  assert.equal(formatDateFR(null), '-', 'Doit retourner un tiret neutre en cas de date nulle');
+
+  // 13.2: Éradication formelle du bug des sous-chaînes dans le Coût de la vie
+  // "Intermarché" contient "ter", mais ne doit JAMAIS être affecté à "Transports en commun"
+  const txIntermarche = {
+    id: 'tx_inter',
+    date: '2026-10-05',
+    rawLabel: 'CARTE 05/10 INTERMARCHE CONTACT',
+    cleanLabel: 'Intermarché',
+    amount: 15.95,
+    category: 'Alimentation & Courses'
+  };
+  assert.equal(
+    matchesCostOfLivingItem(txIntermarche as any, 'Transports en commun'),
+    false,
+    'Intermarché ne doit JAMAIS matcher les Transports en commun (éradication du bug de la sous-chaîne "ter")'
+  );
+  assert.equal(
+    matchesCostOfLivingItem(txIntermarche as any, 'Courses Alimentaires'),
+    true,
+    'Intermarché doit être rattaché aux Courses Alimentaires'
+  );
+
+  // "Café Columbus" contient "bus", mais ne doit JAMAIS être affecté à "Transports en commun"
+  const txColumbus = {
+    id: 'tx_columbus',
+    date: '2026-10-02',
+    rawLabel: 'CARTE 02/10 CAFE COLUMBUS ANNEMASSE',
+    cleanLabel: 'Café Columbus',
+    amount: 3.90,
+    category: 'Restaurants & Sorties'
+  };
+  assert.equal(
+    matchesCostOfLivingItem(txColumbus as any, 'Transports en commun'),
+    false,
+    'Café Columbus ne doit JAMAIS matcher les Transports en commun (éradication du bug de la sous-chaîne "bus")'
+  );
+  assert.equal(
+    matchesCostOfLivingItem(txColumbus as any, 'Cafés, Bars & Sorties'),
+    true,
+    'Café Columbus doit être rattaché à "Cafés, Bars & Sorties"'
+  );
+
+  // 13.3: Cloisonnement strict Péages / Carburant vs Transports en commun
+  // "Aprr Autoroute" ne doit JAMAIS être dans "Transports en commun"
+  const txAprr = {
+    id: 'tx_aprr',
+    date: '2026-10-05',
+    rawLabel: 'CARTE 05/10 APRR AUTOROUTE A40',
+    cleanLabel: 'Aprr Autoroute',
+    amount: 20.50,
+    category: 'Transports & Carburant'
+  };
+  assert.equal(
+    matchesCostOfLivingItem(txAprr as any, 'Transports en commun'),
+    false,
+    'Aprr Autoroute est un péage autoroutier et ne doit pas figurer dans les transports en commun'
+  );
+  assert.equal(
+    matchesCostOfLivingItem(txAprr as any, 'Carburant & Péages'),
+    true,
+    'Aprr Autoroute doit figurer dans "Carburant & Péages"'
+  );
+
+  // Vrai billet de transport public (TER SNCF)
+  const txSncfTer = {
+    id: 'tx_sncf',
+    date: '2026-10-03',
+    rawLabel: 'ACHAT SNCF BILLET TER HAUTS DE FRANCE',
+    cleanLabel: 'SNCF',
+    amount: 12.40,
+    category: 'Transports'
+  };
+  assert.equal(
+    matchesCostOfLivingItem(txSncfTer as any, 'Transports en commun'),
+    true,
+    'Un billet TER SNCF doit être affecté aux Transports en commun'
+  );
+
+  // 13.4: Séparation nette Abonnements & Numérique vs Loisirs & Activités
+  const txNetflix = {
+    id: 'tx_net',
+    date: '2026-10-01',
+    rawLabel: 'PRLV SEPA NETFLIX SERVICES',
+    cleanLabel: 'Netflix',
+    amount: 13.49,
+    category: 'Abonnements & Télécom'
+  };
+  assert.equal(
+    matchesCostOfLivingItem(txNetflix as any, 'Streaming, Cloud & Services'),
+    true,
+    'Netflix doit être classé dans Streaming, Cloud & Services'
+  );
+  assert.equal(
+    matchesCostOfLivingItem(txNetflix as any, 'Loisirs, Sorties & Culture'),
+    false,
+    'Netflix ne doit pas être fusionné avec les sorties/loisirs'
+  );
+
+  const txCinema = {
+    id: 'tx_cine',
+    date: '2026-10-04',
+    rawLabel: 'CARTE 04/10 PATHE GAUMONT PLACE CINEMA',
+    cleanLabel: 'Pathé Gaumont',
+    amount: 14.50,
+    category: 'Loisirs & Activités'
+  };
+  assert.equal(
+    matchesCostOfLivingItem(txCinema as any, 'Loisirs, Sorties & Culture'),
+    true,
+    'Le cinéma doit être classé dans Loisirs, Sorties & Culture'
+  );
+  assert.equal(
+    matchesCostOfLivingItem(txCinema as any, 'Streaming, Cloud & Services'),
+    false,
+    'Le cinéma ne doit pas être affecté aux abonnements streaming'
+  );
 });

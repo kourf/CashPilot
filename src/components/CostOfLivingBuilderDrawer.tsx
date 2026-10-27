@@ -1,6 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Plus, Trash2, Home, HeartPulse, ShoppingCart, Car, Tv, Edit2, Save, Calculator, RefreshCw, Eye, ArrowLeft, RotateCcw } from 'lucide-react';
-import { formatCurrency, type BankTransaction } from '../lib/bankUtils';
+import { 
+  X, Plus, Trash2, Home, HeartPulse, ShoppingCart, Car, Tv, Edit2, Save, 
+  Calculator, RefreshCw, Eye, ArrowLeft, RotateCcw, UtensilsCrossed, Smartphone, 
+  Ticket, ShoppingBag, Building2 
+} from 'lucide-react';
+import { formatCurrency, formatDateFR, type BankTransaction } from '../lib/bankUtils';
 import { calculateCategoryMedians } from '../lib/kpiUtils';
 
 export interface CostOfLivingBuilderDrawerProps {
@@ -22,20 +26,31 @@ const CATEGORY_GROUPS = [
   { id: 'logement', label: 'Logement & Énergie', icon: Home, color: 'text-blue-400', bg: 'bg-blue-500/10' },
   { id: 'sante', label: 'Assurances & Santé', icon: HeartPulse, color: 'text-rose-400', bg: 'bg-rose-500/10' },
   { id: 'alimentation', label: 'Alimentation & Courses', icon: ShoppingCart, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-  { id: 'transport', label: 'Transport', icon: Car, color: 'text-amber-500', bg: 'bg-amber-500/10' },
-  { id: 'abonnements', label: 'Abonnements & Loisirs', icon: Tv, color: 'text-purple-400', bg: 'bg-purple-500/10' }
+  { id: 'restaurants', label: 'Restaurants & Sorties', icon: UtensilsCrossed, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+  { id: 'transport', label: 'Transports & Mobilité', icon: Car, color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+  { id: 'abonnements', label: 'Abonnements & Numérique', icon: Smartphone, color: 'text-purple-400', bg: 'bg-purple-500/10' },
+  { id: 'loisirs', label: 'Loisirs, Sport & Culture', icon: Ticket, color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/10' },
+  { id: 'shopping', label: 'Shopping & Vie Quotidienne', icon: ShoppingBag, color: 'text-teal-400', bg: 'bg-teal-500/10' },
+  { id: 'bancaire', label: 'Frais & Services bancaires', icon: Building2, color: 'text-slate-400', bg: 'bg-slate-500/10' }
 ];
 
 const DEFAULT_ITEMS: ExpenseItem[] = [
   { id: 'loyer', name: 'Loyer / Crédit Immobilier', amount: 0, categoryGroup: 'logement', isAutoCalculated: true },
   { id: 'elec', name: 'Électricité / Gaz', amount: 0, categoryGroup: 'logement', isAutoCalculated: true },
-  { id: 'eau', name: 'Eau', amount: 0, categoryGroup: 'logement', isAutoCalculated: true },
+  { id: 'eau', name: 'Eau & Charges', amount: 0, categoryGroup: 'logement', isAutoCalculated: true },
   { id: 'assurance', name: 'Assurances', amount: 0, categoryGroup: 'sante', isAutoCalculated: true },
   { id: 'sante', name: 'Santé & Mutuelle', amount: 0, categoryGroup: 'sante', isAutoCalculated: true },
   { id: 'courses', name: 'Courses Alimentaires', amount: 0, categoryGroup: 'alimentation', isAutoCalculated: true },
-  { id: 'carburant', name: 'Carburant / Péages', amount: 0, categoryGroup: 'transport', isAutoCalculated: true },
+  { id: 'restaurants', name: 'Restaurants & Restauration', amount: 0, categoryGroup: 'restaurants', isAutoCalculated: true },
+  { id: 'cafes', name: 'Cafés, Bars & Sorties', amount: 0, categoryGroup: 'restaurants', isAutoCalculated: true },
+  { id: 'carburant', name: 'Carburant & Péages', amount: 0, categoryGroup: 'transport', isAutoCalculated: true },
   { id: 'transports', name: 'Transports en commun', amount: 0, categoryGroup: 'transport', isAutoCalculated: true },
-  { id: 'telecom', name: 'Abonnements & Télécom', amount: 0, categoryGroup: 'abonnements', isAutoCalculated: true },
+  { id: 'telecom', name: 'Box Internet & Mobiles', amount: 0, categoryGroup: 'abonnements', isAutoCalculated: true },
+  { id: 'streaming', name: 'Streaming, Cloud & Services', amount: 0, categoryGroup: 'abonnements', isAutoCalculated: true },
+  { id: 'loisirs', name: 'Loisirs, Sorties & Culture', amount: 0, categoryGroup: 'loisirs', isAutoCalculated: true },
+  { id: 'sport', name: 'Sport & Bien-être', amount: 0, categoryGroup: 'loisirs', isAutoCalculated: true },
+  { id: 'shopping', name: 'Shopping & Équipement', amount: 0, categoryGroup: 'shopping', isAutoCalculated: true },
+  { id: 'frais_bancaires', name: 'Frais bancaires & Cotisations', amount: 0, categoryGroup: 'bancaire', isAutoCalculated: true },
 ];
 
 export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps> = ({
@@ -58,15 +73,23 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
 
   const getCategoryForExpenseItem = (itemName: string): string | null => {
     if (categoryMedians[itemName]) return itemName;
-    if (itemName.includes('Loyer')) return 'Loyer / Crédit Immobilier';
+    if (itemName.includes('Loyer') || itemName.includes('Crédit')) return 'Loyer / Crédit Immobilier';
     if (itemName.includes('Électricité') || itemName.includes('Gaz')) return 'Électricité / Gaz';
-    if (itemName.includes('Eau')) return 'Eau';
+    if (itemName.includes('Eau')) return 'Eau & Charges';
     if (itemName.includes('Assurance')) return 'Assurances';
-    if (itemName.includes('Santé')) return 'Santé & Mutuelle';
-    if (itemName.includes('Courses')) return 'Courses Alimentaires';
-    if (itemName.includes('Carburant')) return 'Carburant / Péages';
+    if (itemName.includes('Santé') || itemName.includes('Mutuelle')) return 'Santé & Mutuelle';
+    if (itemName.includes('Courses') || itemName.includes('Alimentation')) return 'Courses Alimentaires';
+    if (itemName.includes('Restaurant')) return 'Restaurants & Restauration';
+    if (itemName.includes('Café') || itemName.includes('Bar')) return 'Cafés, Bars & Sorties';
+    if (itemName.includes('Carburant') || itemName.includes('Péage')) return 'Carburant & Péages';
     if (itemName.includes('Transports en commun')) return 'Transports en commun';
-    if (itemName.includes('Abonnements')) return 'Abonnements & Télécom';
+    if (itemName.includes('Internet') || itemName.includes('Mobile') || itemName.includes('Télécom')) return 'Box Internet & Mobiles';
+    if (itemName.includes('Streaming') || itemName.includes('Cloud')) return 'Streaming, Cloud & Services';
+    if (itemName.includes('Abonnement')) return 'Streaming, Cloud & Services';
+    if (itemName.includes('Loisir') || itemName.includes('Culture')) return 'Loisirs, Sorties & Culture';
+    if (itemName.includes('Sport')) return 'Sport & Bien-être';
+    if (itemName.includes('Shopping') || itemName.includes('Équipement') || itemName.includes('Maison')) return 'Shopping & Équipement';
+    if (itemName.includes('Frais') || itemName.includes('Bancaire') || itemName.includes('Cotisation')) return 'Frais bancaires & Cotisations';
     return null;
   };
 
@@ -80,12 +103,22 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
     }
     // 3. Fallbacks
     if (item.name.includes('Loyer')) return categoryMedians['Loyer / Charges']?.median || categoryMedians['Logement & Énergie']?.median || 0;
+    if (item.name.includes('Électricité') || item.name.includes('Gaz')) return categoryMedians['Électricité, Gaz, Eau']?.median || 0;
+    if (item.name.includes('Eau')) return categoryMedians['Eau & Charges']?.median || categoryMedians['Eau']?.median || 0;
     if (item.name.includes('Assurance')) return categoryMedians['Assurances']?.median || 0;
     if (item.name.includes('Santé')) return categoryMedians['Santé & Mutuelle']?.median || categoryMedians['Santé']?.median || 0;
     if (item.name.includes('Courses')) return categoryMedians['Alimentation & Courses']?.median || 0;
-    if (item.name.includes('Carburant')) return categoryMedians['Carburant & Péages']?.median || categoryMedians['Transports & Carburant']?.median || 0;
-    if (item.name.includes('Transports')) return categoryMedians['Transports']?.median || 0;
-    if (item.name.includes('Abonnements')) return categoryMedians['Abonnements & Télécom']?.median || 0;
+    if (item.name.includes('Restaurant')) return categoryMedians['Restaurants & Sorties']?.median || 0;
+    if (item.name.includes('Café') || item.name.includes('Bar')) return categoryMedians['Cafés, Bars & Sorties']?.median || 0;
+    if (item.name.includes('Carburant') || item.name.includes('Péage')) return categoryMedians['Carburant & Péages']?.median || categoryMedians['Transports & Carburant']?.median || 0;
+    if (item.name.includes('Transports en commun')) return categoryMedians['Transports en commun']?.median || categoryMedians['Transports']?.median || 0;
+    if (item.name.includes('Internet') || item.name.includes('Mobile')) return categoryMedians['Box Internet & Mobiles']?.median || categoryMedians['Abonnements & Télécom']?.median || 0;
+    if (item.name.includes('Streaming') || item.name.includes('Cloud')) return categoryMedians['Streaming, Cloud & Services']?.median || categoryMedians['Abonnements & Télécom']?.median || 0;
+    if (item.name.includes('Abonnement')) return categoryMedians['Abonnements & Télécom']?.median || 0;
+    if (item.name.includes('Loisir')) return categoryMedians['Loisirs & Activités']?.median || 0;
+    if (item.name.includes('Sport')) return categoryMedians['Sport & Bien-être']?.median || 0;
+    if (item.name.includes('Shopping')) return categoryMedians['Shopping & Maison']?.median || 0;
+    if (item.name.includes('Frais') || item.name.includes('Bancaire')) return categoryMedians['Frais bancaires']?.median || 0;
     return 0;
   };
 
@@ -115,12 +148,16 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
     expenses.forEach(t => {
       if (t.monthKey) months.add(t.monthKey);
       let groupId = 'autre';
-      const cat = t.category || '';
-      if (cat.includes('Loyer') || cat.includes('Électricité') || cat.includes('Eau')) groupId = 'logement';
-      else if (cat.includes('Assurance') || cat.includes('Santé') || cat.includes('Mutuelle')) groupId = 'sante';
-      else if (cat.includes('Alimentation') || cat.includes('Courses') || cat.includes('Restaurant')) groupId = 'alimentation';
-      else if (cat.includes('Carburant') || cat.includes('Transport') || cat.includes('Véhicule')) groupId = 'transport';
-      else if (cat.includes('Abonnement') || cat.includes('Télécom') || cat.includes('Loisirs')) groupId = 'abonnements';
+      const cat = (t.category || '').toLowerCase();
+      if (cat.includes('loyer') || cat.includes('électricité') || cat.includes('electricite') || cat.includes('gaz') || cat.includes('eau') || cat.includes('logement') || cat.includes('énergie')) groupId = 'logement';
+      else if (cat.includes('assurance') || cat.includes('santé') || cat.includes('sante') || cat.includes('mutuelle')) groupId = 'sante';
+      else if (cat.includes('alimentation') || cat.includes('courses') || cat.includes('supermarché')) groupId = 'alimentation';
+      else if (cat.includes('restaurant') || cat.includes('sorties') || cat.includes('resto') || cat.includes('café') || cat.includes('bar')) groupId = 'restaurants';
+      else if (cat.includes('carburant') || cat.includes('transport') || cat.includes('véhicule') || cat.includes('péage') || cat.includes('peage')) groupId = 'transport';
+      else if (cat.includes('abonnement') || cat.includes('télécom') || cat.includes('telecom') || cat.includes('mobile') || cat.includes('internet') || cat.includes('streaming')) groupId = 'abonnements';
+      else if (cat.includes('loisirs') || cat.includes('activités') || cat.includes('sport') || cat.includes('culture') || cat.includes('cinéma')) groupId = 'loisirs';
+      else if (cat.includes('shopping') || cat.includes('maison') || cat.includes('habillement') || cat.includes('vêtements')) groupId = 'shopping';
+      else if (cat.includes('frais bancaires') || cat.includes('bancaire') || cat.includes('cotisation')) groupId = 'bancaire';
       
       if (groups[groupId]) {
         groups[groupId].push(t);
@@ -148,8 +185,12 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
       logement: {},
       sante: {},
       alimentation: {},
+      restaurants: {},
       transport: {},
-      abonnements: {}
+      abonnements: {},
+      loisirs: {},
+      shopping: {},
+      bancaire: {}
     };
 
     const expenses = bankTransactions.filter(t => Number(t.amount) < 0 && !t.isInternalTransfer);
@@ -159,11 +200,15 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
       const m = d.substring(0, 7) || 'general';
       const cat = (t.category || '').toLowerCase();
       let groupId = 'autre';
-      if (cat.includes('logement') || cat.includes('loyer') || cat.includes('énergie') || cat.includes('energie') || cat.includes('élec') || cat.includes('gaz') || cat.includes('eau')) groupId = 'logement';
-      else if (cat.includes('assur') || cat.includes('santé') || cat.includes('sante') || cat.includes('mutuelle') || cat.includes('prévoyance')) groupId = 'sante';
-      else if (cat.includes('alim') || cat.includes('course') || cat.includes('supermarché') || cat.includes('resto') || cat.includes('restaurant')) groupId = 'alimentation';
-      else if (cat.includes('transp') || cat.includes('carburant') || cat.includes('essence') || cat.includes('péage') || cat.includes('peage') || cat.includes('sncf') || cat.includes('train')) groupId = 'transport';
-      else if (cat.includes('abonn') || cat.includes('télécom') || cat.includes('telecom') || cat.includes('loisir') || cat.includes('sport') || cat.includes('forfait') || cat.includes('box')) groupId = 'abonnements';
+      if (cat.includes('loyer') || cat.includes('électricité') || cat.includes('electricite') || cat.includes('gaz') || cat.includes('eau') || cat.includes('logement') || cat.includes('énergie')) groupId = 'logement';
+      else if (cat.includes('assurance') || cat.includes('santé') || cat.includes('sante') || cat.includes('mutuelle')) groupId = 'sante';
+      else if (cat.includes('alimentation') || cat.includes('courses') || cat.includes('supermarché')) groupId = 'alimentation';
+      else if (cat.includes('restaurant') || cat.includes('sorties') || cat.includes('resto') || cat.includes('café') || cat.includes('bar')) groupId = 'restaurants';
+      else if (cat.includes('carburant') || cat.includes('transport') || cat.includes('véhicule') || cat.includes('péage') || cat.includes('peage')) groupId = 'transport';
+      else if (cat.includes('abonnement') || cat.includes('télécom') || cat.includes('telecom') || cat.includes('mobile') || cat.includes('internet') || cat.includes('streaming')) groupId = 'abonnements';
+      else if (cat.includes('loisirs') || cat.includes('activités') || cat.includes('sport') || cat.includes('culture') || cat.includes('cinéma')) groupId = 'loisirs';
+      else if (cat.includes('shopping') || cat.includes('maison') || cat.includes('habillement') || cat.includes('vêtements')) groupId = 'shopping';
+      else if (cat.includes('frais bancaires') || cat.includes('bancaire') || cat.includes('cotisation')) groupId = 'bancaire';
 
       if (monthlyGroupTotals[groupId]) {
         monthlyGroupTotals[groupId][m] = (monthlyGroupTotals[groupId][m] || 0) + Math.abs(Number(t.amount) || 0);
@@ -210,15 +255,29 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
     saveItems(zeroed);
   };
 
-  // Load from local storage or initialize
+  // Load from local storage or initialize avec migration transparente vers les 9 catégories
   useEffect(() => {
     if (isOpen) {
-      const saved = localStorage.getItem('cashpilot_cost_of_living');
+      const saved = localStorage.getItem('cashpilot_cost_of_living_v2') || localStorage.getItem('cashpilot_cost_of_living');
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setItems(parsed);
+            // Migration : s'assurer que tous les nouveaux DEFAULT_ITEMS sont présents
+            const existingIds = new Set(parsed.map(p => p.id));
+            const missingDefaults = DEFAULT_ITEMS.filter(d => !existingIds.has(d.id));
+            if (missingDefaults.length > 0) {
+              const updated = [
+                ...parsed,
+                ...missingDefaults.map(d => ({
+                  ...d,
+                  amount: Math.round(getEstimatedMedian(d) || 0)
+                }))
+              ];
+              saveItems(updated);
+            } else {
+              setItems(parsed);
+            }
           } else {
             initializeItems();
           }
@@ -546,12 +605,12 @@ export const CostOfLivingBuilderDrawer: React.FC<CostOfLivingBuilderDrawerProps>
                                   </button>
                                 )}
                               </div>
-                              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                                {sampleTx.slice(0, 6).map(tx => (
+                              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                {sampleTx.slice(0, 10).map(tx => (
                                   <div key={tx.id || `${tx.date}_${tx.amount}`} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg hover:bg-background/50 transition-colors">
                                     <div className="flex flex-col min-w-0">
                                       <span className="font-medium text-foreground truncate">{tx.cleanLabel || (tx as any).rawLabel || (tx as any).description}</span>
-                                      <span className="text-[10px] text-muted-foreground">{tx.date}</span>
+                                      <span className="text-[10px] text-muted-foreground">{formatDateFR(tx.date)}</span>
                                     </div>
                                     <span className="font-mono font-bold text-foreground shrink-0 ml-2">
                                       {formatCurrency(Math.abs(tx.amount), { showSign: false })}

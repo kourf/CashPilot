@@ -2485,7 +2485,7 @@ export const BankStatements: React.FC = () => {
                       </div>
                      <div className="truncate">
                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{formatDateFR(tx.date)}</span>
+                         <span className="text-[11px] font-semibold text-gray-400 tracking-wide">{formatDateFR(tx.date)}</span>
                          
                          {/* Badge de catégorie interactif (Tailwind) avec menu déroulant */}
                          <div className="relative inline-block" onClick={e => e.stopPropagation()}>
