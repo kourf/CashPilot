@@ -249,7 +249,7 @@ export const BankStatements: React.FC = () => {
   const [auditCustomTotal, setAuditCustomTotal] = useState(0);
 
   const handleOpenEssentialAudit = () => {
-    setIsCostOfLivingDrawerOpen(true);
+    setIsBudgetTrackingDrawerOpen(true);
   };
 
   const handleOpenInterAccountsAudit = () => {
@@ -2720,7 +2720,7 @@ export const BankStatements: React.FC = () => {
                     <span>Maîtrise des Charges & Optimisation Budgétaire</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                     {/* Abonnements & Prélèvements */}
                     <button 
                       onClick={() => {
@@ -2750,62 +2750,33 @@ export const BankStatements: React.FC = () => {
                       <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
                     </button>
 
-                    {/* Coût de la vie */}
-                    <button 
-                      onClick={() => {
-                        setIsToolsSheetOpen(false); 
-                        handleOpenEssentialAudit();
-                      }} 
-                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-amber-500/20 hover:border-amber-500/50 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
-                    >
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        <div className="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                          <Layers size={20}/>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
-                              Coût de la vie
-                            </h4>
-                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold uppercase">
-                              Médianes Réelles
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                            Simulateur mensuel des charges incompressibles basé sur vos médianes réelles.
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-amber-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
-                    </button>
-
-                    {/* Fixation de Budget */}
+                    {/* Budget & Coût de la vie (Unifié : Objectif & Réel) */}
                     <button 
                       onClick={() => {
                         setIsToolsSheetOpen(false); 
                         setIsBudgetTrackingDrawerOpen(true);
                       }} 
-                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-teal-500/20 hover:border-teal-500/50 hover:bg-teal-50/30 dark:hover:bg-teal-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-emerald-500/20 hover:border-emerald-500/50 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
                     >
                       <div className="flex items-start gap-3.5 min-w-0">
-                        <div className="w-11 h-11 rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                        <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                           <PiggyBank size={20}/>
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
-                              Fixation de Budget
+                              Budget & Coût de la vie
                             </h4>
-                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400 font-extrabold uppercase">
-                              Épargne Cible
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold uppercase">
+                              Objectif & Réel
                             </span>
                           </div>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                            Définition de plafonds de dépenses par catégorie pour maximiser votre épargne.
+                            Fixez vos charges cibles (courses, loyer, factures) et comparez-les en direct avec vos vraies dépenses bancaires.
                           </p>
                         </div>
                       </div>
-                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-teal-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-emerald-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
                     </button>
 
                     {/* Habitudes de Dépenses */}
