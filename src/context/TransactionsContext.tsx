@@ -30,6 +30,13 @@ interface TransactionsContextType {
   customBalances: Record<string, { initial: number; closing: number }>;
   setCustomBalances: (balances: Record<string, { initial: number; closing: number }>) => Promise<void>;
   isRealtimeSynced: boolean;
+  importState?: ActiveImportState;
+  startImportSession?: (fileName: string) => void;
+  updateImportStatus?: (message: string, isAiAnalyzing?: boolean) => void;
+  finishImportSession?: (stats?: { totalCount: number; executionTimeSeconds: string; timestamp: Date }) => void;
+  cancelImportSession?: () => void;
+  appNotification?: { type: 'success' | 'error' | 'info'; message: string } | null;
+  setAppNotification?: (notif: { type: 'success' | 'error' | 'info'; message: string } | null) => void;
 }
 
 const CACHE_KEY = 'cashpilot_tx_cache';
@@ -46,7 +53,7 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return parsed.filter((t: any) => !t.isArchived);
         }
       }
     } catch (e) {
@@ -210,7 +217,6 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           }
           setIsRealtimeSynced(true);
         } else {
-          // Si le document distant n'existe pas encore, on l'initialise avec l'Euro (€)
           setDoc(configDocRef, {
             currency: 'EUR',
             monthlyBalances: {},
@@ -274,7 +280,6 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     
-    // Timeout de sécurité si le réseau est totalement indisponible et pas de cache
     const timeoutId = setTimeout(() => {
       if (loading && transactions.length === 0) {
         setLoading(false);
@@ -291,14 +296,15 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
       );
 
       unsubscribe = onSnapshot(q, (snapshot) => {
-        const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as unknown as Transaction[];
+        const allTxs = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() })) as unknown as Transaction[];
+        // Filtrage strict des transactions archivées (Soft Delete)
+        const txs = allTxs.filter(t => !t.isArchived);
         
         setTransactions(txs);
         setLoading(false);
         setError(null);
         clearTimeout(timeoutId);
 
-        // Sauvegarde synchrone dans le cache chaud local
         try {
           localStorage.setItem(CACHE_KEY, JSON.stringify(txs));
         } catch (storageErr) {
@@ -306,7 +312,6 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       }, (err) => {
         console.error("Erreur Firestore sync transactions:", err);
-        // Si on a des transactions en cache, on ne bloque pas l'utilisateur
         if (transactions.length === 0) {
           setError("Impossible de synchroniser vos données. Vérifiez votre connexion.");
         }

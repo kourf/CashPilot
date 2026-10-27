@@ -12,6 +12,7 @@ import {
 import { cn } from '../../lib/utils';
 import { ThemeToggle } from '../ThemeToggle';
 import { useTransactions } from '../../context/TransactionsContext';
+import { useCoach } from '../../context/CoachContext';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Accueil', path: '/' },
@@ -24,8 +25,11 @@ const navItems = [
 export default function Layout() {
   const location = useLocation();
   const txContext = useTransactions();
+  const coachContext = useCoach();
   const importState = txContext?.importState;
   const appNotification = txContext?.appNotification;
+  const isCoachLoading = coachContext?.isLoading;
+  const coachLoadingSeconds = coachContext?.loadingSeconds ?? 0;
 
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -69,6 +73,7 @@ export default function Layout() {
             {navItems.map((item) => {
               const isActive = location.pathname === item.path || 
                 (item.path !== '/' && location.pathname.startsWith(item.path));
+              const isCoachTab = item.path === '/coach';
                 
               return (
                 <Link
@@ -94,10 +99,14 @@ export default function Layout() {
 
                   {item.badge && (
                     <span className={cn(
-                      "text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-0.5",
+                      "text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1",
                       isActive ? "bg-white/20 text-white" : "bg-primary/15 text-primary"
                     )}>
-                      <Sparkles size={10} />
+                      {isCoachTab && isCoachLoading ? (
+                        <Loader2 size={10} className="animate-spin text-cyan-400" />
+                      ) : (
+                        <Sparkles size={10} />
+                      )}
                       {item.badge}
                     </span>
                   )}
@@ -136,7 +145,6 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-2.5">
-            {/* Quick Theme Toggle for mobile or desktop top bar */}
             <ThemeToggle variant="compact" />
 
             <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-border/70 dark:border-white/[0.08]">
@@ -159,6 +167,7 @@ export default function Layout() {
           {navItems.map((item) => {
             const isActive = location.pathname === item.path || 
               (item.path !== '/' && location.pathname.startsWith(item.path));
+            const isCoachTab = item.path === '/coach';
               
             return (
               <Link
@@ -169,10 +178,15 @@ export default function Layout() {
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <item.icon size={20} className={cn(
-                  "transition-transform duration-300",
-                  isActive && "scale-110 stroke-[2.5]"
-                )} />
+                <div className="relative">
+                  <item.icon size={20} className={cn(
+                    "transition-transform duration-300",
+                    isActive && "scale-110 stroke-[2.5]"
+                  )} />
+                  {isCoachTab && isCoachLoading && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                  )}
+                </div>
                 <span className="text-[10px] font-medium">{item.label}</span>
                 {isActive && (
                   <span className="absolute -bottom-1 w-4 h-0.5 rounded-full bg-primary" />
@@ -199,6 +213,26 @@ export default function Layout() {
           </span>
           <span className="text-[10px] bg-white/15 px-1.5 py-0.5 rounded-md text-indigo-100 group-hover:bg-white/25">
             Voir →
+          </span>
+        </Link>
+      )}
+
+      {/* Badge Flottant Persistant : Indique que le Coach IA réfléchit en arrière-plan pendant la navigation inter-onglets (Chantier 1) */}
+      {Boolean(isCoachLoading) && location.pathname !== '/coach' && !importState?.isImporting && (
+        <Link
+          to="/coach"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2 rounded-full bg-gradient-to-r from-cyan-600 via-primary to-indigo-600 text-white backdrop-blur-xl shadow-xl shadow-cyan-500/25 border border-white/20 text-xs font-semibold hover:scale-105 active:scale-95 transition-all group"
+        >
+          <div className="relative flex items-center justify-center">
+            <Loader2 size={14} className="animate-spin text-white" />
+            <Sparkles size={8} className="absolute -top-1 -right-1 text-cyan-200 animate-bounce" />
+          </div>
+          <span>Coach IA réfléchit en arrière-plan...</span>
+          <span className="font-mono bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-bold">
+            {coachLoadingSeconds.toFixed(1)}s
+          </span>
+          <span className="text-[10px] bg-white/15 px-1.5 py-0.5 rounded-md text-cyan-100 group-hover:bg-white/25">
+            Ouvrir →
           </span>
         </Link>
       )}

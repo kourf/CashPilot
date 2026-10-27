@@ -242,7 +242,8 @@ RÈGLES COMPTABLES STRICTES ET PRIORITAIRES (NEUTRALISATION DES BIAIS & COÛT Z�
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0.2
+        temperature: 0.2,
+        maxOutputTokens: 8192
       }
     });
 
@@ -319,7 +320,8 @@ Ne fais aucune mention de la TVA.`;
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0.4
+        temperature: 0.4,
+        maxOutputTokens: 8192
       }
     });
 
@@ -426,7 +428,8 @@ Transactions à traiter : ${JSON.stringify(transactions)}`;
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0.1
+        temperature: 0.1,
+        maxOutputTokens: 8192
       }
     });
 

@@ -2,6 +2,9 @@ import { useEffect } from 'react';
 import AppRouter from './Router';
 import { getActiveAccountId, migrateLegacyDeviceDataIfNeeded } from './lib/userUtils';
 import ErrorBoundary from './components/ErrorBoundary';
+import { TransactionsProvider } from './context/TransactionsContext';
+import { ReceiptsProvider } from './context/ReceiptsContext';
+import { CoachProvider } from './context/CoachContext';
 
 function App() {
   useEffect(() => {
@@ -13,11 +16,16 @@ function App() {
     });
   }, []);
 
-
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
       <ErrorBoundary>
-        <AppRouter />
+        <TransactionsProvider>
+          <ReceiptsProvider>
+            <CoachProvider>
+              <AppRouter />
+            </CoachProvider>
+          </ReceiptsProvider>
+        </TransactionsProvider>
       </ErrorBoundary>
     </div>
   );

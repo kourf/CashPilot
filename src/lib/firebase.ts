@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
+import { getAuth, signInAnonymously, onAuthStateChanged, type User } from 'firebase/auth';
 
 // Les variables d'environnement Vite doivent commencer par VITE_
 const firebaseConfig = {
@@ -37,6 +38,42 @@ try {
 const storage = getStorage(app);
 const functions = getFunctions(app, 'europe-west1');
 
+// Authentification Firebase gratuite (Anonymous Auth / UID utilisateur isolé)
+let auth: ReturnType<typeof getAuth> | null = null;
+try {
+  if (typeof window !== 'undefined') {
+    auth = getAuth(app);
+  }
+} catch (e) {
+  console.warn("Firebase Auth init warning:", e);
+}
+
+/**
+ * Garantit qu'une session utilisateur authentifiée (anonyme ou connectée) est active
+ * sans bloquer le rendu initial et à coût 0 € (plan Spark gratuit).
+ */
+export async function ensureAuthenticatedUser(): Promise<User | null> {
+  if (!auth || typeof window === 'undefined') return null;
+  if (auth.currentUser) return auth.currentUser;
+
+  return new Promise((resolve) => {
+    const unsub = onAuthStateChanged(auth!, async (user) => {
+      unsub();
+      if (user) {
+        resolve(user);
+      } else {
+        try {
+          const cred = await signInAnonymously(auth!);
+          resolve(cred.user);
+        } catch (err) {
+          console.warn("Anonymous auth fallback (mode espace partagé actif):", err);
+          resolve(null);
+        }
+      }
+    });
+  });
+}
+
 // Connexion aux émulateurs locaux si configuré
 if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_USE_FIREBASE_EMULATOR === 'true') {
   connectFirestoreEmulator(db, 'localhost', 8080);
@@ -44,5 +81,4 @@ if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_USE_FIREBASE_EMU
   connectFunctionsEmulator(functions, 'localhost', 5001);
 }
 
-export { db, storage, functions };
-
+export { app, db, storage, functions, auth };

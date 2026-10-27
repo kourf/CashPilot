@@ -1,7 +1,9 @@
-import type { Transaction } from './kpiUtils.ts';
-import { enrichTransactionFallback } from './kpiUtils.ts';
+import type { Transaction, CostOfLivingExpenseItem, CustomUserRule } from './kpiUtils.ts';
+import { enrichTransactionFallback, DEFAULT_COST_OF_LIVING_ITEMS, getCustomUserRules } from './kpiUtils.ts';
 import type { Receipt, StandardizedProductDoc } from '../types/receipts.ts';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+
+export const COACH_MAX_OUTPUT_TOKENS = 8192;
 
 export function getGeminiModelName(): string {
   if (typeof window !== 'undefined') {
@@ -79,26 +81,83 @@ export interface FinancialProfile {
   };
 }
 
+/**
+ * Types du Système d'Actions Administrateur Sécurisées (Chantier 3)
+ */
+export type AdminActionType =
+  | 'UPDATE_TRANSACTION'
+  | 'DELETE_TRANSACTION'
+  | 'DELETE_STATEMENT_PERIOD'
+  | 'UPDATE_RECEIPT'
+  | 'DELETE_RECEIPT'
+  | 'UPDATE_BUDGET'
+  | 'CREATE_CUSTOM_RULE';
+
+export type AdminTargetType =
+  | 'transaction'
+  | 'statement'
+  | 'receipt'
+  | 'budget'
+  | 'subscription_rule';
+
+export interface ProposedAdminAction {
+  id: string;
+  actionType: AdminActionType;
+  targetType: AdminTargetType;
+  targetId: string;
+  title: string;
+  description: string;
+  oldValues: Record<string, string | number>;
+  newValues: Record<string, string | number>;
+  payload: Record<string, any>;
+  status: 'pending' | 'validated' | 'cancelled' | 'undone';
+  executedAt?: string;
+  undoneAt?: string;
+  archiveId?: string;
+}
+
+export interface ArchivedItemRecord {
+  id: string;
+  targetType: AdminTargetType;
+  targetId: string;
+  title: string;
+  subtitle: string;
+  deletedAt: string;
+  actionType: AdminActionType;
+  previousSnapshot: any;
+  restoredAt?: string;
+  isRestored?: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  status?: 'sending' | 'done' | 'error';
+  proposedAction?: ProposedAdminAction;
+}
+
 // Catégories attribuées aux Besoins (Fixes / Essentielles)
 const NEEDS_CATEGORIES = new Set([
   'Logement', 'Loyer', 'Crédit immobilier', 'Énergie', 'Électricité', 'Gaz', 'Eau',
   'Charges', 'Charges & Factures', 'Assurances', 'Assurance', 'Télécom', 'Abonnements & Télécom',
-  'Téléphonie', 'Internet', 'Alimentation & Supermarché', 'Courses', 'Supermarché',
-  'Santé', 'Pharmacie', 'Médecin', 'Mutuelle', 'Transports', 'Carburant', 'Essence',
-  'Transport en commun', 'Péage', 'Impôts', 'Taxes', 'Frais bancaires', 'Frais Bancaires'
+  'Téléphonie', 'Internet', 'Alimentation & Supermarché', 'Courses', 'Supermarché', 'Alimentation & Courses',
+  'Logement & Énergie', 'Santé', 'Pharmacie', 'Médecin', 'Mutuelle', 'Transports', 'Carburant', 'Essence',
+  'Transports & Carburant', 'Transport en commun', 'Péage', 'Impôts', 'Taxes', 'Frais bancaires', 'Frais Bancaires'
 ]);
 
 // Catégories attribuées aux Envies (Variables / Style de vie / Plaisirs)
 const WANTS_CATEGORIES = new Set([
-  'Restaurants & Sorties', 'Restaurants', 'Bars', 'Sorties', 'Loisirs & Culture',
-  'Loisirs', 'Culture', 'Shopping & Vêtements', 'Shopping', 'Mode', 'Vêtements',
+  'Restaurants & Sorties', 'Restaurants', 'Bars', 'Sorties', 'Loisirs & Culture', 'Loisirs & Activités',
+  'Loisirs', 'Culture', 'Shopping & Vêtements', 'Shopping & Maison', 'Shopping', 'Mode', 'Vêtements',
   'Voyages & Vacances', 'Voyages', 'Vacances', 'Cadeaux', 'Livraisons repas', 'Uber',
   'High-Tech', 'Jeux Vidéo', 'Divertissement', 'Beauté & Bien-être', 'Coiffeur'
 ]);
 
 // Catégories attribuées à l'Épargne & Investissement
 const SAVINGS_CATEGORIES = new Set([
-  'Épargne', 'Epargne', 'Investissements', 'Placements', 'PEA', 'Livret A', 'Crypto',
+  'Épargne', 'Epargne', 'Épargne & Investissement', 'Investissements', 'Placements', 'PEA', 'Livret A', 'Crypto',
   'Assurance Vie', 'Remboursement de crédit'
 ]);
 
@@ -127,7 +186,10 @@ export function buildFinancialProfile(
 
   const validDates: string[] = [];
 
-  transactions.forEach(rawTx => {
+  const activeTransactions = transactions.filter(t => !t.isArchived);
+  const activeReceipts = receipts.filter((r: any) => !r.isArchived);
+
+  activeTransactions.forEach(rawTx => {
     const tx = enrichTransactionFallback(rawTx);
     const amt = Number(tx.amount) || 0;
     const absAmt = Math.abs(amt);
@@ -170,7 +232,6 @@ export function buildFinancialProfile(
       } else {
         totalExpenses += absAmt;
 
-        // Agrégation par catégorie de dépenses
         if (!categoryTotals[category]) {
           categoryTotals[category] = { total: 0, count: 0 };
         }
@@ -184,11 +245,13 @@ export function buildFinancialProfile(
           amount: absAmt
         });
 
-        // Abonnements récurrents
+        // Abonnements récurrents (séparation par libellé + montant pour éviter de fusionner 2 contrats distincts ex: Google 2.99 vs 10.99)
         if (tx.isSubscription || category.includes('Abonnement') || tx.nature === 'fixe') {
-          const key = label.toLowerCase().trim();
+          const isAggregator = label.toLowerCase().includes('google') || label.toLowerCase().includes('apple');
+          const key = isAggregator ? `${label.toLowerCase().trim()}__${absAmt.toFixed(2)}` : label.toLowerCase().trim();
+          const displayLabel = isAggregator ? `${label} (${absAmt.toFixed(2)} €)` : label;
           if (!subsMap.has(key) || absAmt > subsMap.get(key)!.amount) {
-            subsMap.set(key, { label, category, amount: absAmt });
+            subsMap.set(key, { label: displayLabel, category, amount: absAmt });
           }
         }
 
@@ -200,7 +263,6 @@ export function buildFinancialProfile(
           needsTotal += absAmt;
           needsCatTotals[category] = (needsCatTotals[category] || 0) + absAmt;
         } else {
-          // Fallback selon la nature
           if (tx.nature === 'fixe') {
             needsTotal += absAmt;
             needsCatTotals[category] = (needsCatTotals[category] || 0) + absAmt;
@@ -213,11 +275,9 @@ export function buildFinancialProfile(
     }
   });
 
-  // Tri des dates
   validDates.sort();
   const dateRange = validDates.length > 0 ? { start: validDates[0], end: validDates[validDates.length - 1] } : null;
 
-  // Tri des catégories par montant décroissant
   const sortedCategories: CategorySummary[] = Object.entries(categoryTotals)
     .map(([cat, data]) => ({
       category: cat,
@@ -227,21 +287,18 @@ export function buildFinancialProfile(
     }))
     .sort((a, b) => b.total - a.total);
 
-  // Top dépenses individuelles
   const topSingleExpenses = singleDebits
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 10);
 
-  // Subscriptions
   const subscriptions = Array.from(subsMap.values())
     .map(s => ({
       ...s,
       annual: Math.round(s.amount * 12 * 100) / 100
     }))
     .sort((a, b) => b.amount - a.amount)
-    .slice(0, 12);
+    .slice(0, 15);
 
-  // 50/30/20 Calculation
   const baseRevenue = totalIncome > 0 ? totalIncome : totalExpenses;
   const needsTarget = Math.round(baseRevenue * 0.5 * 100) / 100;
   const wantsTarget = Math.round(baseRevenue * 0.3 * 100) / 100;
@@ -320,7 +377,7 @@ export function buildFinancialProfile(
   let totalReceiptSpend = 0;
   const rawProducts: { name: string; price: number; store: string; date: string }[] = [];
 
-  receipts.forEach(r => {
+  activeReceipts.forEach(r => {
     const sName = r.storeName || 'Supermarché';
     const amt = Number(r.totalAmount) || 0;
     totalReceiptSpend += amt;
@@ -331,7 +388,7 @@ export function buildFinancialProfile(
     if (Array.isArray(r.items)) {
       r.items.forEach(it => {
         rawProducts.push({
-          name: it.cleanName || it.name,
+          name: (it as any).cleanName || it.normalizedName || it.rawName || (it as any).name || 'Article',
           price: Number(it.pricePaid) || Number(it.unitPrice) || 0,
           store: sName,
           date: r.date || ''
@@ -356,14 +413,14 @@ export function buildFinancialProfile(
     totalExpenses: Math.round(totalExpenses * 100) / 100,
     netSavings,
     savingsRate,
-    transactionCount: transactions.length,
+    transactionCount: activeTransactions.length,
     dateRange,
     topCategories: sortedCategories,
     topSingleExpenses,
     subscriptions,
     rule503020,
     receiptsSummary: {
-      receiptCount: receipts.length,
+      receiptCount: activeReceipts.length,
       totalReceiptSpend: Math.round(totalReceiptSpend * 100) / 100,
       stores,
       topProducts
@@ -382,9 +439,7 @@ export function filterExpensesByDateRange(
   const parseDate = (s: string) => {
     if (!s) return null;
     const clean = s.trim();
-    // Format YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return new Date(clean);
-    // Format DD/MM/YYYY
     if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(clean)) {
       const [d, m, y] = clean.split('/').map(Number);
       return new Date(y, m - 1, d);
@@ -396,8 +451,9 @@ export function filterExpensesByDateRange(
   const end = parseDate(endDateStr);
 
   const matched = transactions.filter(t => {
+    if (t.isArchived) return false;
     const amt = Number(t.amount) || 0;
-    if (amt >= 0) return false; // uniquement les dépenses
+    if (amt >= 0) return false;
     if (!t.date) return false;
     const d = parseDate(t.date);
     if (!d || isNaN(d.getTime())) return false;
@@ -416,14 +472,264 @@ export function filterExpensesByDateRange(
 }
 
 /**
- * Construit le prompt système contenant l'intégralité de la base de données financière (Datawarehouse Relevés Bancaires + Tickets + Articles)
+ * Récupère les budgets actuels de la section "Budget & Coût de la vie"
+ */
+export function getActiveCostOfLivingBudgets(): CostOfLivingExpenseItem[] {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const saved = localStorage.getItem('cashpilot_cost_of_living_v2') || localStorage.getItem('cashpilot_cost_of_living');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    }
+  } catch {}
+  return DEFAULT_COST_OF_LIVING_ITEMS;
+}
+
+/**
+ * CHANTIER 2 : Pré-Audit Déterministe Intelligent sur les produits / rayons des tickets de caisse
+ * Garantit une réponse complète en 2 parties (Synthèse directe + Tableau Markdown) sans aucune troncature.
+ */
+export interface ProductQueryPreAudit {
+  matchedKeyword: string;
+  itemCount: number;
+  averageUnitPrice: number;
+  cheapestPrice: number;
+  cheapestStore: string;
+  cheapestItemName: string;
+  totalSpent: number;
+  markdownTable: string;
+  directSynthesisText: string;
+  rows: Array<{
+    date: string;
+    store: string;
+    productAndBrand: string;
+    quantity: number;
+    unitPrice: number;
+    totalPaid: number;
+  }>;
+}
+
+const PRODUCT_FAMILY_SYNONYMS: Record<string, string[]> = {
+  pain: ['pain', 'baguette', 'mie', 'brioche', 'campagne', 'croustille', 'tradition', 'boulangerie', 'viennoiserie', 'croissant'],
+  fruit: ['fruit', 'fruits', 'banane', 'pomme', 'poire', 'orange', 'clémentine', 'mandarine', 'fraise', 'framboise', 'melon', 'pastèque', 'ananas', 'raisin', 'kiwi', 'pêche', 'nectarine', 'abricot', 'citron', 'mangue', 'avocat', 'fruits & légumes'],
+  legume: ['légume', 'legume', 'légumes', 'legumes', 'tomate', 'carotte', 'salade', 'batavia', 'concombre', 'courgette', 'aubergine', 'poivron', 'oignon', 'pomme de terre', 'patate', 'haricot', 'brocoli', 'chou', 'épinard', 'champignon'],
+  lait: ['lait', 'demi-écrémé', 'écrémé', 'entier', 'lactel', 'candia', 'delactose'],
+  oeuf: ['oeuf', 'oeufs', 'œuf', 'œufs', 'ufs'],
+  viande: ['viande', 'poulet', 'dinde', 'volaille', 'boeuf', 'bœuf', 'steak', 'haché', 'lardon', 'jambon', 'saucisse', 'merguez', 'boucherie', 'veau', 'agneau'],
+  poisson: ['poisson', 'saumon', 'thon', 'colin', 'cabillaud', 'crevette', 'crevettes', 'poissonnerie', 'sardine', 'maquereau'],
+  fromage: ['fromage', 'emmental', 'comté', 'mozzarella', 'chèvre', 'camembert', 'brie', 'raclette', 'parmesan', 'râpé', 'crèmerie'],
+  yaourt: ['yaourt', 'yaourts', 'fromage blanc', 'petit suisse', 'danone', 'skyr', 'dessert lacté'],
+  boisson: ['boisson', 'boissons', 'eau', 'jus', 'soda', 'coca', 'sirop', 'cristaline', 'evian', 'vittel', 'multifruits'],
+  cafe: ['café', 'cafe', 'expresso', 'dosette', 'capsule', 'nescafe', 'carte noire', 'lavazza', 'l or'],
+  pate: ['pâte', 'pâtes', 'spaghetti', 'coquillette', 'penne', 'tagliatelle', 'macaroni', 'barilla', 'panzani'],
+  riz: ['riz', 'basmati', 'thaï', 'taureau ailé', 'uncle ben'],
+  huile: ['huile', 'olive', 'tournesol', 'colza', 'lesieur', 'puget'],
+  beurre: ['beurre', 'président', 'paysan breton', 'margarine']
+};
+
+export function buildProductQueryPreAudit(
+  userPrompt: string,
+  receipts: Receipt[],
+  currency: string = 'EUR'
+): ProductQueryPreAudit | null {
+  const sym = currency === 'CHF' ? 'CHF' : '€';
+  const normPrompt = (userPrompt || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  // Détecter si la question porte sur le prix / l'achat d'un produit ou rayon
+  const isProductQuestion =
+    normPrompt.includes('combien') ||
+    normPrompt.includes('prix') ||
+    normPrompt.includes('achete') ||
+    normPrompt.includes('acheter') ||
+    normPrompt.includes('coute') ||
+    normPrompt.includes('coutent') ||
+    normPrompt.includes('paye') ||
+    normPrompt.includes('depense') ||
+    normPrompt.includes('historique') ||
+    normPrompt.includes('compar');
+
+  if (!isProductQuestion || !receipts || receipts.length === 0) return null;
+
+  // Identifier la famille ou le mot-clé recherché
+  let targetKeywords: string[] = [];
+  let matchedLabel = '';
+
+  for (const [familyKey, synonyms] of Object.entries(PRODUCT_FAMILY_SYNONYMS)) {
+    const normSynonyms = synonyms.map(s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+    if (normSynonyms.some(s => normPrompt.includes(s))) {
+      targetKeywords = normSynonyms;
+      matchedLabel = synonyms[0];
+      // Cas spécifique "fruits" sans "légumes" : cibler les fruits et le rayon Fruits & Légumes
+      if (familyKey === 'fruit' && !normPrompt.includes('legume')) {
+        matchedLabel = 'fruits';
+      } else if (familyKey === 'pain') {
+        matchedLabel = 'pain & boulangerie';
+      }
+      break;
+    }
+  }
+
+  // Si aucune famille prédéfinie, extraire un nom de produit significatif de la question
+  if (targetKeywords.length === 0) {
+    const stopWords = new Set([
+      'combien', 'quel', 'quelle', 'quels', 'quelles', 'est', 'sont', 'le', 'la', 'les', 'mes', 'mon', 'ma',
+      'des', 'du', 'de', 'dans', 'sur', 'pour', 'avec', 'sans', 'chez', 'prix', 'coute', 'coutent', 'achete',
+      'acheter', 'paye', 'payer', 'depense', 'depenses', 'ticket', 'tickets', 'caisse', 'courses', 'magasin',
+      'enseigne', 'moyen', 'total', 'tableau', 'liste', 'moi', 'donne', 'fais', 'analyse', 'repond', 'question'
+    ]);
+    const words = normPrompt
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 3 && !stopWords.has(w));
+
+    if (words.length > 0) {
+      targetKeywords = words;
+      matchedLabel = words.join(' ');
+    }
+  }
+
+  if (targetKeywords.length === 0) return null;
+
+  const activeReceipts = receipts.filter((r: any) => !r.isArchived);
+  const rows: ProductQueryPreAudit['rows'] = [];
+
+  // Liste d'exclusion si l'utilisateur demande spécifiquement "fruits" (exclure les légumes purs s'il demande uniquement les fruits, tout en gardant les fruits)
+  const isStrictFruitQuery = normPrompt.includes('fruit') && !normPrompt.includes('legume');
+  const pureVegetables = ['concombre', 'salade', 'batavia', 'carotte', 'oignon', 'pomme de terre', 'frite', 'courgette', 'aubergine', 'poivron', 'haricot', 'brocoli', 'chou', 'epinard', 'champignon', 'ail', 'echalote', 'poireau', 'celeri', 'radis', 'navet', 'mais'];
+
+  activeReceipts.forEach(rcpt => {
+    const store = rcpt.storeName || 'Supermarché';
+    const date = rcpt.date || 'N/A';
+    if (!Array.isArray(rcpt.items)) return;
+
+    rcpt.items.forEach(it => {
+      const cleanName = (it as any).cleanName || it.normalizedName || (it as any).nomGenerique || it.rawName || (it as any).name || 'Article';
+      const rawName = it.rawName || (it as any).name || '';
+      const brand = it.brand || (it as any).marque || 'Générique';
+      const category = it.category || '';
+      const fullSearchText = `${cleanName} ${rawName} ${brand} ${category}`
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+      const matches = targetKeywords.some(kw => fullSearchText.includes(kw));
+      if (!matches) return;
+
+      if (isStrictFruitQuery) {
+        const nameLower = `${cleanName} ${rawName}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (pureVegetables.some(veg => nameLower.includes(veg))) {
+          return;
+        }
+      }
+
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const totalPaid = Number(it.pricePaid ?? it.price) || (Number(it.unitPrice) || 0) * qty;
+      const unitPrice = Number(it.unitPrice) > 0 ? Number(it.unitPrice) : totalPaid / qty;
+      const format = it.weightOrVolume || (it as any).formatExact ? ` [${it.weightOrVolume || (it as any).formatExact}]` : '';
+      const brandLabel = brand && brand.toLowerCase() !== 'générique' && brand.toLowerCase() !== 'generique' ? ` (${brand})` : ' (Générique)';
+
+      rows.push({
+        date,
+        store,
+        productAndBrand: `${cleanName}${brandLabel}${format}`,
+        quantity: qty,
+        unitPrice: Math.round(unitPrice * 100) / 100,
+        totalPaid: Math.round(totalPaid * 100) / 100
+      });
+    });
+  });
+
+  if (rows.length === 0) return null;
+
+  // Trier par date décroissante
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+
+  const totalSpent = Math.round(rows.reduce((acc, r) => acc + r.totalPaid, 0) * 100) / 100;
+  const averageUnitPrice = Math.round((rows.reduce((acc, r) => acc + r.unitPrice, 0) / rows.length) * 100) / 100;
+
+  let cheapestRow = rows[0];
+  for (const r of rows) {
+    if (r.unitPrice > 0 && r.unitPrice < cheapestRow.unitPrice) {
+      cheapestRow = r;
+    }
+  }
+
+  const header = `| Date | Enseigne | Produit & Marque | Quantité | Prix unitaire (${sym}) | Prix total payé (${sym}) |\n| :--- | :--- | :--- | :---: | :---: | :---: |`;
+  const tableLines = rows.map(
+    r => `| ${r.date} | ${r.store} | ${r.productAndBrand} | ${r.quantity} | ${r.unitPrice.toFixed(2)} ${sym} | **${r.totalPaid.toFixed(2)} ${sym}** |`
+  );
+  const totalFooter = `| **TOTAL** | **${rows.length} achats** | — | **${rows.reduce((acc, r) => acc + r.quantity, 0)}** | **Moy: ${averageUnitPrice.toFixed(2)} ${sym}** | **${totalSpent.toFixed(2)} ${sym}** |`;
+
+  const markdownTable = `${header}\n${tableLines.join('\n')}\n${totalFooter}`;
+
+  const directSynthesisText = `Vous achetez vos **${matchedLabel}** au prix unitaire moyen de **${averageUnitPrice.toFixed(2)} ${sym}**, avec le tarif le moins cher constaté à **${cheapestRow.unitPrice.toFixed(2)} ${sym}** chez **${cheapestRow.store}** (${cheapestRow.productAndBrand}), pour un montant total dépensé de **${totalSpent.toFixed(2)} ${sym}** sur la période.`;
+
+  return {
+    matchedKeyword: matchedLabel,
+    itemCount: rows.length,
+    averageUnitPrice,
+    cheapestPrice: cheapestRow.unitPrice,
+    cheapestStore: cheapestRow.store,
+    cheapestItemName: cheapestRow.productAndBrand,
+    totalSpent,
+    markdownTable,
+    directSynthesisText,
+    rows
+  };
+}
+
+/**
+ * Filet de sécurité anti-troncature (Chantier 2) :
+ * Si l'IA a généré un début de tableau tronqué ou incomplet, complète automatiquement avec le tableau complet.
+ */
+export function ensureCompleteAuditResponse(
+  rawText: string,
+  preAudit: ProductQueryPreAudit | null
+): string {
+  const cleaned = (rawText || '').trim();
+  if (!preAudit) return cleaned;
+
+  // Vérifier si la réponse contient un tableau Markdown complet (au moins l'en-tête + séparateur + 1 ligne de données complète)
+  const lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
+  const tableLines = lines.filter(l => l.startsWith('|'));
+
+  // Cas 1 : Le texte se termine brutalement sur une ligne d'en-tête de tableau incomplète (ex: "| Date | Enseigne | Produit & Marque")
+  const lastLine = lines[lines.length - 1] || '';
+  const isTruncatedTableHeader =
+    (lastLine.startsWith('|') && (lastLine.includes('Date') || lastLine.includes('Enseigne') || lastLine.includes('---'))) ||
+    tableLines.length <= 2;
+
+  if (isTruncatedTableHeader) {
+    // Retirer les lignes de tableau incomplètes à la fin
+    const nonTableIntroLines = lines.filter(l => !l.startsWith('|'));
+    const intro = nonTableIntroLines.length > 0
+      ? nonTableIntroLines.join('\n\n')
+      : preAudit.directSynthesisText;
+
+    return `${intro}\n\n${preAudit.markdownTable}`;
+  }
+
+  return cleaned;
+}
+
+/**
+ * Construit le prompt système contenant l'intégralité de la base de données financière
+ * (Datawarehouse Relevés Bancaires + Tickets + Articles + Budgets + Règles Personnalisées)
  */
 export function buildCoachSystemContext(
   profile: FinancialProfile,
   transactions: Transaction[],
   receiptsOrCurrency?: Receipt[] | string,
   products?: StandardizedProductDoc[],
-  currency: string = 'EUR'
+  currency: string = 'EUR',
+  userPromptForPreAudit?: string
 ): string {
   let receipts: Receipt[] = [];
   let sym = currency === 'CHF' ? 'CHF' : '€';
@@ -431,9 +737,11 @@ export function buildCoachSystemContext(
   if (typeof receiptsOrCurrency === 'string') {
     sym = receiptsOrCurrency === 'CHF' ? 'CHF' : '€';
   } else if (Array.isArray(receiptsOrCurrency)) {
-    receipts = receiptsOrCurrency;
+    receipts = receiptsOrCurrency.filter((r: any) => !r.isArchived);
     sym = currency === 'CHF' ? 'CHF' : '€';
   }
+
+  const activeTransactions = transactions.filter(t => !t.isArchived);
 
   // Formatage du top des catégories
   const topCatsText = profile.topCategories
@@ -459,14 +767,25 @@ Conseils clés : ${r.advice.join(' | ')}
     ? profile.subscriptions.map(s => `- **${s.label}** (${s.category}) : ${s.amount.toFixed(2)} ${sym}/mois (~${s.annual.toFixed(2)} ${sym}/an)`).join('\n')
     : 'Aucun abonnement récurrent détecté.';
 
-  // 1. DATAWAREHOUSE EXHAUSTIF DES TICKETS DE CAISSE ET ARTICLES
+  // Formatage des budgets "Budget & Coût de la vie"
+  const currentBudgets = getActiveCostOfLivingBudgets();
+  const budgetsText = currentBudgets
+    .map(b => `- [ID: ${b.id}] **${b.name}** (Groupe: ${b.categoryGroup}) : Budget alloué = **${(Number(b.amount) || 0).toFixed(2)} ${sym}/mois**`)
+    .join('\n');
+
+  // Formatage des règles personnalisées de l'utilisateur
+  const customRules = getCustomUserRules();
+  const customRulesText = customRules.length > 0
+    ? customRules.map(cr => `- [RuleID: ${cr.id}] Mot-clé "${cr.pattern}"${cr.exactAmount ? ` (Montant exact: ${cr.exactAmount.toFixed(2)} ${sym})` : ''} => Libellé: **${cr.customLabel}** | Catégorie: **${cr.category}**${cr.budgetPostName ? ` | Poste Budget: ${cr.budgetPostName}` : ''}${cr.customNote ? ` | Note: ${cr.customNote}` : ''}`).join('\n')
+    : 'Aucune règle personnalisée enregistrée pour le moment.';
+
+  // 1. DATAWAREHOUSE EXHAUSTIF ET COMPACT DES TICKETS DE CAISSE ET ARTICLES
   let receiptsDataWarehouseSection = '';
   if (receipts && receipts.length > 0) {
     const storeBreakdown: Record<string, { total: number; count: number; dates: string[] }> = {};
     const detailedReceiptsLines: string[] = [];
     const allItemsLines: string[] = [];
 
-    // Trier les tickets par date décroissante
     const sortedReceipts = [...receipts].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
     sortedReceipts.forEach(rcpt => {
@@ -485,19 +804,18 @@ Conseils clés : ${r.advice.join(' | ')}
 
       detailedReceiptsLines.push(`- [${d}${tTime}] | **${sName}** | Montant: **${tot.toFixed(2)} ${sym}** | ${itemsCount} articles (Ticket ID: ${rcpt.id})`);
 
-      // Extraction exhaustive de chaque article
       if (Array.isArray(rcpt.items)) {
         rcpt.items.forEach(it => {
-          const rawN = it.rawName || it.name || '';
-          const cleanN = it.cleanName || it.normalizedName || it.nomGenerique || rawN || 'Article';
-          const brand = it.brand || it.marque ? `(${it.brand || it.marque})` : '';
-          const weight = it.weightOrVolume || it.formatExact ? `[${it.weightOrVolume || it.formatExact}]` : '';
+          const rawN = it.rawName || (it as any).name || '';
+          const cleanN = (it as any).cleanName || it.normalizedName || (it as any).nomGenerique || rawN || 'Article';
+          const brand = it.brand || (it as any).marque ? `(${it.brand || (it as any).marque})` : '';
+          const weight = it.weightOrVolume || (it as any).formatExact ? `[${it.weightOrVolume || (it as any).formatExact}]` : '';
           const qty = it.quantity || 1;
           const pu = Number(it.unitPrice) || (it.pricePaid ? it.pricePaid / qty : 0);
           const pp = Number(it.pricePaid) || (pu * qty);
           const cat = it.category ? `{Rayon: ${it.category}}` : '';
 
-          allItemsLines.push(`${d} | ${sName} | ${cleanN} ${brand} ${weight} | Qté: ${qty} | PU: ${pu.toFixed(2)} ${sym} | Payé: ${pp.toFixed(2)} ${sym} | ${cat} | brut: "${rawN}"`);
+          allItemsLines.push(`${d} | ${sName} | ${cleanN} ${brand} ${weight} | Qté: ${qty} | PU: ${pu.toFixed(2)} ${sym} | Payé: ${pp.toFixed(2)} ${sym} | ${cat} | TicketID: ${rcpt.id}`);
         });
       }
     });
@@ -513,12 +831,12 @@ DATAWAREHOUSE COMPLET DES TICKETS DE CAISSE (${receipts.length} TICKETS ENREGIST
 RÉPARTITION PAR MAGASIN PHYSIQUE DÉTECTÉ :
 ${storeSummaryList}
 
-LISTE COMPLÈTE DE TOUS LES TICKETS DE CAISSE (DATE, MAGASIN EXACT, MONTANT TOTAL) :
+LISTE COMPLÈTE DE TOUS LES TICKETS DE CAISSE (DATE, MAGASIN EXACT, MONTANT TOTAL, ID) :
 ${detailedReceiptsLines.join('\n')}
 
 ================================================================================
 DATAWAREHOUSE INTÉGRAL DE TOUS LES ARTICLES ACHETÉS EN MAGASIN (${allItemsLines.length} ARTICLES)
-(Chaque ligne contient : Date | Magasin exact | Nom du produit (Marque) [Format] | Quantité | Prix Unitaire | Prix Payé | Rayon | Libellé Brut)
+(Format : Date | Enseigne | Nom standardisé (Marque) [Format] | Qté | PU | Total Payé | Rayon | TicketID)
 ================================================================================
 ${allItemsLines.join('\n')}
 `;
@@ -531,13 +849,15 @@ Aucun ticket de caisse numérisé pour le moment.
 `;
   }
 
-  // 2. PRODUITS STANDARDISÉS & HISTORIQUE DES PRIX (si disponibles)
+  // 2. PRODUITS STANDARDISÉS & HISTORIQUE DES PRIX
   let productsSection = '';
   if (products && products.length > 0) {
     const pLines: string[] = [];
     products.slice(0, 100).forEach(p => {
-      const best = p.meilleur_magasin ? `Meilleur: ${p.meilleur_magasin.storeName} (${p.meilleur_magasin.prix_unitaire.toFixed(2)} ${sym})` : '';
-      pLines.push(`- **${p.nom_generique}** (${p.marque}) [${p.rayon_assigne}] : ${best}`);
+      const best = (p as any).meilleure_offre
+        ? `Meilleur: ${(p as any).meilleure_offre.magasin_nom} (${Number((p as any).meilleure_offre.prix_unitaire).toFixed(2)} ${sym})`
+        : (p.meilleur_magasin ? `Meilleur: ${p.meilleur_magasin.storeName} (${p.meilleur_magasin.prix_unitaire.toFixed(2)} ${sym})` : '');
+      pLines.push(`- **${p.nom_generique}** (${p.marque}) [${p.rayon_assigne || (p as any).rayon}] : ${best}`);
     });
     productsSection = `
 ================================================================================
@@ -547,20 +867,45 @@ ${pLines.join('\n')}
 `;
   }
 
-  // 3. Compression et listing complet du Grand Livre des Transactions Bancaires (jusqu'à 1500 opérations)
+  // 3. Pré-audit déterministe si une question produit est posée
+  let preAuditSection = '';
+  if (userPromptForPreAudit) {
+    const preAudit = buildProductQueryPreAudit(userPromptForPreAudit, receipts, currency);
+    if (preAudit) {
+      preAuditSection = `
+================================================================================
+PRÉ-AUDIT MATHÉMATIQUE EXACT POUR LA QUESTION DE L'UTILISATEUR ("${preAudit.matchedKeyword}")
+================================================================================
+Utilise OBLIGATOIREMENT ces résultats mathématiquement vérifiés pour répondre :
+- Nombre d'achats trouvés : ${preAudit.itemCount}
+- Prix unitaire moyen payé : ${preAudit.averageUnitPrice.toFixed(2)} ${sym}
+- Prix le moins cher constaté : ${preAudit.cheapestPrice.toFixed(2)} ${sym} chez ${preAudit.cheapestStore} (${preAudit.cheapestItemName})
+- Montant total dépensé sur la période : ${preAudit.totalSpent.toFixed(2)} ${sym}
+
+SYNTHÈSE DIRECTE PRÉ-CALCULÉE (PARTIE 1) :
+${preAudit.directSynthesisText}
+
+TABLEAU JUSTIFICATIF COMPLET PRÉ-CALCULÉ (PARTIE 2 - REPRODUIS TOUTES LES LIGNES SANS TRONQUER) :
+${preAudit.markdownTable}
+`;
+    }
+  }
+
+  // 4. Grand Livre compact des Transactions Bancaires (jusqu'à 800 opérations pour préserver la fenêtre de contexte)
   const ledgerLines: string[] = [];
-  const sortedTx = [...transactions].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const maxTx = Math.min(sortedTx.length, 1500);
+  const sortedTx = [...activeTransactions].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const maxTx = Math.min(sortedTx.length, 800);
 
   for (let i = 0; i < maxTx; i++) {
-    const t = sortedTx[i];
+    const t = enrichTransactionFallback(sortedTx[i]);
+    const txId = t.id || `tx-${i}`;
     const d = t.date || 'N/A';
     const amt = (Number(t.amount) || 0).toFixed(2);
     const cat = t.category || 'Autre';
     const lbl = (t.cleanLabel || t.rawLabel || t.description || 'Opération').replace(/[|\n\r]/g, ' ').substring(0, 45);
     const nat = t.nature ? `[${t.nature}]` : '';
     const sub = t.isSubscription ? '[Abonnement]' : '';
-    ledgerLines.push(`${d} | ${amt} ${sym} | ${cat} | ${lbl} ${nat} ${sub}`);
+    ledgerLines.push(`${txId} | ${d} | ${amt} ${sym} | ${cat} | ${lbl} ${nat} ${sub}`);
   }
 
   const ledgerText = ledgerLines.join('\n');
@@ -568,9 +913,11 @@ ${pLines.join('\n')}
   return `
 Tu es le **Coach Financier Personnel CashPilot**, un expert d'élite en finances personnelles, comptabilité analytique et optimisation du pouvoir d'achat.
 Tu as ACCÈS DIRECT ET INTÉGRAL À L'ENSEMBLE DU DATAWAREHOUSE FINANCIER RÉEL de l'utilisateur fourni ci-dessous :
-1. L'intégralité des relevés bancaires (toutes les transactions par date et libellé)
-2. L'intégralité des tickets de caisse (tous les passages en caisse avec dates et montants)
-3. L'intégralité des articles achetés (chaque produit individuel, sa marque, sa quantité, son prix unitaire, son prix payé et son enseigne exacte).
+1. L'intégralité des relevés bancaires (toutes les transactions par ID, date et libellé)
+2. L'intégralité des tickets de caisse (tous les passages en caisse avec dates, IDs et montants)
+3. L'intégralité des articles achetés (chaque produit individuel, sa marque, sa quantité, son prix unitaire, son prix payé et son enseigne exacte)
+4. Les budgets alloués dans la section "Budget & Coût de la vie"
+5. Les règles personnalisées & clarifications d'abonnements de l'utilisateur.
 
 ================================================================================
 SYNTHÈSE DU PROFIL FINANCIER GLOBAL
@@ -598,61 +945,387 @@ ABONNEMENTS ET CHARGES RÉCURRENTES
 ================================================================================
 ${subsText}
 
+================================================================================
+BUDGETS ALLOUÉS ("BUDGET & COÛT DE LA VIE")
+================================================================================
+${budgetsText}
+
+================================================================================
+RÈGLES PERSONNALISÉES & CLARIFICATIONS D'ABONNEMENTS DE L'UTILISATEUR
+================================================================================
+${customRulesText}
+
+${preAuditSection}
+
 ${receiptsDataWarehouseSection}
 
 ${productsSection}
 
 ================================================================================
 GRAND LIVRE COMPLET DES TRANSACTIONS BANCAIRES (${sortedTx.length} OPÉRATIONS)
-(Format: Date | Montant | Catégorie | Libellé Opération)
+(Format: TxID | Date | Montant | Catégorie | Libellé Opération)
 ================================================================================
 ${ledgerText}
 
 ================================================================================
-CONSIGNES ET RÈGLES DE RÉPONSE STRICTES DU COACH
+CONSIGNES ET RÈGLES DE RÉPONSE STRICTES DU COACH ("AUDIT DIRECT")
 ================================================================================
 
-1. **RÈGLE OBLIGATOIRE SUR LES ENSEIGNES & MAGASINS (ex: Leclerc, Carrefour, Intermarché, Lidl, Super U)** :
-   - Quand l'utilisateur demande ses dépenses chez une enseigne (ex: "mes dépenses chez Leclerc", "mes achats chez Intermarché") :
-   - Tu dois explorer les TICKETS DE CAISSE ainsi que les RELEVÉS BANCAIRES.
-   - S'il existe PLUSIEURS magasins différents sous cette enseigne (par exemple plusieurs points de vente E.Leclerc comme "E.Leclerc - Ville-la-Grand" ou d'autres, ou plusieurs Intermarché comme "Intermarché - Annemasse", "Intermarché - Ville-la-Grand", "Intermarché - Gaillard") :
+1. **CONSIGNE SYSTÈME "AUDIT DIRECT" EN 2 PARTIES OBLIGATOIRES (POUR TOUTE QUESTION SUR LES DÉPENSES, PRODUITS OU ACHATS)** :
+   Tu dois TOUJOURS structurer ta réponse selon ces 2 parties strictes, sans jamais tronquer ni couper le tableau :
+   - **Partie 1 (Synthèse directe en 1 à 2 phrases)** : Réponds immédiatement dès la première ligne avec les chiffres clés en gras avant tout tableau :
+     * **Prix moyen payé**
+     * **Prix le moins cher constaté et dans quelle enseigne**
+     * **Montant total dépensé sur la période**
+   - **Partie 2 (Tableau justificatif complet)** : Affiche ensuite le tableau Markdown complet et parfaitement formaté avec TOUTES les lignes correspondantes :
+     | Date | Enseigne | Produit & Marque | Quantité | Prix unitaire (${sym}) | Prix total payé (${sym}) |
+     | :--- | :--- | :--- | :---: | :---: | :---: |
+     *(Suivi de toutes les lignes de données et d'une ligne de TOTAL en gras. INTERDICTION ABSOLUE de t'arrêter après l'en-tête du tableau !)*
+
+2. **RÈGLE OBLIGATOIRE SUR LES ENSEIGNES & MAGASINS (ex: Leclerc, Carrefour, Intermarché, Lidl, Super U)** :
+   - Quand l'utilisateur demande ses dépenses chez une enseigne :
+   - Explore les TICKETS DE CAISSE ainsi que les RELEVÉS BANCAIRES.
+   - S'il existe PLUSIEURS magasins différents sous cette enseigne (ex: "E.Leclerc - Ville-la-Grand", "E.Leclerc - Roques", ou "Intermarché - Annemasse", "Intermarché - Ville-la-Grand", "Intermarché - Gaillard") :
      * **TU DOIS OBLIGATOIREMENT LISTER DISTINCTEMENT TOUS LES MAGASINS PORTANT CE NOM**, avec le montant dépensé dans chaque magasin et son nombre de tickets !
      * Donne le **TOTAL GLOBAL CUMULÉ** pour cette enseigne.
-     * Fournis ensuite la **LISTE CHRONOLOGIQUE DÉTAILLÉE DE CHAQUE TICKET** avec la date exacte, le nom précis du magasin et le montant payé.
-     * **INTERDICTION FORMELLE** de ne citer qu'un seul magasin si plusieurs existent ou d'affirmer que les détails ne sont pas fournis : ils sont tous écrits ligne par ligne dans les sections ci-dessus !
+     * Fournis ensuite la **LISTE CHRONOLOGIQUE DÉTAILLÉE DE CHAQUE TICKET** en tableau Markdown.
 
-2. **RÈGLE OBLIGATOIRE SUR LA RECHERCHE DE PRODUITS SPÉCIFIQUES (ex: "Combien me coûte le pain ?", "le café", "le lait", etc.)** :
-   - Quand l'utilisateur demande le prix ou l'historique d'un produit spécifique :
-   - Scanne méticuleusement la section "DATAWAREHOUSE INTÉGRAL DE TOUS LES ARTICLES ACHETÉS EN MAGASIN".
-   - Retiens TOUS les articles correspondants (par exemple pour le pain : toutes les baguettes tradition, baguettes croustilles, pain de mie, pain complet, brioches, etc.).
-   - Présente un **TABLEAU MARKDOWN CLAIR** listant TOUS les achats trouvés :
-     | Date | Enseigne | Produit & Marque | Quantité | Prix unitaire (€) | Prix total payé (€) |
-   - Fais ensuite une synthèse intelligente :
-     * Prix moyen constaté
-     * Comparaison des prix entre magasins (ex: combien coûte la baguette chez E.Leclerc vs Lidl vs Super U vs Intermarché)
-     * Recommandation sur l'enseigne la plus économique pour ce produit.
+3. **RÈGLE OBLIGATOIRE SUR LA RECHERCHE DE PRODUITS SPÉCIFIQUES (ex: "à combien j'achète mes fruits ?", "combien j'achète mon pain ?", "le café", "le lait", etc.)** :
+   - Scanne méticuleusement la section "DATAWAREHOUSE INTÉGRAL DE TOUS LES ARTICLES ACHETÉS EN MAGASIN" (et utilise le "PRÉ-AUDIT MATHÉMATIQUE EXACT" s'il est fourni ci-dessus).
+   - Commence par la **Partie 1 (Synthèse directe en 1 à 2 phrases)** suivie de la **Partie 2 (Tableau Markdown complet)**.
 
-3. **RÈGLE SUR LES DATES ET PÉRIODES (ex: "du 01 au 15", "le mois dernier")** :
-   - Extrais toutes les dépenses de la période depuis le Grand Livre bancaire et les tickets.
-   - Affiche les opérations sous forme de tableau Markdown avec Date, Libellé, Catégorie, Montant, et le sous-total exact.
-
-4. **TON & RIGUEUR** :
-   - Sois direct, analytique, très précis, sans verbiage superflu.
-   - Utilise un français impeccable.
-   - Formate systématiquement les listes et montants en tableaux Markdown et mets en gras les chiffres clés.
+4. **SYSTÈME D'ACTIONS ADMINISTRATEUR SÉCURISÉES ("CARTES DE VALIDATION")** :
+   - Si l'utilisateur demande de **modifier, supprimer ou annuler** :
+     * un relevé bancaire d'un mois (actionType: "DELETE_STATEMENT_PERIOD", targetType: "statement")
+     * une dépense ou transaction bancaire (actionType: "UPDATE_TRANSACTION" ou "DELETE_TRANSACTION", targetType: "transaction")
+     * un ticket de caisse ou le prix d'un article (actionType: "UPDATE_RECEIPT" ou "DELETE_RECEIPT", targetType: "receipt")
+     * un budget dans "Budget & Coût de la vie" (actionType: "UPDATE_BUDGET", targetType: "budget")
+     * ou apporte une **précision sur un abonnement, un prélèvement ou une règle de catégorisation** (actionType: "CREATE_CUSTOM_RULE", targetType: "subscription_rule") :
+   - **RÈGLE DE SÉCURITÉ ABSOLUE** : Explique clairement le changement proposé dans ta réponse et indique à l'utilisateur de cliquer sur **[ ✅ Valider ]** dans la carte de confirmation ci-dessous pour appliquer la modification.
+   - Ajoute OBLIGATOIREMENT à la toute fin de ton message une balise unique \`<PROPOSED_ACTION>{"actionType":"...","targetType":"...","targetId":"...","title":"...","description":"...","oldValues":{...},"newValues":{...},"payload":{...}}</PROPOSED_ACTION>\` sur une seule ligne JSON valide.
 `;
 }
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  status?: 'sending' | 'done' | 'error';
+/**
+ * Détecteur déterministe local d'intentions d'actions administrateur (Fallback haute fiabilité 100% gratuit)
+ * Garantit qu'une Carte de Validation interactive est toujours générée lorsque l'utilisateur demande une modification,
+ * une suppression ou une règle personnalisée, même si le LLM omet la balise JSON.
+ */
+export function detectDeterministicAdminAction(
+  userPrompt: string,
+  transactions: Transaction[],
+  receipts: Receipt[],
+  budgets: CostOfLivingExpenseItem[] = getActiveCostOfLivingBudgets()
+): ProposedAdminAction | null {
+  const raw = (userPrompt || '').trim();
+  const norm = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // Helper pour extraire un montant en € dans la phrase (ex: "400€", "2,99 €", "850 euros")
+  const extractAmount = (text: string): number | null => {
+    const match = text.match(/(\d+(?:[.,]\d{1,2})?)\s*(?:€|eur|euros|chf)?/i);
+    if (!match) return null;
+    const val = parseFloat(match[1].replace(',', '.'));
+    return isNaN(val) ? null : val;
+  };
+
+  // 1. DÉTECTION DE MODIFICATION DE BUDGET ("Budget & Coût de la vie")
+  // Ex: "Fixe mon budget Courses à 400 €", "Modifie le budget Loyer à 850€", "Mets mon budget restaurant à 150 €"
+  const isBudgetIntent =
+    norm.includes('budget') ||
+    norm.includes('cout de la vie') ||
+    norm.includes('plafond') ||
+    (norm.includes('fixe') && (norm.includes('loyer') || norm.includes('courses') || norm.includes('restaurant') || norm.includes('carburant') || norm.includes('shopping') || norm.includes('loisir')));
+
+  if (isBudgetIntent) {
+    const matchedBudget = budgets.find(b => {
+      const bNorm = b.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const words = bNorm.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+      return words.some(w => norm.includes(w));
+    });
+
+    const amountMatch = raw.match(/(?:a|à|de|sur|=|:)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:€|eur|euros)?/i) || raw.match(/(\d+(?:[.,]\d{1,2})?)\s*(?:€|eur|euros)/i);
+    const newAmt = amountMatch ? parseFloat(amountMatch[1].replace(',', '.')) : null;
+
+    if (matchedBudget && newAmt !== null && !isNaN(newAmt)) {
+      return {
+        id: `action-budget-${Date.now()}`,
+        actionType: 'UPDATE_BUDGET',
+        targetType: 'budget',
+        targetId: matchedBudget.id,
+        title: `Modification du Budget : ${matchedBudget.name}`,
+        description: `Mise à jour du montant alloué dans "Budget & Coût de la vie" pour le poste « ${matchedBudget.name} ».`,
+        oldValues: {
+          'Poste budgétaire': matchedBudget.name,
+          'Budget Alloué actuel': `${(Number(matchedBudget.amount) || 0).toFixed(2)} €`
+        },
+        newValues: {
+          'Poste budgétaire': matchedBudget.name,
+          'Nouveau Budget Alloué': `${newAmt.toFixed(2)} €`
+        },
+        payload: {
+          budgetId: matchedBudget.id,
+          budgetName: matchedBudget.name,
+          categoryGroup: matchedBudget.categoryGroup,
+          oldAmount: Number(matchedBudget.amount) || 0,
+          newAmount: newAmt
+        },
+        status: 'pending'
+      };
+    }
+  }
+
+  // 2. DÉTECTION DE PRÉCISION SUR UN ABONNEMENT / PRÉLÈVEMENT / RÈGLE PERSONNALISÉE
+  // Ex: "Le prélèvement Google de 2,99 € correspond à Google One", "L'abonnement Google 10,99€ c'est YouTube Premium", "Précision : Sobrio est ma cotisation bancaire"
+  const isRuleOrSubIntent =
+    norm.includes('correspond a') ||
+    norm.includes('c est l abonnement') ||
+    norm.includes("c'est l'abonnement") ||
+    norm.includes('precision') ||
+    norm.includes('regle') ||
+    norm.includes('renome') ||
+    norm.includes('renomme') ||
+    norm.includes('affecte toujours') ||
+    norm.includes('classe toujours') ||
+    (norm.includes('abonnement') && (norm.includes('correspond') || norm.includes('est ') || norm.includes('c est')));
+
+  if (isRuleOrSubIntent) {
+    const amt = extractAmount(raw);
+    // Chercher le mot-clé d'origine (ex: Google, Apple, Sobrio, Alma, Klarna, Netflix, Free, etc.)
+    const commonProviders = ['google', 'apple', 'sobrio', 'alma', 'oney', 'klarna', 'paypal', 'stripe', 'amex', 'free', 'orange', 'sfr', 'bouygues', 'sosh', 'edf', 'engie', 'veolia', 'basic fit'];
+    let detectedPattern = commonProviders.find(p => norm.includes(p))?.toUpperCase() || '';
+
+    if (!detectedPattern) {
+      const quoted = raw.match(/["«]([^"»]+)["»]/);
+      if (quoted) detectedPattern = quoted[1].trim();
+    }
+
+    if (detectedPattern) {
+      // Extraire le nouveau nom explicite après "correspond à", "c'est", "en", ":"
+      const labelMatch = raw.match(/(?:correspond\s+à|correspond\s+a|c'est|c\s+est|en\s+tant\s+que|comme\s+étant|renomme\s+en|appelle\s+ça)\s+["«]?([^."»\n]+)["»]?/i);
+      const customLabel = labelMatch ? labelMatch[1].trim() : `${detectedPattern} (Clarifié par l'utilisateur)`;
+
+      return {
+        id: `action-rule-${Date.now()}`,
+        actionType: 'CREATE_CUSTOM_RULE',
+        targetType: 'subscription_rule',
+        targetId: `rule-${detectedPattern.toLowerCase().replace(/\s+/g, '-')}-${amt || 'all'}`,
+        title: `Nouvelle Règle & Clarification : ${detectedPattern}${amt ? ` (${amt.toFixed(2)} €)` : ''}`,
+        description: `Enregistrement d'une règle personnalisée permanente pour identifier clairement ce prélèvement/opération dans toute l'application.`,
+        oldValues: {
+          'Libellé bancaire détecté': detectedPattern,
+          ...(amt ? { 'Montant ciblé': `${amt.toFixed(2)} €` } : { 'Portée': 'Tous les montants' })
+        },
+        newValues: {
+          'Nom explicite affiché': customLabel,
+          'Catégorie attribuée': 'Abonnements & Télécom',
+          'Poste Coût de la vie': 'Streaming, Cloud & Services'
+        },
+        payload: {
+          pattern: detectedPattern,
+          exactAmount: amt || undefined,
+          customLabel,
+          category: 'Abonnements & Télécom',
+          budgetPostName: 'Streaming, Cloud & Services',
+          isSubscription: true,
+          customNote: raw
+        },
+        status: 'pending'
+      };
+    }
+  }
+
+  // 3. DÉTECTION DE SUPPRESSION / ARCHIVAGE D'UN TICKET DE CAISSE
+  // Ex: "Supprime le ticket Lidl", "Supprime mon dernier ticket de caisse", "Efface le ticket Leclerc du 15/10"
+  const isDeleteIntent = norm.includes('supprim') || norm.includes('effac') || norm.includes('retir') || norm.includes('archiv') || norm.includes('annul');
+
+  if (isDeleteIntent && norm.includes('ticket')) {
+    const activeReceipts = receipts.filter((r: any) => !r.isArchived);
+    const targetReceipt = activeReceipts.find(r => {
+      const sNorm = (r.storeName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const storeWords = sNorm.split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+      return storeWords.some(w => norm.includes(w)) || (r.date && raw.includes(r.date));
+    }) || activeReceipts[0];
+
+    if (targetReceipt) {
+      return {
+        id: `action-del-rcpt-${Date.now()}`,
+        actionType: 'DELETE_RECEIPT',
+        targetType: 'receipt',
+        targetId: targetReceipt.id,
+        title: `Archivage du Ticket : ${targetReceipt.storeName}`,
+        description: `Suppression douce (Soft Delete) du ticket de caisse ${targetReceipt.storeName} du ${targetReceipt.date}. Vous pourrez l'annuler à tout moment.`,
+        oldValues: {
+          'Magasin': targetReceipt.storeName,
+          'Date du ticket': targetReceipt.date,
+          'Montant TTC': `${Number(targetReceipt.totalAmount).toFixed(2)} €`,
+          'Articles': `${targetReceipt.items?.length || 0} articles`
+        },
+        newValues: {
+          'Statut': 'Archivé (Corbeille sécurisée)',
+          'Impact Comparateur': 'Retiré de la matrice active'
+        },
+        payload: {
+          receiptId: targetReceipt.id,
+          receiptSnapshot: targetReceipt
+        },
+        status: 'pending'
+      };
+    }
+  }
+
+  // 4. DÉTECTION DE SUPPRESSION D'UN RELEVÉ BANCAIRE / PÉRIODE MENSUELLE
+  // Ex: "Supprime le relevé de juin 2026", "Supprime les relevés du mois de mars"
+  if (isDeleteIntent && (norm.includes('releve') || norm.includes('mois de'))) {
+    const monthNamesMap: Record<string, string> = {
+      janvier: '01', fevrier: '02', mars: '03', avril: '04', mai: '05', juin: '06',
+      juillet: '07', aout: '08', septembre: '09', octobre: '10', novembre: '11', decembre: '12'
+    };
+    let detectedMonthKey = '';
+    const explicitYm = raw.match(/(20\d{2}-\d{2})/);
+    if (explicitYm) {
+      detectedMonthKey = explicitYm[1];
+    } else {
+      for (const [mName, mNum] of Object.entries(monthNamesMap)) {
+        if (norm.includes(mName)) {
+          const yearMatch = raw.match(/(20\d{2})/);
+          const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+          detectedMonthKey = `${year}-${mNum}`;
+          break;
+        }
+      }
+    }
+
+    const activeTxs = transactions.filter(t => !t.isArchived);
+    const matchingTxs = detectedMonthKey
+      ? activeTxs.filter(t => (t.monthKey === detectedMonthKey) || (t.date && t.date.startsWith(detectedMonthKey)))
+      : [];
+
+    if (detectedMonthKey && matchingTxs.length > 0) {
+      return {
+        id: `action-del-stmt-${Date.now()}`,
+        actionType: 'DELETE_STATEMENT_PERIOD',
+        targetType: 'statement',
+        targetId: detectedMonthKey,
+        title: `Archivage du Relevé Bancaire : Période ${detectedMonthKey}`,
+        description: `Mise en corbeille (Soft Delete) des ${matchingTxs.length} opérations bancaires de la période ${detectedMonthKey}.`,
+        oldValues: {
+          'Période ciblée': detectedMonthKey,
+          'Nombre de transactions': matchingTxs.length,
+          'Statut': 'Actif'
+        },
+        newValues: {
+          'Période ciblée': detectedMonthKey,
+          'Statut': 'Archivé (Restaurable en 1 clic)'
+        },
+        payload: {
+          monthKey: detectedMonthKey,
+          transactionIds: matchingTxs.map(t => t.id),
+          transactionsSnapshot: matchingTxs
+        },
+        status: 'pending'
+      };
+    }
+  }
+
+  // 5. DÉTECTION DE SUPPRESSION OU MODIFICATION D'UNE TRANSACTION BANCAIRE INDIVIDUELLE
+  const activeTxs = transactions.filter(t => !t.isArchived);
+  if (isDeleteIntent && activeTxs.length > 0) {
+    const matchedTx = activeTxs.find(t => {
+      const lbl = `${t.cleanLabel || ''} ${t.rawLabel || ''} ${t.description || ''}`
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+      const words = lbl.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+      return words.some(w => norm.includes(w));
+    });
+
+    if (matchedTx && matchedTx.id) {
+      const label = matchedTx.cleanLabel || matchedTx.rawLabel || matchedTx.description || 'Opération';
+      return {
+        id: `action-del-tx-${Date.now()}`,
+        actionType: 'DELETE_TRANSACTION',
+        targetType: 'transaction',
+        targetId: String(matchedTx.id),
+        title: `Archivage de la Dépense : ${label}`,
+        description: `Suppression douce (Soft Delete) de l'opération « ${label} » du ${matchedTx.date}.`,
+        oldValues: {
+          'Libellé': label,
+          'Date': matchedTx.date || 'N/A',
+          'Montant': `${Number(matchedTx.amount).toFixed(2)} €`,
+          'Catégorie': matchedTx.category || 'Autre'
+        },
+        newValues: {
+          'Statut': 'Archivé (Soft Delete — Restaurable)'
+        },
+        payload: {
+          transactionId: String(matchedTx.id),
+          transactionSnapshot: matchedTx
+        },
+        status: 'pending'
+      };
+    }
+  }
+
+  return null;
 }
 
 /**
- * Envoie un message au Coach IA Gemini avec l'historique et le contexte complet de la base de données
+ * Extrait proprement le texte de réponse et l'objet `proposedAction` éventuel renvoyé par l'IA
+ */
+export function parseCoachResponseWithActions(
+  rawResponse: string,
+  userPrompt: string,
+  transactions: Transaction[],
+  receipts: Receipt[],
+  budgets: CostOfLivingExpenseItem[] = getActiveCostOfLivingBudgets()
+): { cleanText: string; proposedAction?: ProposedAdminAction } {
+  let text = (rawResponse || '').trim();
+  let parsedAction: ProposedAdminAction | undefined;
+
+  const actionRegex = /<PROPOSED_ACTION>([\s\S]*?)<\/PROPOSED_ACTION>/i;
+  const match = text.match(actionRegex);
+
+  if (match && match[1]) {
+    text = text.replace(actionRegex, '').trim();
+    try {
+      const rawJson = match[1].trim().replace(/^```json/i, '').replace(/```$/i, '').trim();
+      const obj = JSON.parse(rawJson);
+      if (obj && obj.actionType && obj.targetType) {
+        parsedAction = {
+          id: obj.id || `action-ai-${Date.now()}`,
+          actionType: obj.actionType,
+          targetType: obj.targetType,
+          targetId: String(obj.targetId || 'target'),
+          title: obj.title || 'Action proposée par le Coach IA',
+          description: obj.description || 'Veuillez confirmer cette modification avant son application.',
+          oldValues: obj.oldValues || {},
+          newValues: obj.newValues || {},
+          payload: obj.payload || {},
+          status: 'pending'
+        };
+      }
+    } catch (e) {
+      console.warn("Erreur parsing <PROPOSED_ACTION> JSON:", e);
+    }
+  }
+
+  // Fallback déterministe si le LLM n'a pas émis la balise mais que l'utilisateur a formulé une demande d'action claire
+  if (!parsedAction) {
+    const fallbackAction = detectDeterministicAdminAction(userPrompt, transactions, receipts, budgets);
+    if (fallbackAction) {
+      parsedAction = fallbackAction;
+    }
+  }
+
+  return {
+    cleanText: text,
+    proposedAction: parsedAction
+  };
+}
+
+/**
+ * Envoie un message au Coach IA Gemini avec l'historique et le contexte complet de la base de données.
+ * Retourne le texte complet garanti sans troncature (maxOutputTokens: 8192 + filet de sécurité anti-troncature).
  */
 export async function askFinancialCoach(
   userPrompt: string,
@@ -676,7 +1349,8 @@ export async function askFinancialCoach(
     receipts = receiptsOrCurrency;
   }
 
-  const systemContext = buildCoachSystemContext(profile, transactions, receipts, products, curr);
+  const preAudit = buildProductQueryPreAudit(userPrompt, receipts, curr);
+  const systemContext = buildCoachSystemContext(profile, transactions, receipts, products, curr, userPrompt);
   const genAI = new GoogleGenerativeAI(apiKey);
 
   // Modèles candidats avec bascule automatique
@@ -694,52 +1368,56 @@ export async function askFinancialCoach(
     try {
       const model = genAI.getGenerativeModel({
         model: modelId,
+        systemInstruction: systemContext,
         generationConfig: {
-          temperature: 0.2, // Rigueur analytique et chiffres précis
+          temperature: 0.15, // Rigueur analytique et chiffres précis
           topP: 0.95,
-          maxOutputTokens: 2048,
+          maxOutputTokens: COACH_MAX_OUTPUT_TOKENS,
         }
       });
 
-      // Construction des tours de conversation pour Gemini
-      // Format Gemini: contents = [ { role: 'user' | 'model', parts: [{ text }] } ]
       const contents: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
 
-      // 1. Premier tour : Injection du contexte système dans un premier message utilisateur + accusé de réception modèle
-      contents.push({
-        role: 'user',
-        parts: [{ text: systemContext + `\n\nConfirme que tu es prêt à coacher l'utilisateur sur la base de ces données.` }]
-      });
-      contents.push({
-        role: 'model',
-        parts: [{ text: `Bonjour ! J'ai bien analysé l'intégralité de votre base de données financière (${profile.transactionCount} opérations et ${profile.receiptsSummary.receiptCount} tickets de caisse). Je suis prêt à vous guider et à répondre à toutes vos questions.` }]
-      });
-
-      // 2. Historique des échanges récents (les 6 derniers pour conserver la fluidité sans saturer)
-      const recentHistory = history.slice(-6);
+      // Historique des échanges récents (les 8 derniers pour conserver la fluidité)
+      const recentHistory = history.slice(-8);
       for (const msg of recentHistory) {
+        if (!msg.content || !msg.content.trim()) continue;
         contents.push({
           role: msg.role === 'user' ? 'user' : 'model',
           parts: [{ text: msg.content }]
         });
       }
 
-      // 3. Question actuelle de l'utilisateur
+      // S'assurer que le premier message de `contents` est bien de rôle 'user'
+      while (contents.length > 0 && contents[0].role !== 'user') {
+        contents.shift();
+      }
+
+      // Question actuelle de l'utilisateur avec rappel de non-troncature
+      const enrichedUserPrompt = preAudit
+        ? `${userPrompt}\n\n[RAPPEL SYSTÈME : Réponds obligatoirement en 2 parties : Partie 1 = Synthèse directe en 1-2 phrases avec prix moyen (${preAudit.averageUnitPrice.toFixed(2)} €), prix le moins cher (${preAudit.cheapestPrice.toFixed(2)} € chez ${preAudit.cheapestStore}) et total dépensé (${preAudit.totalSpent.toFixed(2)} €). Partie 2 = Tableau Markdown complet avec TOUTES les ${preAudit.itemCount} lignes sans rien couper.]`
+        : userPrompt;
+
       contents.push({
         role: 'user',
-        parts: [{ text: userPrompt }]
+        parts: [{ text: enrichedUserPrompt }]
       });
 
       const response = await model.generateContent({ contents });
       const text = response.response.text();
 
       if (text && text.trim()) {
-        return text.trim();
+        return ensureCompleteAuditResponse(text.trim(), preAudit);
       }
     } catch (err: any) {
       lastError = err;
       console.warn(`Erreur lors de l'appel Coach avec ${modelId}:`, err?.message || err);
     }
+  }
+
+  // Fallback si l'API est momentanément indisponible mais que nous avons un pré-audit exact
+  if (preAudit) {
+    return `${preAudit.directSynthesisText}\n\n${preAudit.markdownTable}`;
   }
 
   throw new Error(lastError?.message || "Le Coach IA n'a pas pu générer de réponse. Veuillez réessayer dans quelques instants.");

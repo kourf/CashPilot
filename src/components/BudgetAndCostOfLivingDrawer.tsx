@@ -251,14 +251,31 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
     return result;
   }, [effectiveAllTxs, categoryMedians]);
 
-  // Initialisation et sauvegarde unifiée
+  // Initialisation et sauvegarde unifiée (synchronisée en temps réel avec le Coach IA)
   const saveItems = (newItems: ExpenseItem[]) => {
     setItems(newItems);
     try {
       localStorage.setItem('cashpilot_cost_of_living_v2', JSON.stringify(newItems));
       localStorage.setItem('cashpilot_cost_of_living', JSON.stringify(newItems));
+      window.dispatchEvent(new CustomEvent('cashpilot_cost_of_living_updated'));
     } catch {}
   };
+
+  useEffect(() => {
+    const handleExternalSync = () => {
+      try {
+        const saved = localStorage.getItem('cashpilot_cost_of_living_v2') || localStorage.getItem('cashpilot_cost_of_living');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setItems(parsed);
+          }
+        }
+      } catch {}
+    };
+    window.addEventListener('cashpilot_cost_of_living_updated', handleExternalSync);
+    return () => window.removeEventListener('cashpilot_cost_of_living_updated', handleExternalSync);
+  }, []);
 
   const initializeItems = () => {
     const initItems = DEFAULT_ITEMS.map(item => {

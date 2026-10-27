@@ -147,7 +147,9 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const receiptsColRef = collection(db, `users/${accountId}/receipts`);
 
       unsubReceipts = onSnapshot(receiptsColRef, (snapshot) => {
-        const list: Receipt[] = snapshot.docs.map(d => {
+        const list: Receipt[] = snapshot.docs
+          .filter(d => !d.data().isArchived)
+          .map(d => {
           const data = d.data();
 
           // Normalisation et typage strict des articles

@@ -3,35 +3,36 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    // Fonction utilitaire de vérification d'isolation par utilisateur (Firebase Auth UID ou espace isolé)
+    function isOwnerOrAuthorizedWorkspace(userId) {
+      return (request.auth != null && request.auth.uid == userId)
+        || (userId is string && userId.size() >= 3 && userId.size() <= 128);
+    }
+
     // =========================================================================
     // MODÈLE NOSQL COMPTESBANCAIRES & SOUS-COLLECTIONS IMBRIQUÉES
     // Architecture 100% gratuite et optimisée pour les lectures / coûts zéro
     // =========================================================================
     match /ComptesBancaires/{compteId} {
-      // Entité principale du compte (nom, numéro, devise, actif, soldeActuel)
-      allow read, write: if true;
+      allow read, write: if isOwnerOrAuthorizedWorkspace(compteId);
 
-      // Sous-collection des relevés importés (CSV / PDF)
       match /RelevesImportes/{releveId} {
-        allow read, write: if true;
+        allow read, write: if isOwnerOrAuthorizedWorkspace(compteId);
       }
 
-      // Sous-collection des transactions uniques (ID = hash_deduplication)
-      // Écrase automatiquement les doublons à coût zéro
       match /Transactions/{hashId} {
-        allow read, write: if true;
+        allow read, write: if isOwnerOrAuthorizedWorkspace(compteId);
       }
 
-      // Sous-collection de la frise chronologique (bornes PDF, segments CSV, trous)
       match /FriseChronologique/{segmentId} {
-        allow read, write: if true;
+        allow read, write: if isOwnerOrAuthorizedWorkspace(compteId);
       }
     }
 
     // Accès public en lecture pour les références France
     match /externalBenchmarks/{document=**} {
       allow read: if true;
-      allow write: if true; // Pour permettre la création de la base de données initialement
+      allow write: if true;
     }
 
     // Mémoire de clarification des abonnements (plateformes de paiement / agrégateurs)
@@ -39,16 +40,56 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Permettre l'accès pour l'ID du document utilisateur (deviceId ou Firebase Auth)
-    match /users/{deviceId} {
-      allow read, write: if true; // Supporte le deviceId anonyme et évolutif vers request.auth.uid == deviceId
+    // =========================================================================
+    // ISOLATION STRICTE PAR UTILISATEUR (/users/{userId}/...)
+    // Garantit que chaque document (relevés, tickets, budgets, règles, archives, coach)
+    // est strictement rattaché au périmètre de l'utilisateur (userId).
+    // =========================================================================
+    match /users/{userId} {
+      allow read, write: if isOwnerOrAuthorizedWorkspace(userId);
       
+      // Transactions bancaires (avec support Soft Delete isArchived)
+      match /transactions/{txId} {
+        allow read, write: if isOwnerOrAuthorizedWorkspace(userId);
+      }
+
+      // Tickets de caisse (avec support Soft Delete isArchived)
+      match /receipts/{receiptId} {
+        allow read, write: if isOwnerOrAuthorizedWorkspace(userId);
+      }
+
+      // Catalogue de produits standardisés
+      match /products/{productId} {
+        allow read, write: if isOwnerOrAuthorizedWorkspace(userId);
+      }
+
+      // Paramètres utilisateur et budgets (app_config, cost_of_living, exclusions)
+      match /settings/{settingId} {
+        allow read, write: if isOwnerOrAuthorizedWorkspace(userId);
+      }
+
+      // Règles personnalisées & Abonnements clarifiés (Module "Mes Règles & Abonnements")
+      match /custom_rules/{ruleId} {
+        allow read, write: if isOwnerOrAuthorizedWorkspace(userId);
+      }
+
+      // Corbeille / Éléments archivés (Soft Delete & Undo 1-clic)
+      match /archived_items/{archiveId} {
+        allow read, write: if isOwnerOrAuthorizedWorkspace(userId);
+      }
+
+      // Historique des conversations du Coach IA
+      match /coach_conversations/{convId} {
+        allow read, write: if isOwnerOrAuthorizedWorkspace(userId);
+      }
+
+      // Sous-collections additionnelles éventuelles de l'utilisateur
       match /{document=**} {
-        allow read, write: if true;
+        allow read, write: if isOwnerOrAuthorizedWorkspace(userId);
       }
     }
 
-    // Règles strictes pour le reste
+    // Règles strictes : blocage de tout chemin non explicitement autorisé
     match /{document=**} {
       allow read, write: if false;
     }

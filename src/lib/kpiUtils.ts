@@ -91,21 +91,99 @@ export const calculateTotalFlows = (
 
 import { categorizeTransactionWithRule, CATEGORIES_METADATA } from './categorizationRules.ts';
 
+export interface CustomUserRule {
+  id: string;
+  pattern: string;
+  exactAmount?: number;
+  customLabel: string;
+  category: string;
+  budgetPostName?: string;
+  nature?: 'fixe' | 'variable' | 'exceptionnelle' | 'autre';
+  isSubscription?: boolean;
+  customNote?: string;
+  createdAt: string;
+  updatedAt?: string;
+  isArchived?: boolean;
+}
+
+let _inMemoryCustomRules: CustomUserRule[] | null = null;
+
+export const setInMemoryCustomRules = (rules: CustomUserRule[]) => {
+  _inMemoryCustomRules = rules.filter(r => !r.isArchived);
+};
+
+export const getCustomUserRules = (): CustomUserRule[] => {
+  if (_inMemoryCustomRules) return _inMemoryCustomRules;
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const saved = localStorage.getItem('cashpilot_custom_rules_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((r: CustomUserRule) => !r.isArchived);
+        }
+      }
+    }
+  } catch {}
+  return [];
+};
+
+export const matchTransactionWithCustomRules = (tx: Transaction): CustomUserRule | null => {
+  const rules = getCustomUserRules();
+  if (!rules || rules.length === 0) return null;
+
+  const rawText = `${tx.rawLabel || ''} ${tx.cleanLabel || ''} ${tx.description || ''}`.toLowerCase();
+  const absAmt = Math.abs(Number(tx.amount) || 0);
+
+  // Priorité aux règles avec montant exact + pattern
+  for (const r of rules) {
+    if (!r.pattern) continue;
+    const pat = r.pattern.toLowerCase().trim();
+    if (rawText.includes(pat)) {
+      if (typeof r.exactAmount === 'number' && r.exactAmount > 0) {
+        if (Math.abs(absAmt - Math.abs(r.exactAmount)) <= 0.05) {
+          return r;
+        }
+      }
+    }
+  }
+
+  // Ensuite règles par pattern seul (sans contrainte de montant exact)
+  for (const r of rules) {
+    if (!r.pattern) continue;
+    if (typeof r.exactAmount === 'number' && r.exactAmount > 0) continue;
+    const pat = r.pattern.toLowerCase().trim();
+    if (rawText.includes(pat)) {
+      return r;
+    }
+  }
+
+  return null;
+};
+
 /**
- * Fallback logique pour enrichir une transaction si l'IA a échoué
+ * Fallback logique pour enrichir une transaction si l'IA a échoué,
+ * en appliquant prioritairement les Règles Personnalisées de l'utilisateur.
  */
 export const enrichTransactionFallback = (tx: Transaction): Transaction => {
+  const customRule = matchTransactionWithCustomRules(tx);
   const label = tx.cleanLabel || tx.rawLabel || tx.description || '';
   const amt = Number(tx.amount) || 0;
   const match = categorizeTransactionWithRule(label, amt);
 
-  const category = (tx.category && tx.category !== 'Autre' && tx.category !== 'Autres' && tx.category !== 'Inconnu')
-    ? tx.category
-    : match.category;
+  const category = customRule?.category
+    ? customRule.category
+    : ((tx.category && tx.category !== 'Autre' && tx.category !== 'Autres' && tx.category !== 'Inconnu')
+        ? tx.category
+        : match.category);
 
-  const nature = tx.nature && tx.nature !== ('Inconnu' as any)
-    ? tx.nature
-    : (CATEGORIES_METADATA[category]?.defaultNature || match.nature);
+  const cleanLabel = customRule?.customLabel || tx.cleanLabel || tx.description || tx.rawLabel || 'Opération';
+
+  const nature = customRule?.nature
+    ? customRule.nature
+    : (tx.nature && tx.nature !== ('Inconnu' as any)
+        ? tx.nature
+        : (CATEGORIES_METADATA[category]?.defaultNature || match.nature));
 
   const isInternalTransfer = tx.isInternalTransfer !== undefined
     ? Boolean(tx.isInternalTransfer)
@@ -115,9 +193,11 @@ export const enrichTransactionFallback = (tx: Transaction): Transaction => {
     ? Boolean(tx.isFamilyTransfer)
     : match.isFamilyTransfer;
 
-  const isSubscription = tx.isSubscription !== undefined
-    ? Boolean(tx.isSubscription)
-    : match.isSubscription;
+  const isSubscription = customRule?.isSubscription !== undefined
+    ? Boolean(customRule.isSubscription)
+    : (tx.isSubscription !== undefined
+        ? Boolean(tx.isSubscription)
+        : match.isSubscription);
 
   const isBankFee = tx.isBankFee !== undefined
     ? Boolean(tx.isBankFee)
@@ -127,11 +207,13 @@ export const enrichTransactionFallback = (tx: Transaction): Transaction => {
     ? Boolean(tx.isInstallment)
     : (category === 'Paiement fractionné' || category.includes('Amex'));
 
-  const matchedRule = tx.matchedRule || match.matchedRule;
-  const ruleExplanation = tx.ruleExplanation || match.ruleExplanation;
+  const matchedRule = customRule?.id || tx.matchedRule || match.matchedRule;
+  const ruleExplanation = customRule?.customNote || (customRule ? `Règle personnalisée : ${customRule.customLabel}` : (tx.ruleExplanation || match.ruleExplanation));
+  const budgetPostName = customRule?.budgetPostName || tx.budgetPostName;
 
   return {
     ...tx,
+    cleanLabel,
     category,
     nature,
     isInternalTransfer,
@@ -140,13 +222,15 @@ export const enrichTransactionFallback = (tx: Transaction): Transaction => {
     isBankFee,
     isInstallment,
     matchedRule,
-    ruleExplanation
+    ruleExplanation,
+    budgetPostName
   };
 };
 
 export const filterByMonth = (transactions: Transaction[], monthKey: string): Transaction[] => {
-  if (!monthKey || monthKey === 'all') return transactions;
-  return transactions.filter(tx => tx.monthKey === monthKey);
+  const activeTxs = transactions.filter(tx => !tx.isArchived);
+  if (!monthKey || monthKey === 'all') return activeTxs;
+  return activeTxs.filter(tx => tx.monthKey === monthKey);
 };
 
 export const calculateKpis = (transactions: Transaction[], initialBalance: number = 0): KPIResult => {
@@ -164,6 +248,7 @@ export const calculateKpis = (transactions: Transaction[], initialBalance: numbe
   const categoryTotals: Record<string, number> = {};
 
   transactions.forEach(rawTx => {
+    if (rawTx.isArchived) return;
     const t = enrichTransactionFallback(rawTx);
     const amt = t.amount || 0;
     const isIncome = amt > 0;
@@ -757,6 +842,13 @@ export const INCOMPATIBLE_CATEGORIES_FOR_ITEM: Record<string, string[]> = {
  * en interrogeant son libellé via le dictionnaire de synonymes/mots-clés ou sa catégorie.
  */
 export const matchesCostOfLivingItem = (tx: Transaction, itemName: string): boolean => {
+  if (tx.isArchived) return false;
+  const customRule = matchTransactionWithCustomRules(tx);
+  const effectiveBudgetPost = customRule?.budgetPostName || tx.budgetPostName;
+  if (effectiveBudgetPost && effectiveBudgetPost.toLowerCase() === itemName.toLowerCase()) {
+    return true;
+  }
+
   const mapping = COST_OF_LIVING_SYNONYMS[itemName];
   if (!mapping) {
     const normItem = itemName.toLowerCase();
@@ -846,7 +938,9 @@ export const calculateCategoryMedians = (transactions: Transaction[]): Record<st
     itemSamples[itemName] = [];
   });
 
-  transactions.forEach(t => {
+  transactions.forEach(rawTx => {
+    if (rawTx.isArchived) return;
+    const t = enrichTransactionFallback(rawTx);
     const isIncome = t.rawAmount !== undefined 
       ? t.rawAmount >= 0 
       : (t.type === 'credit' || t.direction === 'credit' || (t.amount > 0 && t.type !== 'debit' && t.direction !== 'debit'));
@@ -914,4 +1008,18 @@ export const calculateCategoryMedians = (transactions: Transaction[]): Record<st
   }
   
   return results;
+};
+
+/**
+ * Formate une date ISO en français explicite (ex: "10 juillet 2026")
+ */
+export const formatDateExplicit = (dateStr?: string): string => {
+  if (!dateStr) return 'Date inconnue';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
 };
