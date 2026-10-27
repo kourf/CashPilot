@@ -644,6 +644,7 @@ export interface SubscriptionPricePoint {
   amount: number;
   rawLabel?: string;
   formattedDate?: string;
+  monthKey?: string;
 }
 
 export interface SubscriptionPriceEvolution {
@@ -659,39 +660,159 @@ export interface SubscriptionPriceEvolution {
 }
 
 /**
- * Normalise l'empreinte d'un abonnement pour le reconnaître à travers plusieurs mois
- * Retire les dates, références bancaires, numéros de mandat ou de carte.
+ * Normalise l'empreinte d'un abonnement pour le reconnaître infailliblement à travers plusieurs mois.
+ * Éradique les références bancaires variables, mandats SEPA, dates, numéros de facture,
+ * et associe les enseignes courantes à leurs clés canoniques.
  */
 export function normalizeSubscriptionServiceKey(tx: { cleanLabel?: string; rawLabel?: string; description?: string }): string {
-  const raw = (tx.cleanLabel || tx.description || tx.rawLabel || '')
+  const label = (tx.cleanLabel || tx.description || tx.rawLabel || '').trim();
+  const rawDesc = (tx.rawLabel || tx.description || tx.cleanLabel || '').trim();
+  
+  const cleanedMerchant = cleanMerchantDescription(rawDesc || label);
+  const candidate = (cleanedMerchant && cleanedMerchant !== 'Opération Bancaire') ? cleanedMerchant : label;
+
+  const norm = candidate
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-  return raw
-    .replace(/carte\s+x?\d+/gi, '')
-    .replace(/\b\d{2}[\/\-.]\d{2}(?:[\/\-.]\d{2,4})?\b/g, '')
-    .replace(/prlv\s+(sepa|europeen)?/gi, '')
-    .replace(/vir\s+(sepa|instantane|permanent)?/gi, '')
-    .replace(/prelevement\s+(sepa|europeen)?/gi, '')
-    .replace(/cotisation\s+/gi, '')
-    .replace(/facture\s+\w+/gi, '')
-    .replace(/[^a-z0-9]/g, ' ')
-    .trim()
+  const normRaw = `${rawDesc} ${label} ${norm}`
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  // 1. Dictionnaire d'alias canoniques prioritaires pour services & prélèvements récurrents
+  if (normRaw.includes('netflix')) return 'netflix';
+  if (normRaw.includes('spotify')) return 'spotify';
+  if (normRaw.includes('deezer')) return 'deezer';
+  if (normRaw.includes('amazon prime') || normRaw.includes('amzn prime') || normRaw.includes('prime video')) return 'amazon prime';
+  if (normRaw.includes('disney')) return 'disney plus';
+  if (normRaw.includes('canal plus') || normRaw.includes('canal+') || normRaw.includes('canalplus')) return 'canal plus';
+  if (normRaw.includes('free mobile') || (normRaw.includes('free') && (normRaw.includes('telecom') || normRaw.includes('mobile') || normRaw.includes('fact')))) return 'free mobile';
+  if (normRaw.includes('freebox') || normRaw.includes('free box')) return 'freebox';
+  if (normRaw.includes('orange') || normRaw.includes('sosh')) return 'orange';
+  if (normRaw.includes('bouygues') || normRaw.includes('b&you') || normRaw.includes('byou')) return 'bouygues telecom';
+  if (normRaw.includes('sfr') || normRaw.includes('red by sfr')) return 'sfr';
+  if (normRaw.includes('la poste mobile')) return 'la poste mobile';
+  if (normRaw.includes('totalenergies') || normRaw.includes('total direct') || normRaw.includes('total energie')) return 'totalenergies';
+  if (normRaw.includes('electricite de france') || normRaw.includes('edf')) return 'edf';
+  if (normRaw.includes('engie') || normRaw.includes('gaz de france') || normRaw.includes('gdf')) return 'engie';
+  if (normRaw.includes('veolia')) return 'veolia';
+  if (normRaw.includes('suez')) return 'suez';
+  if (normRaw.includes('sogessur')) return 'sogessur';
+  if (normRaw.includes('macif')) return 'macif';
+  if (normRaw.includes('maif')) return 'maif';
+  if (normRaw.includes('matmut')) return 'matmut';
+  if (normRaw.includes('allianz')) return 'allianz';
+  if (normRaw.includes('axa')) return 'axa';
+  if (normRaw.includes('alan')) return 'alan assurance';
+  if (normRaw.includes('groupama')) return 'groupama';
+  if (normRaw.includes('generali')) return 'generali';
+  if (normRaw.includes('gmf')) return 'gmf';
+  if (normRaw.includes('mma')) return 'mma';
+  if (normRaw.includes('swiss life') || normRaw.includes('swisslife')) return 'swiss life';
+  if (normRaw.includes('harmonie mutuelle')) return 'harmonie mutuelle';
+  if (normRaw.includes('mgen')) return 'mgen';
+  if (normRaw.includes('basic fit') || normRaw.includes('basicfit')) return 'basic fit';
+  if (normRaw.includes('fitness park') || normRaw.includes('fitnesspark')) return 'fitness park';
+  if (normRaw.includes('keep cool') || normRaw.includes('keepcool')) return 'keep cool';
+  if (normRaw.includes('swype')) return 'swype';
+  if (normRaw.includes('sobrio')) return 'sobrio';
+  if (normRaw.includes('jazz')) return 'jazz';
+  if (normRaw.includes('klarna')) return 'klarna';
+  if (normRaw.includes('oney')) return 'oney';
+  if (normRaw.includes('alma')) return 'alma';
+  if (normRaw.includes('chatgpt') || normRaw.includes('openai')) return 'chatgpt';
+  if (normRaw.includes('apple') || normRaw.includes('icloud') || normRaw.includes('itunes')) return 'apple';
+  if (normRaw.includes('google') || normRaw.includes('youtube')) return 'google';
+
+  // 2. Normalisation générique pour tout autre organisme / contrat récurrent
+  const cleaned = norm
+    .replace(/\b(prlv|prelevement|vir|virement|sepa|europeen)\b/gi, ' ')
+    .replace(/\b(cotis|cotisation|echeance|ech|facture|fact|client|ref|reference|mandat|emetteur|destinataire|cpt|bq|titulaire)\b/gi, ' ')
+    .replace(/\b(cb|carte|mensuel|trimestriel|annuel|forfait|contrat)\b/gi, ' ')
+    .replace(/\b\d+\b/g, ' ') // Supprime les nombres (mandats, montants, dates, réf)
+    .replace(/[^a-z]/g, ' ')
+    .trim();
+
+  const tokens = cleaned
     .split(/\s+/)
-    .slice(0, 3)
-    .join(' ');
+    .filter(w => w.length >= 2);
+
+  return tokens.slice(0, 3).join(' ') || norm.slice(0, 15).trim();
 }
 
 /**
- * Analyse l'évolution du prix d'un abonnement ou prélèvement par rapport à l'historique
+ * Vérifie si deux clés de services d'abonnement correspondent au même fournisseur
+ */
+export function areSubscriptionKeysMatching(key1: string, key2: string): boolean {
+  if (!key1 || !key2) return false;
+  if (key1 === key2) return true;
+  if (key1.length >= 4 && (key1.includes(key2) || key2.includes(key1))) return true;
+
+  const tokens1 = key1.split(/\s+/).filter(w => w.length >= 3);
+  const tokens2 = key2.split(/\s+/).filter(w => w.length >= 3);
+  if (tokens1.length > 0 && tokens2.length > 0) {
+    const hasShared = tokens1.some(t => tokens2.includes(t));
+    if (hasShared && (tokens1.length === 1 || tokens2.length === 1)) return true;
+  }
+  return false;
+}
+
+/**
+ * Détermine si une opération correspond à un abonnement ou un prélèvement récurrent
+ */
+export function isSubscriptionOrRecurringDebit(tx: {
+  amount?: number;
+  rawLabel?: string;
+  cleanLabel?: string;
+  description?: string;
+  category?: string;
+  isSubscription?: boolean;
+}): boolean {
+  if ((Number(tx.amount) || 0) >= 0) return false;
+  if (tx.isSubscription) return true;
+
+  const cat = (tx.category || '').toLowerCase();
+  if (cat.includes('abonnement') || cat.includes('télécom') || cat.includes('telecom')) return true;
+
+  const raw = `${tx.rawLabel || ''} ${tx.cleanLabel || ''} ${tx.description || ''}`.toLowerCase();
+
+  // Mots-clés de prélèvements et contrats réguliers
+  if (
+    raw.includes('prlv') ||
+    raw.includes('prelevement') ||
+    raw.includes('cotis') ||
+    raw.includes('cotisation') ||
+    raw.includes('abonnement') ||
+    raw.includes('forfait') ||
+    raw.includes('echeance')
+  ) {
+    return true;
+  }
+
+  // Fournisseurs d'abonnements courants
+  const knownServices = [
+    'netflix', 'spotify', 'deezer', 'amazon prime', 'prime video', 'disney',
+    'canal', 'free mobile', 'freebox', 'orange', 'sfr', 'bouygues',
+    'totalenergies', 'edf', 'engie', 'veolia', 'suez', 'sogessur',
+    'macif', 'maif', 'matmut', 'allianz', 'axa', 'alan', 'basic fit',
+    'fitness park', 'swype', 'sobrio', 'icloud', 'chatgpt'
+  ];
+
+  return knownServices.some(s => raw.includes(s));
+}
+
+/**
+ * Analyse l'évolution du prix d'un abonnement ou prélèvement par rapport à l'historique complet disponible.
+ * Compare l'ensemble des mois disponibles (pas seulement les deux derniers) pour détecter toute hausse ou baisse.
  */
 export function detectSubscriptionEvolution(
-  currentTx: { amount: number; date?: string; cleanLabel?: string; rawLabel?: string; description?: string },
-  allTransactions: Array<{ amount: number; date: string; cleanLabel?: string; rawLabel?: string; description?: string }>
+  currentTx: { amount: number; date?: string; cleanLabel?: string; rawLabel?: string; description?: string; category?: string; isSubscription?: boolean },
+  allTransactions: Array<{ amount: number; date: string; cleanLabel?: string; rawLabel?: string; description?: string; category?: string; isSubscription?: boolean }>
 ): SubscriptionPriceEvolution {
   const serviceKey = normalizeSubscriptionServiceKey(currentTx);
-  const serviceName = currentTx.cleanLabel || currentTx.description || currentTx.rawLabel || 'Abonnement';
+  const serviceName = currentTx.cleanLabel || cleanMerchantDescription(currentTx.rawLabel || currentTx.description || '') || currentTx.description || currentTx.rawLabel || 'Abonnement';
   const currAmt = Math.abs(Number(currentTx.amount) || 0);
 
   // Rechercher toutes les opérations correspondantes dans l'historique (débits uniquement)
@@ -699,91 +820,177 @@ export function detectSubscriptionEvolution(
     .filter(t => {
       if ((Number(t.amount) || 0) >= 0) return false;
       const k = normalizeSubscriptionServiceKey(t);
-      if (!k || !serviceKey) return false;
-      return k === serviceKey || (k.length >= 4 && (serviceKey.includes(k) || k.includes(serviceKey)));
+      return areSubscriptionKeysMatching(k, serviceKey);
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  // Regrouper par mois/date distinct pour éviter les faux doublons le même jour
-  const seenDates = new Set<string>();
-  const history: SubscriptionPricePoint[] = [];
+  // Regrouper par mois distinct (YYYY-MM) pour obtenir 1 montant par mois
+  const monthMap = new Map<string, { date: string; amount: number; rawLabel?: string }>();
 
   matches.forEach(m => {
     const d = m.date || '';
-    const monthKey = d.substring(0, 7);
-    if (!seenDates.has(monthKey)) {
-      seenDates.add(monthKey);
-      history.push({
-        date: d,
-        amount: Math.abs(Number(m.amount) || 0),
-        rawLabel: m.rawLabel || m.description
-      });
-    }
+    const monthKey = d.substring(0, 7) || 'releve';
+    const amt = Math.abs(Number(m.amount) || 0);
+    monthMap.set(monthKey, {
+      date: d,
+      amount: amt,
+      rawLabel: m.rawLabel || m.description
+    });
   });
 
-  // Si l'opération en cours n'est pas encore dans l'historique
-  if (currentTx.date && !seenDates.has(currentTx.date.substring(0, 7))) {
-    history.push({
-      date: currentTx.date,
-      amount: currAmt,
-      rawLabel: currentTx.rawLabel || currentTx.description
-    });
-    history.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  // Si l'opération en cours n'est pas encore présente pour son mois
+  if (currentTx.date) {
+    const currMonth = currentTx.date.substring(0, 7);
+    if (!monthMap.has(currMonth)) {
+      monthMap.set(currMonth, {
+        date: currentTx.date,
+        amount: currAmt,
+        rawLabel: currentTx.rawLabel || currentTx.description
+      });
+    }
   }
 
-  // Si on a au moins 2 occurrences dans le temps, comparer la plus récente avec la précédente
+  // Convertir en tableau chronologique
+  const history: SubscriptionPricePoint[] = Array.from(monthMap.entries())
+    .map(([mKey, val]) => ({
+      date: val.date,
+      amount: val.amount,
+      rawLabel: val.rawLabel,
+      formattedDate: formatDateFR(val.date),
+      monthKey: mKey
+    }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Si on a au moins 2 mois distincts dans l'historique
   if (history.length >= 2) {
     const latest = history[history.length - 1];
     const previous = history[history.length - 2];
-    const diff = Math.round((latest.amount - previous.amount) * 100) / 100;
-    const pct = previous.amount > 0 ? Math.round((diff / previous.amount) * 1000) / 10 : 0;
+    const first = history[0];
 
-    if (diff >= 0.05) {
+    const stepDiff = Math.round((latest.amount - previous.amount) * 100) / 100;
+    const overallDiff = Math.round((latest.amount - first.amount) * 100) / 100;
+
+    // Chercher la dernière occurrence ayant un montant différent du montant actuel
+    const prevDifferent = [...history].reverse().find(p => Math.abs(p.amount - latest.amount) >= 0.05);
+
+    let effectiveDiff = 0;
+    let refPreviousAmount = previous.amount;
+
+    if (Math.abs(stepDiff) >= 0.05) {
+      // Changement direct entre le dernier mois et le mois précédent
+      effectiveDiff = stepDiff;
+      refPreviousAmount = previous.amount;
+    } else if (prevDifferent && Math.abs(latest.amount - prevDifferent.amount) >= 0.05) {
+      // Hausse ou baisse antérieure encore active sur le tarif actuel
+      effectiveDiff = Math.round((latest.amount - prevDifferent.amount) * 100) / 100;
+      refPreviousAmount = prevDifferent.amount;
+    } else if (Math.abs(overallDiff) >= 0.05) {
+      effectiveDiff = overallDiff;
+      refPreviousAmount = first.amount;
+    }
+
+    const pct = refPreviousAmount > 0 ? Math.round((effectiveDiff / refPreviousAmount) * 1000) / 10 : 0;
+
+    if (effectiveDiff >= 0.05) {
       return {
         serviceKey,
         serviceName,
         currentAmount: latest.amount,
-        previousAmount: previous.amount,
-        difference: diff,
+        previousAmount: refPreviousAmount,
+        difference: effectiveDiff,
         percentChange: pct,
         status: 'INCREASED',
         history,
-        negotiationAdvice: `Hausse de tarif détectée (+${diff.toFixed(2)} €/mois, soit +${(diff * 12).toFixed(2)} €/an). Pensez à faire jouer la concurrence ou contacter le service client pour négocier ou résilier sans frais.`
+        negotiationAdvice: `Hausse de tarif constatée (passé de ${refPreviousAmount.toFixed(2)} € à ${latest.amount.toFixed(2)} €, soit +${effectiveDiff.toFixed(2)} €/mois et +${(effectiveDiff * 12).toFixed(2)} €/an). Conformément à l'article L224-33 du Code de la consommation, une augmentation tarifaire unilatérale vous donne le droit de résilier sans frais pendant 4 mois. Pensez à faire jouer la concurrence ou négocier une remise fidélité.`
       };
-    } else if (diff <= -0.05) {
+    } else if (effectiveDiff <= -0.05) {
       return {
         serviceKey,
         serviceName,
         currentAmount: latest.amount,
-        previousAmount: previous.amount,
-        difference: diff,
+        previousAmount: refPreviousAmount,
+        difference: effectiveDiff,
         percentChange: pct,
         status: 'DECREASED',
         history,
-        negotiationAdvice: `Baisse de tarif constatée (${diff.toFixed(2)} €/mois). Vous bénéficiez d'une réduction ou d'une offre promotionnelle.`
+        negotiationAdvice: `Baisse de tarif constatée (${effectiveDiff.toFixed(2)} €/mois). Vous bénéficiez d'une réduction ou d'une remise active.`
       };
     } else {
       return {
         serviceKey,
         serviceName,
         currentAmount: latest.amount,
-        previousAmount: previous.amount,
+        previousAmount: latest.amount,
         difference: 0,
         percentChange: 0,
         status: 'STABLE',
         history,
-        negotiationAdvice: `Tarif stable et inchangé (${latest.amount.toFixed(2)} €/mois).`
+        negotiationAdvice: `Tarif stable et inchangé (${latest.amount.toFixed(2)} €/mois sur ${history.length} mois analysés).`
       };
     }
   }
 
+  // 1 seul mois disponible
   return {
     serviceKey,
     serviceName,
     currentAmount: currAmt,
+    previousAmount: currAmt,
+    difference: 0,
+    percentChange: 0,
     status: 'NEW',
     history,
-    negotiationAdvice: `Premier prélèvement répertorié sur vos relevés disponibles (${currAmt.toFixed(2)} €).`
+    negotiationAdvice: `Premier prélèvement répertorié sur vos relevés disponibles (${currAmt.toFixed(2)} €). Importez d'autres relevés mensuels pour comparer automatiquement les hausses ou baisses de prix.`
+  };
+}
+
+/**
+ * Extrait la liste des abonnements et prélèvements uniques actifs à partir de l'ensemble des relevés.
+ * Chaque service n'apparaît qu'une seule fois (la dernière occurrence connue ou l'occurrence du mois ciblé),
+ * évitant les doublons et permettant une analyse cross-mensuelle parfaite.
+ */
+export function extractUniqueActiveSubscriptions(
+  scopedTransactions: BankTransaction[],
+  allTransactions: BankTransaction[]
+): { subscriptions: BankTransaction[]; totalMonthly: number } {
+  const pool = (allTransactions && allTransactions.length > 0) ? allTransactions : scopedTransactions;
+
+  // Filtrer les débits récurrents / abonnements / prélèvements
+  const recurringTxs = pool.filter(t => isSubscriptionOrRecurringDebit(t));
+
+  // Regrouper par clé de service canonique
+  const groups = new Map<string, BankTransaction[]>();
+  recurringTxs.forEach(t => {
+    const key = normalizeSubscriptionServiceKey(t);
+    if (!key) return;
+    const list = groups.get(key) || [];
+    list.push(t);
+    groups.set(key, list);
+  });
+
+  const uniqueSubs: BankTransaction[] = [];
+  let totalMonthly = 0;
+
+  groups.forEach((txList) => {
+    // Trier chronologiquement (le plus récent en premier)
+    const sorted = [...txList].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    // Si une transaction appartient aux scopedTransactions, la privilégier comme représentante
+    const scopedMatch = sorted.find(t => scopedTransactions.some(sc => sc.id === t.id));
+    const representative = scopedMatch || sorted[0];
+
+    if (representative) {
+      uniqueSubs.push(representative);
+      totalMonthly += Math.abs(Number(representative.amount) || 0);
+    }
+  });
+
+  // Trier par montant décroissant
+  uniqueSubs.sort((a, b) => Math.abs(Number(b.amount) || 0) - Math.abs(Number(a.amount) || 0));
+
+  return {
+    subscriptions: uniqueSubs,
+    totalMonthly: Math.round(totalMonthly * 100) / 100
   };
 }
 
@@ -791,13 +998,28 @@ export function detectSubscriptionEvolution(
  * Calcule les métriques d'abonnements récurrents et charges associées
  */
 export function calculateSubscriptionSummary(transactions: BankTransaction[]): SubscriptionSummary {
-  const subs = transactions.filter(t => t.isSubscription || t.category === 'Abonnements & Télécom');
-  const totalMonthly = subs.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0);
+  const recurring = transactions.filter(t => isSubscriptionOrRecurringDebit(t));
+
+  const seenKeys = new Set<string>();
+  const uniqueItems: BankTransaction[] = [];
+  let totalMonthly = 0;
+
+  recurring.forEach(t => {
+    const key = normalizeSubscriptionServiceKey(t);
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      uniqueItems.push(t);
+      totalMonthly += Math.abs(Number(t.amount) || 0);
+    }
+  });
+
+  totalMonthly = Math.round(totalMonthly * 100) / 100;
+
   return {
     totalMonthly,
-    totalAnnual: totalMonthly * 12,
-    count: subs.length,
-    items: subs
+    totalAnnual: Math.round(totalMonthly * 12 * 100) / 100,
+    count: uniqueItems.length,
+    items: uniqueItems
   };
 }
 

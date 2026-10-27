@@ -16,7 +16,12 @@ import {
   sanitizeImportErrorMessage,
   getStatementDisplayStatus
 } from '../src/lib/bankValidation.ts';
-import { detectSubscriptionEvolution } from '../src/lib/bankUtils.ts';
+import { 
+  detectSubscriptionEvolution,
+  normalizeSubscriptionServiceKey,
+  extractUniqueActiveSubscriptions,
+  isSubscriptionOrRecurringDebit
+} from '../src/lib/bankUtils.ts';
 
 test('1. DÉTECTION DU NOM DE BANQUE (detectBankName)', () => {
   assert.equal(
@@ -350,6 +355,44 @@ test('9. OUTIL ABONNEMENTS : DÉTECTION ÉVOLUTION DES PRIX, HISTORIQUE ET AIDE 
   // Test 9.4: Nouveau prélèvement sur Disney+
   const evoDisney = detectSubscriptionEvolution(allTx[7] as any, allTx as any);
   assert.equal(evoDisney.status, 'NEW');
+
+  // Test 9.5: Hausse multi-mois maintenue (Janvier 13.49 €, Février 15.99 €, Mars 15.99 €)
+  // Même si Mars == Février (15.99 €), la hausse par rapport au tarif d'origine de 13.49 € (+2.50 €) doit être détectée !
+  const sustainedHikeTx = [
+    { id: 'h1', date: '2026-01-05', cleanLabel: 'Netflix', rawLabel: 'PRLV SEPA 0019284 NETFLIX 2026-01', amount: -13.49, isSubscription: true },
+    { id: 'h2', date: '2026-02-05', cleanLabel: 'Netflix', rawLabel: 'PRLV SEPA 0084729 NETFLIX 2026-02', amount: -15.99, isSubscription: true },
+    { id: 'h3', date: '2026-03-05', cleanLabel: 'Netflix', rawLabel: 'PRLV SEPA 0095812 NETFLIX 2026-03', amount: -15.99, isSubscription: true }
+  ];
+  const evoSustained = detectSubscriptionEvolution(sustainedHikeTx[2] as any, sustainedHikeTx as any);
+  assert.equal(evoSustained.status, 'INCREASED', 'Doit détecter la hausse maintenue de +2.50 € même si le dernier mois est stable par rapport au mois précédent');
+  assert.equal(evoSustained.currentAmount, 15.99);
+  assert.equal(evoSustained.previousAmount, 13.49);
+  assert.equal(evoSustained.difference, 2.50);
+  assert.equal(evoSustained.history.length, 3);
+
+  // Test 9.6: Reconnaissance canonique des mandats SEPA et références variables
+  const key1 = normalizeSubscriptionServiceKey({ rawLabel: 'PRLV SEPA 0019284 NETFLIX 2026-01' });
+  const key2 = normalizeSubscriptionServiceKey({ rawLabel: 'PRLV SEPA 0084729 NETFLIX 2026-02' });
+  assert.equal(key1, key2, 'Les deux libellés Netflix doivent produire la même clé canonique');
+
+  const keyFree1 = normalizeSubscriptionServiceKey({ rawLabel: 'PRLV SEPA FREE MOBILE FACTURE 01928' });
+  const keyFree2 = normalizeSubscriptionServiceKey({ rawLabel: 'PRLV SEPA FREE MOBILE FACTURE 84721' });
+  assert.equal(keyFree1, keyFree2, 'Les deux factures Free Mobile doivent produire la même clé canonique');
+
+  // Test 9.7: Prélèvements récurrents (TotalEnergies, Macif, EDF)
+  assert.equal(isSubscriptionOrRecurringDebit({ rawLabel: 'PRLV SEPA TOTALENERGIES ELECTRICITE CLIENT 0492819', amount: -75.50 }), true);
+  assert.equal(isSubscriptionOrRecurringDebit({ rawLabel: 'PRLV SEPA MACIF ASSURANCE HABITATION 92834', amount: -28.90 }), true);
+  assert.equal(isSubscriptionOrRecurringDebit({ rawLabel: 'PRLV SEPA EDF CLIENT 99283401', amount: -65.00 }), true);
+
+  // Test 9.8: Déduplication des abonnements actifs uniques (1 seul abonnement Netflix dans la liste avec tarif actuel)
+  const allMixedTx = [...sustainedHikeTx, allTx[4], allTx[6]];
+  const { subscriptions: uniqueSubs, totalMonthly } = extractUniqueActiveSubscriptions(sustainedHikeTx as any, allMixedTx as any);
+  
+  const netflixCount = uniqueSubs.filter(s => normalizeSubscriptionServiceKey(s) === 'netflix').length;
+  assert.equal(netflixCount, 1, 'Chaque service ne doit apparaître qu une seule fois dans la liste des abonnements');
+  const netflixRep = uniqueSubs.find(s => normalizeSubscriptionServiceKey(s) === 'netflix');
+  assert.equal(Math.abs(netflixRep?.amount || 0), 15.99, 'La transaction représentative doit être celle au tarif le plus récent');
+  assert.ok(totalMonthly > 0, 'Le total mensuel doit être strictement positif');
 });
 
 test('10. SIMULATEUR COÛT DE LA VIE : RÉINITIALISATION À 0 € ET PRÉSERVATION DES POSTES PAR DÉFAUT', () => {

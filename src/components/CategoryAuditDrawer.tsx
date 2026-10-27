@@ -136,21 +136,51 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
   }, [auditType, customTransactions, allTransactions]);
 
   const subscriptionStats = useMemo(() => {
-    if (auditType !== 'subscriptions') return { increasesCount: 0, totalIncreaseImpact: 0, decreasesCount: 0 };
+    if (auditType !== 'subscriptions') {
+      return {
+        increasesCount: 0,
+        totalIncreaseImpact: 0,
+        decreasesCount: 0,
+        totalDecreaseSavings: 0,
+        stableCount: 0,
+        newOrSingleCount: 0,
+        hasMultiMonthData: false
+      };
+    }
     let increasesCount = 0;
     let totalIncreaseImpact = 0;
     let decreasesCount = 0;
+    let totalDecreaseSavings = 0;
+    let stableCount = 0;
+    let newOrSingleCount = 0;
+    let hasMultiMonthData = false;
 
     subscriptionEvolutions.forEach(evo => {
+      if (evo.history && evo.history.length > 1) {
+        hasMultiMonthData = true;
+      }
       if (evo.status === 'INCREASED') {
         increasesCount++;
-        totalIncreaseImpact += (evo.difference || 0);
+        totalIncreaseImpact += Math.abs(evo.difference || 0);
       } else if (evo.status === 'DECREASED') {
         decreasesCount++;
+        totalDecreaseSavings += Math.abs(evo.difference || 0);
+      } else if (evo.status === 'STABLE') {
+        stableCount++;
+      } else {
+        newOrSingleCount++;
       }
     });
 
-    return { increasesCount, totalIncreaseImpact, decreasesCount };
+    return {
+      increasesCount,
+      totalIncreaseImpact,
+      decreasesCount,
+      totalDecreaseSavings,
+      stableCount,
+      newOrSingleCount,
+      hasMultiMonthData
+    };
   }, [auditType, subscriptionEvolutions]);
 
   const handleInitialBalanceChange = (val: string) => {
@@ -806,30 +836,68 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
             <div className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
               subscriptionStats.increasesCount > 0 
                 ? 'bg-rose-500/10 border-rose-500/25 text-rose-300' 
-                : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                : subscriptionStats.decreasesCount > 0
+                  ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                  : subscriptionStats.hasMultiMonthData
+                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                    : 'bg-blue-500/10 border-blue-500/25 text-blue-300'
             }`}>
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                  subscriptionStats.increasesCount > 0 ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'
+                  subscriptionStats.increasesCount > 0 
+                    ? 'bg-rose-500/20 text-rose-400' 
+                    : subscriptionStats.decreasesCount > 0
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : subscriptionStats.hasMultiMonthData
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-blue-500/20 text-blue-400'
                 }`}>
-                  {subscriptionStats.increasesCount > 0 ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                  {subscriptionStats.increasesCount > 0 ? (
+                    <AlertTriangle className="w-4 h-4" />
+                  ) : subscriptionStats.decreasesCount > 0 ? (
+                    <TrendingDown className="w-4 h-4" />
+                  ) : subscriptionStats.hasMultiMonthData ? (
+                    <CheckCircle2 className="w-4 h-4" />
+                  ) : (
+                    <Calendar className="w-4 h-4" />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-bold text-foreground">
                     {subscriptionStats.increasesCount > 0
                       ? `${subscriptionStats.increasesCount} hausse${subscriptionStats.increasesCount > 1 ? 's' : ''} de tarif détectée${subscriptionStats.increasesCount > 1 ? 's' : ''}`
-                      : 'Tous vos abonnements sont stables'}
+                      : subscriptionStats.decreasesCount > 0
+                        ? `${subscriptionStats.decreasesCount} baisse${subscriptionStats.decreasesCount > 1 ? 's' : ''} de prix constatée${subscriptionStats.decreasesCount > 1 ? 's' : ''}`
+                        : subscriptionStats.hasMultiMonthData
+                          ? 'Tarifs stables sur l\'ensemble de vos relevés analysés'
+                          : 'Analyse basée sur un seul mois de relevé bancaire'}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
                     {subscriptionStats.increasesCount > 0
                       ? `Surcoût : +${formatCurrency(subscriptionStats.totalIncreaseImpact, { showSign: false })}/mois (+${formatCurrency(subscriptionStats.totalIncreaseImpact * 12, { showSign: false })}/an) • Idéal pour négocier ou résilier`
-                      : 'Aucune augmentation constatée par rapport à vos mois précédents'}
+                      : subscriptionStats.decreasesCount > 0
+                        ? `Économie : -${formatCurrency(subscriptionStats.totalDecreaseSavings, { showSign: false })}/mois • Vous bénéficiez de réductions actives`
+                        : subscriptionStats.hasMultiMonthData
+                          ? `Aucune hausse constatée sur vos ${subscriptionStats.stableCount} abonnements comparés sur plusieurs mois.`
+                          : 'Importez d\'autres mois de relevés bancaires pour comparer automatiquement les hausses et baisses de prix.'}
                   </div>
                 </div>
               </div>
-              {subscriptionStats.increasesCount > 0 && (
+              {subscriptionStats.increasesCount > 0 ? (
                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 uppercase tracking-wider shrink-0 hidden sm:inline-block">
                   Opportunité Négociation
+                </span>
+              ) : subscriptionStats.decreasesCount > 0 ? (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider shrink-0 hidden sm:inline-block">
+                  Économies Actives
+                </span>
+              ) : subscriptionStats.hasMultiMonthData ? (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider shrink-0 hidden sm:inline-block">
+                  Tarifs Maîtrisés
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-wider shrink-0 hidden sm:inline-block">
+                  1 Relevé Disponible
                 </span>
               )}
             </div>
@@ -975,7 +1043,12 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
                               )}
                               {evo && evo.status === 'STABLE' && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border/50">
-                                  Tarif stable
+                                  Tarif stable ({formatCurrency(evo.currentAmount, { showSign: false })})
+                                </span>
+                              )}
+                              {evo && evo.status === 'NEW' && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary/80 text-muted-foreground border border-border/50">
+                                  1er relevé disponible
                                 </span>
                               )}
                             </div>
@@ -1003,8 +1076,10 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
                                     <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
                                       hIdx === evo.history.length - 1 && evo.status === 'INCREASED'
                                         ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
-                                        : 'bg-secondary/70 text-foreground border-border/50'
-                                    }`}>
+                                        : (hIdx === evo.history.length - 1 && evo.status === 'DECREASED'
+                                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                            : 'bg-secondary/70 text-foreground border-border/50')
+                                    }`} title={pt.monthKey || pt.date}>
                                       {formatCurrency(pt.amount, { showSign: false })}
                                     </span>
                                     {hIdx < evo.history.length - 1 && (

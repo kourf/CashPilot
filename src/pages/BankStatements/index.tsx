@@ -96,6 +96,7 @@ import {
   smartCategorizeTransaction,
   cleanMerchantDescription,
   calculateSubscriptionSummary,
+  extractUniqueActiveSubscriptions,
   formatMonthLabel,
   formatDateFR,
   formatCurrency,
@@ -279,21 +280,16 @@ export const BankStatements: React.FC = () => {
 
   // AI Subscription Optimizer Drawer State
   const handleOpenSubscriptionsAudit = () => {
-    let subTxs = subscriptionSummary.items;
-    let total = subscriptionSummary.totalMonthly;
-    if (subTxs.length === 0) {
-      subTxs = monthScopedTransactions.filter(t => Boolean(t.isSubscription || t.category === 'Abonnements & Télécom' || t.category === 'Abonnements'));
-      total = subTxs.reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0);
-    }
-    if (subTxs.length === 0) {
-      subTxs = bankTransactions.filter(t => Boolean(t.isSubscription || t.category === 'Abonnements & Télécom' || t.category === 'Abonnements'));
-      total = subTxs.reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0);
-    }
+    const { subscriptions, totalMonthly } = extractUniqueActiveSubscriptions(
+      monthScopedTransactions.length > 0 ? monthScopedTransactions : bankTransactions,
+      bankTransactions
+    );
+
     setAuditType('subscriptions');
     setAuditCustomTitle('Abonnements & Prélèvements');
-    setAuditCustomSubtitle('Tous vos abonnements et prélèvements récurrents');
-    setAuditCustomTransactions(subTxs);
-    setAuditCustomTotal(total);
+    setAuditCustomSubtitle('Tous vos abonnements et prélèvements récurrents analysés sur l\'ensemble de vos relevés');
+    setAuditCustomTransactions(subscriptions);
+    setAuditCustomTotal(totalMonthly);
     setIsAuditDrawerOpen(true);
   };
 
