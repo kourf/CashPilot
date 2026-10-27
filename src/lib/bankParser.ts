@@ -107,7 +107,7 @@ export function cleanMerchantDescription(raw: string): string {
 
   // Détections prioritaires de commerçants & organismes courants
   const upper = clean.toUpperCase();
-  if (upper.includes('AMERICAN EXPRESS') || upper.includes('AMEX')) return 'American Express';
+  if (upper.includes('AMERICAN EXPRESS') || upper.includes('AMEX')) return 'Règlement American Express';
   if (upper.includes('FRANCE TRAVAIL') || upper.includes('POLE EMPLOI')) return 'France Travail';
   if (upper.includes('CAF LOIRE') || upper.includes('CAF DE') || upper.startsWith('CAF ')) return 'CAF Loire-Atlantique';
   if (upper.includes('SWYPE')) return 'Swype';
@@ -115,7 +115,9 @@ export function cleanMerchantDescription(raw: string): string {
   if (upper.includes('ORANGE FIBRE')) return 'Orange Fibre';
   if (upper.includes('ORANGE MOBILE') || (upper.includes('ORANGE') && upper.includes('PRLV'))) return 'Orange';
   if (upper.includes('LA POSTE MOBILE')) return 'La Poste Mobile';
-  if (upper.includes('SOBRIO')) return 'Cotisation Sobrio (Banque)';
+  if (upper.includes('SOBRIO')) return 'Cotisation Sobrio (Société Générale)';
+  if (upper.includes('JAZZ')) return 'Cotisation Jazz (Société Générale)';
+  if (upper.includes('ARRETE') && (upper.includes('FORFAITAIRE') || upper.includes('MINIMUM') || upper.includes('JOUR'))) return 'Frais de compte / Arrêté trimestriel';
   if (upper.includes('CRYPTO DYNAMIQUE') || upper.includes('OPTION CRYPTO')) return 'Option Crypto (Frais)';
   if (upper.includes('COMMISSION D\'INTERVENTION') || upper.includes('COMMISSION INTERVENTION')) return 'Commission d\'intervention (Frais)';
   if (upper.includes('SATD')) return 'Frais sur SATD (Impôts)';
@@ -123,8 +125,9 @@ export function cleanMerchantDescription(raw: string): string {
   if (upper.includes('GROUPAMA') && (upper.includes('SOIN') || upper.includes('SANTE'))) return 'Groupama (Santé)';
   if (upper.includes('GROUPAMA')) return 'Groupama (Assurance)';
   if (upper.includes('SOGECAP')) return 'Sogecap (Épargne)';
+  if (upper.includes('ALMA')) return 'Alma (Paiement fractionné)';
   if (upper.includes('ONEY')) return 'Oney (3x/4x)';
-  if (upper.includes('KLARNA')) return 'Klarna';
+  if (upper.includes('KLARNA')) return 'Klarna (Paiement fractionné)';
 
   // Détection des virements vers proches / personnes physiques : VIR ... POUR: [Nom] ou DE: [Nom]
   const pourMatch = clean.match(/(?:POUR|DE|FAVEUR DE)\s*:\s*([^/,\-]+)/i);
@@ -453,7 +456,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
   // 5. Remboursement Carte American Express
   if (['american express', 'amex'].some(k => norm.includes(k))) {
     return {
-      cleanDesc: 'Remboursement American Express',
+      cleanDesc: 'Règlement American Express',
       flowType: 'FIXED_EXPENSE',
       category: 'Paiement fractionné',
       isSubscription: true

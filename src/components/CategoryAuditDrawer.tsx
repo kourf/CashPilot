@@ -37,12 +37,22 @@ import {
   User,
   AlertTriangle,
   Copy,
-  Check
+  Check,
+  Tv,
+  Layers,
+  ArrowUpDown
 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { formatCurrency, formatDateFR, detectSubscriptionEvolution } from '../lib/bankUtils';
+import { 
+  formatCurrency, 
+  formatDateFR, 
+  detectSubscriptionEvolution,
+  getSubscriptionMetadata,
+  type SubscriptionPriceEvolution,
+  type SubscriptionMetadata
+} from '../lib/bankUtils';
 import { 
   calculateInternalTransfers, 
   calculatePeerTransfers, 
@@ -122,6 +132,9 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
   // Échanges Famille & Amis : Filtre interactif par personne
   const [selectedPersonFilter, setSelectedPersonFilter] = useState<string | null>(null);
 
+  // Mode de tri pour Abonnements & Prélèvements : 'logical' (par nature de contrat) | 'day' (1er au 31) | 'amount' (décroissant) | 'alerts'
+  const [subscriptionSortMode, setSubscriptionSortMode] = useState<'logical' | 'day' | 'amount' | 'alerts'>('logical');
+
   // Analyse et suivi de l'évolution des prix pour les abonnements et prélèvements
   const subscriptionEvolutions = useMemo(() => {
     if (auditType !== 'subscriptions') return new Map<string, ReturnType<typeof detectSubscriptionEvolution>>();
@@ -134,6 +147,18 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
     });
     return map;
   }, [auditType, customTransactions, allTransactions]);
+
+  // Métadonnées enrichies, définitions explicites et ordre logique
+  const subscriptionMetadataMap = useMemo(() => {
+    if (auditType !== 'subscriptions') return new Map<string, SubscriptionMetadata>();
+    const map = new Map<string, SubscriptionMetadata>();
+    (customTransactions || []).forEach(tx => {
+      const evo = subscriptionEvolutions.get(tx.id);
+      const meta = getSubscriptionMetadata(tx, evo, allTransactions);
+      map.set(tx.id, meta);
+    });
+    return map;
+  }, [auditType, customTransactions, subscriptionEvolutions, allTransactions]);
 
   const subscriptionStats = useMemo(() => {
     if (auditType !== 'subscriptions') {
@@ -156,6 +181,13 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
     let hasMultiMonthData = false;
 
     subscriptionEvolutions.forEach(evo => {
+      // Exclure strictement les cartes de crédit / débit différé (American Express) des alertes d'augmentation
+      if (evo.isCreditCard || evo.status === 'VARIABLE_DEBIT') {
+        if (evo.history && evo.history.length > 1) {
+          hasMultiMonthData = true;
+        }
+        return;
+      }
       if (evo.history && evo.history.length > 1) {
         hasMultiMonthData = true;
       }
@@ -199,6 +231,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
       setNatureFilter('all');
       setInterAccountFlowTab('all');
       setSelectedPersonFilter(null);
+      setSubscriptionSortMode('logical');
     }
   }, [isOpen, auditType, categoryData]);
 
@@ -286,6 +319,438 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
   const currentFilteredSum = useMemo(() => {
     return filteredTransactions.reduce((acc, tx) => acc + Math.abs(tx.amount || 0), 0);
   }, [filteredTransactions]);
+
+  // Tri et hiérarchisation intelligente des abonnements selon le mode choisi
+  const sortedSubscriptionTransactions = useMemo(() => {
+    if (auditType !== 'subscriptions') return filteredTransactions;
+    const list = [...filteredTransactions];
+
+    if (subscriptionSortMode === 'day') {
+      return list.sort((a, b) => {
+        const dayA = a.subscriptionDay || (a.date ? parseInt(a.date.split(/[/-]/).pop() || '1', 10) : 1);
+        const dayB = b.subscriptionDay || (b.date ? parseInt(b.date.split(/[/-]/).pop() || '1', 10) : 1);
+        return dayA - dayB;
+      });
+    }
+
+    if (subscriptionSortMode === 'amount') {
+      return list.sort((a, b) => {
+        const amtA = Math.abs(Number(a.amount !== undefined ? a.amount : a.rawAmount) || 0);
+        const amtB = Math.abs(Number(b.amount !== undefined ? b.amount : b.rawAmount) || 0);
+        return amtB - amtA;
+      });
+    }
+
+    if (subscriptionSortMode === 'alerts') {
+      return list.sort((a, b) => {
+        const evoA = subscriptionEvolutions.get(a.id);
+        const evoB = subscriptionEvolutions.get(b.id);
+        const priority = (s?: string) => s === 'INCREASED' ? 1 : (s === 'DECREASED' ? 2 : (s === 'STABLE' ? 3 : 4));
+        return priority(evoA?.status) - priority(evoB?.status);
+      });
+    }
+
+    // Mode par défaut : 'logical' (Ordre logique par type de contrat puis montant décroissant)
+    return list.sort((a, b) => {
+      const metaA = subscriptionMetadataMap.get(a.id) || getSubscriptionMetadata(a, subscriptionEvolutions.get(a.id), allTransactions);
+      const metaB = subscriptionMetadataMap.get(b.id) || getSubscriptionMetadata(b, subscriptionEvolutions.get(b.id), allTransactions);
+      if (metaA.logicalGroupOrder !== metaB.logicalGroupOrder) {
+        return metaA.logicalGroupOrder - metaB.logicalGroupOrder;
+      }
+      const amtA = Math.abs(Number(a.amount !== undefined ? a.amount : a.rawAmount) || 0);
+      const amtB = Math.abs(Number(b.amount !== undefined ? b.amount : b.rawAmount) || 0);
+      return amtB - amtA;
+    });
+  }, [auditType, filteredTransactions, subscriptionSortMode, subscriptionEvolutions, subscriptionMetadataMap, allTransactions]);
+
+  // Regroupement par catégories logiques avec sous-totaux pour l'ordre logique
+  const subscriptionGroupedList = useMemo(() => {
+    if (auditType !== 'subscriptions' || subscriptionSortMode !== 'logical') return null;
+
+    const groupsOrder: Array<{
+      id: SubscriptionMetadata['logicalGroup'];
+      label: string;
+      icon: React.ElementType;
+      color: string;
+    }> = [
+      { id: 'housing', label: 'Logement & Énergie', icon: Home, color: 'text-amber-500 bg-amber-500/10 border-amber-500/25' },
+      { id: 'insurance', label: 'Assurances & Prévoyance', icon: Shield, color: 'text-blue-500 bg-blue-500/10 border-blue-500/25' },
+      { id: 'telecom', label: 'Télécoms & Box Internet', icon: Smartphone, color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/25' },
+      { id: 'digital', label: 'Services Numériques & Streaming', icon: Tv, color: 'text-purple-500 bg-purple-500/10 border-purple-500/25' },
+      { id: 'bnpl', label: 'Paiements Fractionnés (3x / 4x)', icon: Layers, color: 'text-orange-500 bg-orange-500/10 border-orange-500/25' },
+      { id: 'credit_card', label: 'Cartes de Crédit à Débit Différé', icon: CreditCard, color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/25' },
+      { id: 'bank_fees', label: 'Frais & Services Bancaires', icon: Landmark, color: 'text-rose-500 bg-rose-500/10 border-rose-500/25' },
+      { id: 'other', label: 'Autres Prélèvements Récurrents', icon: CalendarClock, color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/25' }
+    ];
+
+    const map = new Map<string, any[]>();
+    sortedSubscriptionTransactions.forEach(tx => {
+      const meta = subscriptionMetadataMap.get(tx.id) || getSubscriptionMetadata(tx, subscriptionEvolutions.get(tx.id), allTransactions);
+      const gid = meta.logicalGroup;
+      const list = map.get(gid) || [];
+      list.push(tx);
+      map.set(gid, list);
+    });
+
+    return groupsOrder
+      .map(g => {
+        const txs = map.get(g.id) || [];
+        const total = txs.reduce((sum, t) => sum + Math.abs(Number(t.amount !== undefined ? t.amount : t.rawAmount) || 0), 0);
+        return {
+          ...g,
+          transactions: txs,
+          total
+        };
+      })
+      .filter(g => g.transactions.length > 0);
+  }, [auditType, subscriptionSortMode, sortedSubscriptionTransactions, subscriptionMetadataMap, subscriptionEvolutions, allTransactions]);
+
+  // Carte détaillée et épurée pour chaque abonnement ou prélèvement récurrent
+  const renderSubscriptionCard = (tx: any, idx: number) => {
+    const rawAmt = Number(tx.amount !== undefined ? tx.amount : tx.rawAmount) || 0;
+    const absAmt = Math.abs(rawAmt);
+    const evo = subscriptionEvolutions.get(tx.id);
+    const meta = subscriptionMetadataMap.get(tx.id) || getSubscriptionMetadata(tx, evo, allTransactions);
+
+    // Icône contextuelle selon la nature du contrat
+    const CardIcon = meta.isCreditCard ? CreditCard :
+                     meta.isBNPL ? Layers :
+                     meta.isBankFee ? Landmark :
+                     meta.logicalGroup === 'housing' ? Home :
+                     meta.logicalGroup === 'insurance' ? Shield :
+                     meta.logicalGroup === 'telecom' ? Smartphone :
+                     meta.logicalGroup === 'digital' ? Tv : Calendar;
+
+    const iconColor = meta.isCreditCard ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' :
+                      meta.isBNPL ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                      meta.isBankFee ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
+                      meta.logicalGroup === 'housing' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
+                      meta.logicalGroup === 'insurance' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
+                      meta.logicalGroup === 'telecom' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' :
+                      meta.logicalGroup === 'digital' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
+                      'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+
+    return (
+      <div 
+        key={tx.id || idx}
+        className="p-3.5 sm:p-4 rounded-2xl bg-card border border-border/70 hover:border-border transition-all flex flex-col gap-3 shadow-2xs"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${iconColor}`}>
+              <CardIcon className="w-5 h-5" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-sm text-foreground truncate" title={meta.cleanTitle}>
+                  {meta.cleanTitle}
+                </span>
+
+                {/* Badge spécifique carte à débit différé (Amex) */}
+                {meta.isCreditCard && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+                    <CreditCard className="w-3 h-3" /> Carte à débit différé (Amex)
+                  </span>
+                )}
+
+                {/* Badge paiement fractionné */}
+                {meta.isBNPL && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                    <Layers className="w-3 h-3" /> Paiement fractionné
+                  </span>
+                )}
+
+                {/* Badge d'évolution de tarif */}
+                {evo && evo.status === 'INCREASED' && !meta.isCreditCard && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/30">
+                    <TrendingUp className="w-3 h-3" />
+                    <span>+{formatCurrency(evo.difference || 0, { showSign: false })} ({evo.percentChange && evo.percentChange > 0 ? `+${evo.percentChange}%` : ''}) • Hausse détectée</span>
+                  </span>
+                )}
+                {evo && evo.status === 'DECREASED' && !meta.isCreditCard && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">
+                    <TrendingDown className="w-3 h-3" />
+                    <span>{formatCurrency(evo.difference || 0, { showSign: true })} • Baisse de prix</span>
+                  </span>
+                )}
+                {evo && evo.status === 'STABLE' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border/50">
+                    Tarif stable ({formatCurrency(evo.currentAmount, { showSign: false })})
+                  </span>
+                )}
+                {evo && (evo.status === 'NEW' || !evo.status) && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary/80 text-muted-foreground border border-border/50">
+                    1er relevé disponible
+                  </span>
+                )}
+              </div>
+
+              {/* Explication explicite, épurée et transparente */}
+              <div className="mt-2 p-2.5 rounded-xl bg-secondary/30 dark:bg-white/[0.02] border border-border/60 space-y-1.5 text-xs">
+                <div className="flex items-start gap-1.5 text-[11px] font-medium text-foreground/90 leading-relaxed">
+                  <Info className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                  <span>{meta.plainDescription}</span>
+                </div>
+
+                {meta.humbleDisclaimer && (
+                  <div className="text-[10px] font-medium text-muted-foreground bg-background/50 px-2.5 py-1 rounded-lg border border-border/40 italic">
+                    {meta.humbleDisclaimer}
+                  </div>
+                )}
+
+                {meta.isBNPL && meta.installmentDetails && (
+                  <div className="text-[10px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                    <CalendarClock className="w-3.5 h-3.5 shrink-0" />
+                    <span>{meta.installmentDetails.explanation}</span>
+                  </div>
+                )}
+
+                {meta.isCreditCard && (
+                  <div className="text-[10px] font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5 shrink-0" />
+                    <span>Prélèvement de carte de crédit : variation normale liée à vos achats du mois écoulé.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Libellé bancaire brut & Date de prélèvement */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-4 text-xs mt-2">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Libellé Brut du Relevé</span>
+                  <span className="text-[11px] text-foreground/80 font-mono truncate" title={tx.rawLabel || tx.description}>
+                    {tx.rawLabel || tx.description}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Date de Prélèvement</span>
+                  <span className="text-[11px] text-blue-500 font-bold flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    {tx.subscriptionDay ? `Le ${tx.subscriptionDay} du mois (${formatDateFR(tx.date)})` : formatDateFR(tx.date)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Montant formaté */}
+          <div className="text-right shrink-0 sm:self-start pl-12 sm:pl-0 flex flex-col items-end">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">
+              {meta.isCreditCard ? 'Montant Prélevé' : 'Montant Mensuel'}
+            </span>
+            <span className="text-base sm:text-lg font-black font-mono text-foreground">
+              -{formatCurrency(absAmt, { showSign: false })}
+            </span>
+          </div>
+        </div>
+
+        {/* Historique chronologique avec date et mois formaté rattaché au prix */}
+        {evo && evo.history && evo.history.length > 1 && (
+          <div className="flex flex-col gap-1.5 pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-primary" /> Historique chronologique ({evo.history.length} mois analysés) :
+              </span>
+              <span className="text-[10px] text-muted-foreground font-medium">Mois (Date) : Prix</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {evo.history.map((pt, hIdx) => {
+                const isLatest = hIdx === evo.history.length - 1;
+                return (
+                  <React.Fragment key={pt.date + hIdx}>
+                    <div className={`px-2.5 py-1 rounded-xl text-[11px] font-medium border flex items-center gap-1.5 shadow-2xs ${
+                      isLatest && evo.status === 'INCREASED' && !meta.isCreditCard
+                        ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                        : (isLatest && evo.status === 'DECREASED' && !meta.isCreditCard
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            : 'bg-secondary/60 text-foreground border-border/60')
+                    }`}>
+                      <span className="font-bold text-[10px] uppercase text-muted-foreground">
+                        {pt.monthLabel || pt.monthKey}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        ({pt.formattedDate || pt.date})
+                      </span>
+                      <span className="font-mono font-black text-xs text-foreground">
+                        : {formatCurrency(pt.amount, { showSign: false })}
+                      </span>
+                    </div>
+                    {hIdx < evo.history.length - 1 && (
+                      <span className="text-muted-foreground font-bold text-xs">➔</span>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Aide à la négociation / résiliation en cas de hausse réelle (jamais sur Amex) */}
+        {evo && evo.status === 'INCREASED' && !meta.isCreditCard && (
+          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/25 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-rose-300 font-bold text-xs">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <span>Hausse de tarif constatée (passé de {formatCurrency(evo.previousAmount || 0, { showSign: false })} à {formatCurrency(evo.currentAmount, { showSign: false })})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpandedNegotiateId(expandedNegotiateId === tx.id ? null : tx.id)}
+                className="text-[10px] font-bold px-2 py-1 rounded bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 transition-colors cursor-pointer"
+              >
+                {expandedNegotiateId === tx.id ? 'Masquer l\'argumentaire' : 'Conseil négocier / résilier'}
+              </button>
+            </div>
+
+            {expandedNegotiateId === tx.id && (
+              <div className="mt-1 p-2.5 rounded-lg bg-black/30 border border-rose-500/20 space-y-2">
+                <p className="text-[11px] text-rose-200/90 leading-relaxed">
+                  {evo.negotiationAdvice}
+                </p>
+                <div className="pt-2 border-t border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="text-[10px] font-medium text-muted-foreground">
+                    Message type pour le service client :
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = `Bonjour,\n\nJ'ai constaté une augmentation tarifaire sur mon abonnement ${meta.cleanTitle} (passé de ${evo.previousAmount?.toFixed(2)} € à ${evo.currentAmount.toFixed(2)} € par mois).\n\nSans geste commercial ou alignement sur vos offres actuelles, je souhaite faire valoir mes droits de résiliation sans frais afin de souscrire chez un opérateur concurrent.\n\nMerci de votre retour.`;
+                      navigator.clipboard.writeText(text);
+                      setCopiedAdviceId(tx.id);
+                      setTimeout(() => setCopiedAdviceId(null), 2500);
+                    }}
+                    className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
+                  >
+                    {copiedAdviceId === tx.id ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3 text-white" />}
+                    <span>{copiedAdviceId === tx.id ? 'Copié dans le presse-papier !' : 'Copier le message'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Carte standard pour les autres types d'audit (Catégories, Inter-comptes, Famille/Amis...)
+  const renderGeneralCard = (tx: any, idx: number) => {
+    const rawAmt = Number(tx.amount) || 0;
+    const isCredit = rawAmt > 0;
+    const absAmt = Math.abs(rawAmt);
+    const label = tx.cleanLabel || tx.rawLabel || tx.description || 'Opération';
+    const isFixe = tx.nature === 'fixe';
+    const matchedRuleText = tx.matchedRule || tx.ruleExplanation || 'Règle sémantique standard';
+
+    return (
+      <div 
+        key={tx.id || idx}
+        className={`p-3 sm:p-3.5 rounded-xl bg-card border hover:shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 group ${
+          auditType === 'inter-accounts' 
+            ? (isCredit ? 'border-l-4 border-l-emerald-500 border-border/70 bg-emerald-500/[0.02]' : 'border-l-4 border-l-cyan-500 border-border/70 bg-cyan-500/[0.02]')
+            : auditType === 'peer-transfers'
+              ? (isCredit ? 'border-l-4 border-l-emerald-500 border-border/70 bg-emerald-500/[0.02]' : 'border-l-4 border-l-rose-500 border-border/70 bg-rose-500/[0.02]')
+              : 'border-border/70 hover:border-border'
+        }`}
+      >
+        <div className="flex items-start gap-3 min-w-0">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${
+            isCredit 
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+              : (auditType === 'inter-accounts'
+                  ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+                  : (auditType === 'peer-transfers'
+                      ? 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                      : (isFixe ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-500')))
+          }`}>
+            {isCredit ? (
+              <ArrowDownLeft className="w-4 h-4" />
+            ) : (auditType === 'inter-accounts' || auditType === 'peer-transfers') ? (
+              <ArrowUpRight className="w-4 h-4" />
+            ) : isFixe ? (
+              <Lock className="w-4 h-4" />
+            ) : (
+              <CreditCard className="w-4 h-4" />
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-xs sm:text-sm text-foreground truncate" title={label}>
+                {label}
+              </span>
+              {(auditType === 'category' || auditType === 'kpi-expenses' || auditType === 'kpi-essential' || auditType === 'kpi-comfort') && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {tx.category && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary/80 text-foreground border border-border/60">
+                      {tx.category}
+                    </span>
+                  )}
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    isFixe 
+                      ? 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30' 
+                      : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
+                  }`}>
+                    {isFixe ? <Lock className="w-2.5 h-2.5" /> : <CreditCard className="w-2.5 h-2.5" />}
+                    {isFixe ? 'Charge Fixe' : 'Charge Variable'}
+                  </span>
+                </div>
+              )}
+              {auditType === 'inter-accounts' && (
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                  isCredit 
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
+                    : 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
+                }`}>
+                  <ArrowLeftRight className="w-2.5 h-2.5" />
+                  {isCredit ? 'Entrée Compte Propre (+)' : 'Sortie Compte Propre (-)'}
+                </span>
+              )}
+              {auditType === 'peer-transfers' && (
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                  isCredit 
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
+                    : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                }`}>
+                  <User className="w-2.5 h-2.5" />
+                  <span className="font-extrabold">{extractPersonName(tx)}</span> • {isCredit ? 'Reçu / Remboursé (+)' : 'Avancé / Envoyé (-)'}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground mt-1">
+              <span className="font-mono font-medium">
+                {formatDateFR(tx.date)}
+              </span>
+              {tx.rawLabel && tx.rawLabel !== label && (
+                <>
+                  <span>•</span>
+                  <span className="truncate max-w-[220px]" title={tx.rawLabel}>
+                    {tx.rawLabel}
+                  </span>
+                </>
+              )}
+            </div>
+
+            <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground/90 font-medium">
+              <span className="text-primary font-bold">Règle :</span>
+              <span className="bg-secondary/60 dark:bg-white/[0.04] px-1.5 py-0.5 rounded-md text-foreground/80 truncate max-w-sm">
+                {matchedRuleText}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-right shrink-0 sm:self-center pl-12 sm:pl-0 flex flex-col items-end">
+          <span className={`text-sm sm:text-base font-black font-mono ${
+            isCredit ? 'text-emerald-400' : 'text-foreground'
+          }`}>
+            {isCredit ? '+' : '-'}{formatCurrency(absAmt, { showSign: false })}
+          </span>
+        </div>
+      </div>
+    );
+  };
 
   if (!isOpen) return null;
 
@@ -959,10 +1424,61 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
               </button>
             </div>
           )}
+
+          {auditType === 'subscriptions' && (
+            <div className="flex items-center gap-1 bg-secondary/40 p-1 rounded-xl self-start sm:self-auto overflow-x-auto">
+              <button
+                onClick={() => setSubscriptionSortMode('logical')}
+                className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                  subscriptionSortMode === 'logical' 
+                    ? 'bg-card text-foreground shadow-sm font-bold' 
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                title="Regrouper par nature de contrat (Logement, Assurances, Télécoms, Streaming...)"
+              >
+                <Layers className="w-3.5 h-3.5" /> Ordre Logique
+              </button>
+              <button
+                onClick={() => setSubscriptionSortMode('day')}
+                className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                  subscriptionSortMode === 'day' 
+                    ? 'bg-card text-foreground shadow-sm font-bold' 
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                title="Trier selon le calendrier des débits (1er au 31 du mois)"
+              >
+                <Calendar className="w-3.5 h-3.5" /> Échéance
+              </button>
+              <button
+                onClick={() => setSubscriptionSortMode('amount')}
+                className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                  subscriptionSortMode === 'amount' 
+                    ? 'bg-card text-foreground shadow-sm font-bold' 
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                title="Trier du montant le plus élevé au plus faible"
+              >
+                <ArrowUpDown className="w-3.5 h-3.5" /> Montant
+              </button>
+              {subscriptionStats.increasesCount > 0 && (
+                <button
+                  onClick={() => setSubscriptionSortMode('alerts')}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                    subscriptionSortMode === 'alerts' 
+                      ? 'bg-rose-500 text-white shadow-sm' 
+                      : 'text-rose-400 hover:text-rose-300'
+                  }`}
+                  title="Afficher les hausses de tarifs en priorité"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" /> Hausses ({subscriptionStats.increasesCount})
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* --- LISTE DES OPÉRATIONS DÉTAILLÉES --- */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-2.5 overscroll-contain">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 overscroll-contain">
           {filteredTransactions.length === 0 ? (
             <div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center">
               <Info className="w-8 h-8 mb-2 opacity-30" />
@@ -971,259 +1487,46 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
                 Aucune transaction ne correspond à vos critères de recherche pour cette période.
               </p>
             </div>
+          ) : auditType === 'subscriptions' ? (
+            subscriptionSortMode === 'logical' && subscriptionGroupedList ? (
+              <div className="space-y-6">
+                {subscriptionGroupedList.map(group => {
+                  const GroupIcon = group.icon;
+                  return (
+                    <div key={group.id} className="space-y-2.5">
+                      <div className="flex items-center justify-between px-1 pb-1.5 border-b border-border/40">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-7 h-7 rounded-xl flex items-center justify-center border shadow-2xs ${group.color}`}>
+                            <GroupIcon className="w-3.5 h-3.5" />
+                          </div>
+                          <h3 className="text-xs font-black uppercase tracking-wider text-foreground">
+                            {group.label}
+                          </h3>
+                          <span className="text-[10px] font-bold text-muted-foreground bg-secondary/80 px-2 py-0.5 rounded-full border border-border/50">
+                            {group.transactions.length}
+                          </span>
+                        </div>
+                        <span className="text-xs font-black font-mono text-foreground">
+                          {formatCurrency(group.total, { showSign: false })}/mois
+                        </span>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        {group.transactions.map((tx, idx) => renderSubscriptionCard(tx, idx))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {sortedSubscriptionTransactions.map((tx, idx) => renderSubscriptionCard(tx, idx))}
+              </div>
+            )
           ) : (
-            filteredTransactions.map((tx, idx) => {
-              const rawAmt = Number(tx.amount) || 0;
-              const isCredit = rawAmt > 0;
-              const absAmt = Math.abs(rawAmt);
-              const label = tx.cleanLabel || tx.rawLabel || tx.description || 'Opération';
-              const isFixe = tx.nature === 'fixe';
-              const matchedRuleText = tx.matchedRule || tx.ruleExplanation || 'Règle sémantique standard';
-
-              return (
-                <div 
-                  key={tx.id || idx}
-                  className={`p-3 sm:p-3.5 rounded-xl bg-card border hover:shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 group ${
-                    auditType === 'inter-accounts' 
-                      ? (isCredit ? 'border-l-4 border-l-emerald-500 border-border/70 bg-emerald-500/[0.02]' : 'border-l-4 border-l-cyan-500 border-border/70 bg-cyan-500/[0.02]')
-                      : auditType === 'peer-transfers'
-                        ? (isCredit ? 'border-l-4 border-l-emerald-500 border-border/70 bg-emerald-500/[0.02]' : 'border-l-4 border-l-rose-500 border-border/70 bg-rose-500/[0.02]')
-                        : 'border-border/70 hover:border-border'
-                  }`}
-                >
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${
-                      isCredit 
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                        : (auditType === 'subscriptions' 
-                            ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' 
-                            : (auditType === 'inter-accounts'
-                                ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
-                                : (auditType === 'peer-transfers'
-                                    ? 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                                    : (isFixe ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-500'))))
-                    }`}>
-                      {isCredit ? (
-                        <ArrowDownLeft className="w-4 h-4" />
-                      ) : auditType === 'subscriptions' ? (
-                        <Calendar className="w-4 h-4" />
-                      ) : (auditType === 'inter-accounts' || auditType === 'peer-transfers') ? (
-                        <ArrowUpRight className="w-4 h-4" />
-                      ) : isFixe ? (
-                        <Lock className="w-4 h-4" />
-                      ) : (
-                        <CreditCard className="w-4 h-4" />
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      {auditType === 'subscriptions' ? (() => {
-                        const evo = subscriptionEvolutions.get(tx.id);
-                        return (
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-black text-sm text-foreground truncate" title={label}>
-                                {tx.cleanLabel || tx.description || label}
-                              </span>
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm">
-                                Payé
-                              </span>
-                              {/* Badge d'évolution de prix illustré */}
-                              {evo && evo.status === 'INCREASED' && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/30">
-                                  <TrendingUp className="w-3 h-3" />
-                                  <span>+{formatCurrency(evo.difference || 0, { showSign: false })} ({evo.percentChange && evo.percentChange > 0 ? `+${evo.percentChange}%` : ''}) • Hausse détectée</span>
-                                </span>
-                              )}
-                              {evo && evo.status === 'DECREASED' && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">
-                                  <TrendingDown className="w-3 h-3" />
-                                  <span>{formatCurrency(evo.difference || 0, { showSign: true })} • Baisse de prix</span>
-                                </span>
-                              )}
-                              {evo && evo.status === 'STABLE' && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border/50">
-                                  Tarif stable ({formatCurrency(evo.currentAmount, { showSign: false })})
-                                </span>
-                              )}
-                              {evo && evo.status === 'NEW' && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary/80 text-muted-foreground border border-border/50">
-                                  1er relevé disponible
-                                </span>
-                              )}
-                            </div>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-4 mt-0.5">
-                              <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Libellé Bancaire</span>
-                                <span className="text-[11px] text-foreground/90 font-medium truncate" title={tx.rawLabel || tx.description}>{tx.rawLabel || tx.description}</span>
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Date de Prélèvement</span>
-                                <span className="text-[11px] text-blue-500 font-bold flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {tx.subscriptionDay ? `Le ${tx.subscriptionDay} du mois` : formatDateFR(tx.date)}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Illustration de l'historique d'évolution des prix */}
-                            {evo && evo.history && evo.history.length > 1 && (
-                              <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[11px]">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Historique :</span>
-                                {evo.history.map((pt, hIdx) => (
-                                  <React.Fragment key={pt.date + hIdx}>
-                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
-                                      hIdx === evo.history.length - 1 && evo.status === 'INCREASED'
-                                        ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
-                                        : (hIdx === evo.history.length - 1 && evo.status === 'DECREASED'
-                                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                            : 'bg-secondary/70 text-foreground border-border/50')
-                                    }`} title={pt.monthKey || pt.date}>
-                                      {formatCurrency(pt.amount, { showSign: false })}
-                                    </span>
-                                    {hIdx < evo.history.length - 1 && (
-                                      <span className="text-muted-foreground font-bold text-[10px]">➔</span>
-                                    )}
-                                  </React.Fragment>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Aide à la négociation / résiliation en cas de hausse */}
-                            {evo && evo.status === 'INCREASED' && (
-                              <div className="mt-1.5 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/25 flex flex-col gap-1.5">
-                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                  <div className="flex items-center gap-1.5 text-rose-300 font-bold text-xs">
-                                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                                    <span>Hausse de tarif constatée (passé de {formatCurrency(evo.previousAmount || 0, { showSign: false })} à {formatCurrency(evo.currentAmount, { showSign: false })})</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setExpandedNegotiateId(expandedNegotiateId === tx.id ? null : tx.id)}
-                                    className="text-[10px] font-bold px-2 py-1 rounded bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 transition-colors cursor-pointer"
-                                  >
-                                    {expandedNegotiateId === tx.id ? 'Masquer l\'argumentaire' : 'Conseil négocier / résilier'}
-                                  </button>
-                                </div>
-
-                                {expandedNegotiateId === tx.id && (
-                                  <div className="mt-1 p-2.5 rounded-lg bg-black/30 border border-rose-500/20 space-y-2">
-                                    <p className="text-[11px] text-rose-200/90 leading-relaxed">
-                                      {evo.negotiationAdvice}
-                                    </p>
-                                    <div className="pt-2 border-t border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                      <span className="text-[10px] font-medium text-muted-foreground">
-                                        Message type pour le service client :
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const text = `Bonjour,\n\nJ'ai constaté une augmentation tarifaire sur mon abonnement ${tx.cleanLabel || tx.description} (passé de ${evo.previousAmount?.toFixed(2)} € à ${evo.currentAmount.toFixed(2)} € par mois).\n\nSans geste commercial ou alignement sur vos offres actuelles, je souhaite faire valoir mes droits de résiliation sans frais afin de souscrire chez un opérateur concurrent.\n\nMerci de votre retour.`;
-                                          navigator.clipboard.writeText(text);
-                                          setCopiedAdviceId(tx.id);
-                                          setTimeout(() => setCopiedAdviceId(null), 2500);
-                                        }}
-                                        className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
-                                      >
-                                        {copiedAdviceId === tx.id ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3 text-white" />}
-                                        <span>{copiedAdviceId === tx.id ? 'Copié dans le presse-papier !' : 'Copier le message'}</span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })() : (
-                        <>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-xs sm:text-sm text-foreground truncate" title={label}>
-                              {label}
-                            </span>
-                            {/* Badge de Nature Fixe vs Variable & Catégorie */}
-                            {(auditType === 'category' || auditType === 'kpi-expenses' || auditType === 'kpi-essential' || auditType === 'kpi-comfort') && (
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {tx.category && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary/80 text-foreground border border-border/60">
-                                    {tx.category}
-                                  </span>
-                                )}
-                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                  isFixe 
-                                    ? 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30' 
-                                    : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
-                                }`}>
-                                  {isFixe ? <Lock className="w-2.5 h-2.5" /> : <CreditCard className="w-2.5 h-2.5" />}
-                                  {isFixe ? 'Charge Fixe' : 'Charge Variable'}
-                                </span>
-                              </div>
-                            )}
-                            {/* Badge Mouvements Inter-Comptes */}
-                            {auditType === 'inter-accounts' && (
-                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                                isCredit 
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
-                                  : 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
-                              }`}>
-                                <ArrowLeftRight className="w-2.5 h-2.5" />
-                                {isCredit ? 'Entrée Compte Propre (+)' : 'Sortie Compte Propre (-)'}
-                              </span>
-                            )}
-                            {/* Badge Famille / Proches avec Personne Détectée */}
-                            {auditType === 'peer-transfers' && (
-                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                                isCredit 
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
-                                  : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                              }`}>
-                                <User className="w-2.5 h-2.5" />
-                                <span className="font-extrabold">{extractPersonName(tx)}</span> • {isCredit ? 'Reçu / Remboursé (+)' : 'Avancé / Envoyé (-)'}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground mt-1">
-                            <span className="font-mono font-medium">
-                              {formatDateFR(tx.date)}
-                            </span>
-                            {tx.rawLabel && tx.rawLabel !== label && (
-                              <>
-                                <span>•</span>
-                                <span className="truncate max-w-[220px]" title={tx.rawLabel}>
-                                  {tx.rawLabel}
-                                </span>
-                              </>
-                            )}
-                          </div>
-
-                          {/* Transparence de la règle de catégorisation */}
-                          <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground/90 font-medium">
-                            <span className="text-primary font-bold">Règle :</span>
-                            <span className="bg-secondary/60 dark:bg-white/[0.04] px-1.5 py-0.5 rounded-md text-foreground/80 truncate max-w-sm">
-                              {matchedRuleText}
-                            </span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Montant formaté */}
-                  <div className="text-right shrink-0 sm:self-center pl-12 sm:pl-0 flex flex-col items-end">
-                    {auditType === 'subscriptions' && (
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Montant Mensuel</span>
-                    )}
-                    <span className={`text-sm sm:text-base font-black font-mono ${
-                      isCredit ? 'text-emerald-400' : 'text-foreground'
-                    }`}>
-                      {isCredit ? '+' : '-'}{formatCurrency(absAmt, { showSign: false })}
-                    </span>
-                  </div>
-                </div>
-              );
-            })
+            <div className="space-y-2.5">
+              {filteredTransactions.map((tx, idx) => renderGeneralCard(tx, idx))}
+            </div>
           )}
         </div>
 

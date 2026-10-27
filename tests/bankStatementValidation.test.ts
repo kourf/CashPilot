@@ -21,7 +21,10 @@ import {
   normalizeSubscriptionServiceKey,
   extractUniqueActiveSubscriptions,
   isSubscriptionOrRecurringDebit,
-  isDebitTransaction
+  isDebitTransaction,
+  areSubscriptionKeysMatching,
+  parseInstallmentDetails,
+  getSubscriptionMetadata
 } from '../src/lib/bankUtils.ts';
 import { matchesCostOfLivingItem } from '../src/lib/kpiUtils.ts';
 
@@ -575,4 +578,166 @@ test('11. FIXATION DU BUDGET : DÉPENSES RÉELLES DU RELEVÉ BANCAIRE (RB) ET É
   assert.equal(totalBudgetAllocated, 700.00);
   assert.equal(totalRealSpent, 592.50, 'Les dépenses réelles ne doivent JAMAIS valoir 0,00 €');
   assert.equal(totalDiff, 107.50, 'L écart budgétaire net doit être strictement exact');
+});
+
+test('12. ABONNEMENTS ET PRÉLÈVEMENTS : SÉPARATION STRICTE GOOGLE, AMEX SANS FAUSSE ALERTE, BNPL ÉCHÉANCES ET HUMILITÉ DES LIBELLÉS', () => {
+  // 12.1: Séparation stricte de deux abonnements Google différents (2,99 € vs 10,99 €)
+  const txGoogle299 = {
+    id: 'tx_g_storage',
+    date: '2026-03-12',
+    rawLabel: 'CB GOOGLE SERVICES 12/03',
+    cleanLabel: 'Google',
+    amount: 2.99,
+    rawAmount: -2.99,
+    type: 'debit',
+    flowType: 'FIXED_EXPENSE',
+    isSubscription: true
+  };
+
+  const txGoogle1099 = {
+    id: 'tx_g_yt',
+    date: '2026-03-15',
+    rawLabel: 'CB GOOGLE SERVICES 15/03',
+    cleanLabel: 'Google',
+    amount: 10.99,
+    rawAmount: -10.99,
+    type: 'debit',
+    flowType: 'FIXED_EXPENSE',
+    isSubscription: true
+  };
+
+  const key299 = normalizeSubscriptionServiceKey(txGoogle299);
+  const key1099 = normalizeSubscriptionServiceKey(txGoogle1099);
+  assert.notEqual(key299, key1099, 'Google 2,99 € et Google 10,99 € doivent avoir des clés distinctes');
+  assert.equal(areSubscriptionKeysMatching(key299, key1099), false, 'Les deux clés Google ne doivent JAMAIS correspondre entre elles');
+
+  // Préservation des deux abonnements dans extractUniqueActiveSubscriptions
+  const multiMonthGoogleTxs = [
+    { ...txGoogle299, id: 'g1_m1', date: '2026-02-12' },
+    { ...txGoogle1099, id: 'g2_m1', date: '2026-02-15' },
+    { ...txGoogle299, id: 'g1_m2', date: '2026-03-12' },
+    { ...txGoogle1099, id: 'g2_m2', date: '2026-03-15' }
+  ];
+
+  const currentMonthScope = [
+    { ...txGoogle299, id: 'g1_m2', date: '2026-03-12' },
+    { ...txGoogle1099, id: 'g2_m2', date: '2026-03-15' }
+  ];
+
+  const { subscriptions: googleSubs, totalMonthly: googleTotal } = extractUniqueActiveSubscriptions(
+    currentMonthScope as any,
+    multiMonthGoogleTxs as any
+  );
+
+  assert.equal(googleSubs.length, 2, 'Les deux abonnements Google doivent TOUS LES DEUX être conservés dans la liste');
+  assert.equal(Math.round(googleTotal * 100) / 100, 13.98, 'Le total mensuel doit cumuler 2,99 € + 10,99 € = 13,98 €');
+
+  // Détection de l'évolution des prix : stabilité garantie pour chacun, AUCUNE fausse hausse de 267%
+  const evoG1 = detectSubscriptionEvolution(currentMonthScope[0] as any, multiMonthGoogleTxs as any);
+  const evoG2 = detectSubscriptionEvolution(currentMonthScope[1] as any, multiMonthGoogleTxs as any);
+
+  assert.equal(evoG1.status, 'STABLE', 'Google 2,99 € doit être analysé comme tarif stable');
+  assert.equal(evoG1.currentAmount, 2.99);
+  assert.equal(evoG2.status, 'STABLE', 'Google 10,99 € doit être analysé comme tarif stable');
+  assert.equal(evoG2.currentAmount, 10.99);
+
+  // 12.2: Remboursement Carte American Express : Carte de crédit à débit différé (variation normale)
+  const amexTxs = [
+    { id: 'amex_1', date: '2026-01-28', rawLabel: 'PRLV SEPA AMERICAN EXPRESS 01', amount: 320.40, rawAmount: -320.40, isSubscription: true },
+    { id: 'amex_2', date: '2026-02-28', rawLabel: 'PRLV SEPA AMERICAN EXPRESS 02', amount: 580.90, rawAmount: -580.90, isSubscription: true },
+    { id: 'amex_3', date: '2026-03-28', rawLabel: 'PRLV SEPA AMERICAN EXPRESS 03', amount: 215.10, rawAmount: -215.10, isSubscription: true }
+  ];
+
+  const evoAmex = detectSubscriptionEvolution(amexTxs[2] as any, amexTxs as any);
+  assert.equal(evoAmex.isCreditCard, true, 'Doit identifier American Express comme carte de crédit à débit différé');
+  assert.equal(evoAmex.status, 'VARIABLE_DEBIT', 'Ne doit JAMAIS être flaggué comme une hausse/baisse d abonnement suspecte');
+  assert.equal(evoAmex.difference, 0, 'La différence tarifaire doit être neutralisée à 0');
+  assert.match(evoAmex.negotiationAdvice || '', /dépenses/i, 'L avis doit expliquer que le montant varie normalement selon les achats carte');
+
+  const metaAmex = getSubscriptionMetadata(amexTxs[2] as any, evoAmex, amexTxs as any);
+  assert.equal(metaAmex.logicalGroup, 'credit_card');
+  assert.equal(metaAmex.isCreditCard, true);
+
+  // 12.3: Paiements fractionnés (Alma, Oney, Klarna, Floa) : Détection des échéances et date de fin estimée
+  const almaTx = {
+    id: 'tx_alma',
+    date: '2026-03-10',
+    rawLabel: 'PRLV SEPA ALMA ECH 02/03 REF 09872',
+    cleanLabel: 'Alma',
+    amount: 60.00,
+    rawAmount: -60.00
+  };
+
+  const almaDetails = parseInstallmentDetails(almaTx);
+  assert.equal(almaDetails.isBNPL, true);
+  assert.equal(almaDetails.provider, 'Alma');
+  assert.equal(almaDetails.currentInstallment, 2);
+  assert.equal(almaDetails.totalInstallments, 3);
+  assert.equal(almaDetails.remainingInstallments, 1);
+  assert.equal(almaDetails.estimatedEndMonth, 'Avril 2026', 'Doit estimer la fin à Avril 2026');
+  assert.match(almaDetails.explanation, /Échéance 2\/3/);
+
+  const klarnaLastTx = {
+    id: 'tx_klarna',
+    date: '2026-03-15',
+    rawLabel: 'PRLV SEPA KLARNA PAY IN 3 ECH 3/3',
+    amount: 45.00
+  };
+  const klarnaDetails = parseInstallmentDetails(klarnaLastTx);
+  assert.equal(klarnaDetails.remainingInstallments, 0);
+  assert.match(klarnaDetails.explanation, /soldé ce mois-ci/i);
+
+  // 12.4: Clarté, explications épurées et humilité sur les libellés bancaires
+  // Cas Sobrio (Société Générale)
+  const sobrioMeta = getSubscriptionMetadata({ rawLabel: 'COTISATION SOBRIO 03/26', cleanLabel: 'Cotisation Sobrio (Banque)' });
+  assert.equal(sobrioMeta.cleanTitle, 'Cotisation Sobrio (Société Générale)');
+  assert.match(sobrioMeta.plainDescription, /Société Générale/i);
+  assert.match(sobrioMeta.plainDescription, /carte bancaire/i);
+  assert.equal(sobrioMeta.logicalGroup, 'bank_fees');
+
+  // Cas Arrêté de compte trimestriel / Minimum forfaitaire
+  const arreteMeta = getSubscriptionMetadata({ rawLabel: 'ARRETE 01.07/30.09 MINIMUM FORFAITAIRE NOMBRE JOUR', cleanLabel: 'Frais bancaires' });
+  assert.equal(arreteMeta.cleanTitle, 'Frais de compte / Arrêté périodique (Banque)');
+  assert.match(arreteMeta.plainDescription, /arrêté de compte/i);
+  assert.equal(arreteMeta.logicalGroup, 'bank_fees');
+
+  // Cas Google 2,99 € avec mention humble
+  const google299Meta = getSubscriptionMetadata(txGoogle299);
+  assert.equal(google299Meta.cleanTitle, 'Google (Stockage Cloud Google One)');
+  assert.ok(google299Meta.humbleDisclaimer, 'Un disclaimer humble doit être présent pour expliquer que le libellé bancaire est succinct');
+  assert.match(google299Meta.humbleDisclaimer || '', /2,99 €/);
+
+  // Cas libellé inconnu et succinct : humble transparence
+  const unknownMeta = getSubscriptionMetadata({ rawLabel: 'PRLV SEPA 847291 SAS INCONNU', cleanLabel: 'Opération' });
+  assert.ok(unknownMeta.humbleDisclaimer, 'Doit avertir humblement que les informations bancaires sont trop succinctes');
+  assert.equal(unknownMeta.logicalGroup, 'other');
+
+  // 12.5: Historique chronologique avec date et mois formaté rattaché au prix
+  const multiMonthHistoryTx = [
+    { id: 'sp1', date: '2026-01-14', cleanLabel: 'Spotify', rawLabel: 'SPOTIFY', amount: -10.99, isSubscription: true },
+    { id: 'sp2', date: '2026-02-14', cleanLabel: 'Spotify', rawLabel: 'SPOTIFY', amount: -10.99, isSubscription: true },
+    { id: 'sp3', date: '2026-03-14', cleanLabel: 'Spotify', rawLabel: 'SPOTIFY', amount: -10.99, isSubscription: true }
+  ];
+  const evoSpo = detectSubscriptionEvolution(multiMonthHistoryTx[2] as any, multiMonthHistoryTx as any);
+  assert.equal(evoSpo.history.length, 3);
+  assert.ok(evoSpo.history[0].monthLabel, 'Chaque point d historique doit avoir un libellé de mois formaté');
+  assert.ok(evoSpo.history[0].formattedDate, 'Chaque point d historique doit avoir une date d exécution formatée');
+  assert.equal(evoSpo.history[0].amount, 10.99);
+
+  // 12.6: Ordre logique des catégories d abonnements
+  const groupsOrder = ['housing', 'insurance', 'telecom', 'digital', 'bnpl', 'credit_card', 'bank_fees', 'other'];
+  const testTxs = [
+    { tx: { rawLabel: 'COTISATION SOBRIO' }, expectedGroup: 'bank_fees' },
+    { tx: { rawLabel: 'PRLV SEPA AMERICAN EXPRESS' }, expectedGroup: 'credit_card' },
+    { tx: { rawLabel: 'PRLV SEPA ALMA ECH 1/3' }, expectedGroup: 'bnpl' },
+    { tx: { rawLabel: 'PRLV SEPA NETFLIX' }, expectedGroup: 'digital' },
+    { tx: { rawLabel: 'PRLV SEPA ORANGE FIBRE' }, expectedGroup: 'telecom' },
+    { tx: { rawLabel: 'PRLV SEPA MACIF ASSURANCE' }, expectedGroup: 'insurance' },
+    { tx: { rawLabel: 'PRLV SEPA TOTALENERGIES' }, expectedGroup: 'housing' }
+  ];
+
+  testTxs.forEach(({ tx, expectedGroup }) => {
+    const meta = getSubscriptionMetadata(tx as any);
+    assert.equal(meta.logicalGroup, expectedGroup, `Le contrat ${tx.rawLabel} doit être affecté au groupe logique ${expectedGroup}`);
+  });
 });

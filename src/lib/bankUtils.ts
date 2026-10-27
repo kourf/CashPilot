@@ -645,6 +645,7 @@ export interface SubscriptionPricePoint {
   rawLabel?: string;
   formattedDate?: string;
   monthKey?: string;
+  monthLabel?: string;
 }
 
 export interface SubscriptionPriceEvolution {
@@ -654,19 +655,53 @@ export interface SubscriptionPriceEvolution {
   previousAmount?: number;
   difference?: number;
   percentChange?: number;
-  status: 'INCREASED' | 'DECREASED' | 'STABLE' | 'NEW';
+  status: 'INCREASED' | 'DECREASED' | 'STABLE' | 'NEW' | 'VARIABLE_DEBIT';
   history: SubscriptionPricePoint[];
   negotiationAdvice?: string;
+  isCreditCard?: boolean;
+}
+
+export interface InstallmentDetails {
+  isBNPL: boolean;
+  provider: 'Alma' | 'Klarna' | 'Oney' | 'Floa' | 'Autre' | null;
+  currentInstallment?: number;
+  totalInstallments?: number;
+  remainingInstallments?: number;
+  estimatedEndMonth?: string;
+  hasExplicitSchedule: boolean;
+  explanation: string;
+}
+
+export interface SubscriptionMetadata {
+  cleanTitle: string;
+  plainDescription: string;
+  humbleDisclaimer?: string;
+  isCreditCard: boolean;
+  isBankFee: boolean;
+  isBNPL: boolean;
+  installmentDetails?: InstallmentDetails;
+  logicalGroup: 'housing' | 'insurance' | 'telecom' | 'digital' | 'credit_card' | 'bnpl' | 'bank_fees' | 'other';
+  logicalGroupLabel: string;
+  logicalGroupOrder: number;
 }
 
 /**
  * Normalise l'empreinte d'un abonnement pour le reconnaître infailliblement à travers plusieurs mois.
  * Éradique les références bancaires variables, mandats SEPA, dates, numéros de facture,
  * et associe les enseignes courantes à leurs clés canoniques.
+ * Différencie intelligemment les abonnements multiples d'un même fournisseur (ex: Google 2,99 € vs 10,99 €).
  */
-export function normalizeSubscriptionServiceKey(tx: { cleanLabel?: string; rawLabel?: string; description?: string }): string {
+export function normalizeSubscriptionServiceKey(tx: { 
+  cleanLabel?: string; 
+  rawLabel?: string; 
+  description?: string;
+  amount?: number;
+  rawAmount?: number;
+  date?: string;
+}): string {
   const label = (tx.cleanLabel || tx.description || tx.rawLabel || '').trim();
   const rawDesc = (tx.rawLabel || tx.description || tx.cleanLabel || '').trim();
+  const amt = Math.abs(Number(tx.amount !== undefined ? tx.amount : tx.rawAmount) || 0);
   
   const cleanedMerchant = cleanMerchantDescription(rawDesc || label);
   const candidate = (cleanedMerchant && cleanedMerchant !== 'Opération Bancaire') ? cleanedMerchant : label;
@@ -682,14 +717,37 @@ export function normalizeSubscriptionServiceKey(tx: { cleanLabel?: string; rawLa
     .replace(/[\u0300-\u036f]/g, '');
 
   // 1. Dictionnaire d'alias canoniques prioritaires pour services & prélèvements récurrents
+  if (normRaw.includes('american express') || normRaw.includes('amex')) return 'american_express';
+
+  // Distinction Google : 2,99 € (Stockage Cloud Google One) vs 10,99 € (YouTube Premium / Streaming) vs Famille / Pro
+  if (normRaw.includes('google') || normRaw.includes('youtube')) {
+    if (normRaw.includes('youtube')) return 'google_youtube_tier';
+    if (normRaw.includes('one') || normRaw.includes('storage') || normRaw.includes('drive')) return 'google_storage_tier';
+    if (normRaw.includes('play')) return 'google_play_tier';
+    if (amt > 0 && amt <= 4.50) return 'google_storage_tier';
+    if (amt > 4.50 && amt <= 15.00) return 'google_youtube_tier';
+    if (amt > 15.00) return 'google_workspace_tier';
+    return 'google_services';
+  }
+
+  // Distinction Apple : 0,99/2,99 € (iCloud+) vs > 4 € (Apple Music, Apple One)
+  if (normRaw.includes('apple') || normRaw.includes('icloud') || normRaw.includes('itunes')) {
+    if (normRaw.includes('icloud') || (amt > 0 && amt <= 3.50)) return 'apple_icloud';
+    if (normRaw.includes('music')) return 'apple_music';
+    if (amt > 3.50) return 'apple_services';
+    return 'apple';
+  }
+
+  // Distinction Free : Freebox (>= 25 €) vs Free Mobile (< 25 €)
+  if (normRaw.includes('freebox') || normRaw.includes('free box') || (normRaw.includes('free') && amt >= 25.00)) return 'freebox';
+  if (normRaw.includes('free mobile') || (normRaw.includes('free') && (normRaw.includes('telecom') || normRaw.includes('mobile') || normRaw.includes('fact') || (amt > 0 && amt < 25.00)))) return 'free mobile';
+
   if (normRaw.includes('netflix')) return 'netflix';
   if (normRaw.includes('spotify')) return 'spotify';
   if (normRaw.includes('deezer')) return 'deezer';
   if (normRaw.includes('amazon prime') || normRaw.includes('amzn prime') || normRaw.includes('prime video')) return 'amazon prime';
   if (normRaw.includes('disney')) return 'disney plus';
   if (normRaw.includes('canal plus') || normRaw.includes('canal+') || normRaw.includes('canalplus')) return 'canal plus';
-  if (normRaw.includes('free mobile') || (normRaw.includes('free') && (normRaw.includes('telecom') || normRaw.includes('mobile') || normRaw.includes('fact')))) return 'free mobile';
-  if (normRaw.includes('freebox') || normRaw.includes('free box')) return 'freebox';
   if (normRaw.includes('orange') || normRaw.includes('sosh')) return 'orange';
   if (normRaw.includes('bouygues') || normRaw.includes('b&you') || normRaw.includes('byou')) return 'bouygues telecom';
   if (normRaw.includes('sfr') || normRaw.includes('red by sfr')) return 'sfr';
@@ -719,12 +777,11 @@ export function normalizeSubscriptionServiceKey(tx: { cleanLabel?: string; rawLa
   if (normRaw.includes('swype')) return 'swype';
   if (normRaw.includes('sobrio')) return 'sobrio';
   if (normRaw.includes('jazz')) return 'jazz';
+  if (normRaw.includes('arrete') && (normRaw.includes('forfaitaire') || normRaw.includes('minimum') || normRaw.includes('jour'))) return 'arrete_bancaire_sg';
   if (normRaw.includes('klarna')) return 'klarna';
   if (normRaw.includes('oney')) return 'oney';
   if (normRaw.includes('alma')) return 'alma';
   if (normRaw.includes('chatgpt') || normRaw.includes('openai')) return 'chatgpt';
-  if (normRaw.includes('apple') || normRaw.includes('icloud') || normRaw.includes('itunes')) return 'apple';
-  if (normRaw.includes('google') || normRaw.includes('youtube')) return 'google';
 
   // 2. Normalisation générique pour tout autre organisme / contrat récurrent
   const cleaned = norm
@@ -743,11 +800,27 @@ export function normalizeSubscriptionServiceKey(tx: { cleanLabel?: string; rawLa
 }
 
 /**
- * Vérifie si deux clés de services d'abonnement correspondent au même fournisseur
+ * Vérifie si deux clés de services d'abonnement correspondent au même fournisseur.
+ * Préserve l'étanchéité absolue entre sous-services ou tiers distincts (ex: Google 2,99 € vs Google 10,99 €).
  */
 export function areSubscriptionKeysMatching(key1: string, key2: string): boolean {
   if (!key1 || !key2) return false;
   if (key1 === key2) return true;
+
+  // Clés cloisonnées avec sous-service ou tier spécifique : correspondance stricte obligatoire
+  const isStrictSubKey = (k: string) => 
+    k.includes('google_') || 
+    k.includes('apple_') || 
+    k.includes('tier') || 
+    k.includes('freebox') || 
+    k.includes('free mobile') ||
+    k === 'american_express' ||
+    k === 'arrete_bancaire_sg';
+
+  if (isStrictSubKey(key1) || isStrictSubKey(key2)) {
+    return key1 === key2;
+  }
+
   if (key1.length >= 4 && (key1.includes(key2) || key2.includes(key1))) return true;
 
   const tokens1 = key1.split(/\s+/).filter(w => w.length >= 3);
@@ -855,8 +928,343 @@ export function isSubscriptionOrRecurringDebit(tx: {
 }
 
 /**
+ * Analyse les détails des paiements fractionnés (Alma, Klarna, Oney, Floa, etc.)
+ * Extrait le numéro d'échéance courante, le total, le nombre restant et calcule la date de fin estimée.
+ */
+export function parseInstallmentDetails(
+  tx: { rawLabel?: string; cleanLabel?: string; description?: string; date?: string; amount?: number; rawAmount?: number },
+  allTransactions?: Array<{ rawLabel?: string; cleanLabel?: string; description?: string; date?: string; amount?: number; rawAmount?: number }>
+): InstallmentDetails {
+  const raw = `${tx.rawLabel || ''} ${tx.cleanLabel || ''} ${tx.description || ''}`.toUpperCase();
+  
+  let provider: 'Alma' | 'Klarna' | 'Oney' | 'Floa' | 'Autre' | null = null;
+  if (raw.includes('ALMA')) provider = 'Alma';
+  else if (raw.includes('KLARNA')) provider = 'Klarna';
+  else if (raw.includes('ONEY')) provider = 'Oney';
+  else if (raw.includes('FLOA')) provider = 'Floa';
+  else if (raw.includes('3X') || raw.includes('4X') || raw.includes('PAIEMENT FRACTIONNE') || raw.includes('3 FOIS') || raw.includes('4 FOIS')) provider = 'Autre';
+
+  if (!provider) {
+    return {
+      isBNPL: false,
+      provider: null,
+      hasExplicitSchedule: false,
+      explanation: ''
+    };
+  }
+
+  // Chercher un motif d'échéance explicite: "ECH 02/03", "2/3", "2 SUR 3", "1 DE 4", etc.
+  let currentInstallment: number | undefined;
+  let totalInstallments: number | undefined;
+
+  const matchEch = raw.match(/(?:ECH|ECHEANCE|ECH\.)\s*0?(\d{1,2})\s*(?:\/|SUR|DE)\s*0?(\d{1,2})/i) ||
+                   raw.match(/\b0?([1-9]|1[0-2])\s*(?:\/|SUR)\s*0?([2-9]|1[0-2])\b/);
+
+  if (matchEch) {
+    currentInstallment = parseInt(matchEch[1], 10);
+    totalInstallments = parseInt(matchEch[2], 10);
+  } else {
+    // Chercher "3X" ou "4X" ou "3 FOIS"
+    const matchX = raw.match(/\b([34]|10|12)\s*(?:X|FOIS)\b/i);
+    if (matchX) {
+      totalInstallments = parseInt(matchX[1], 10);
+    }
+  }
+
+  // Calcul du restant et du mois de fin estimé
+  let remainingInstallments: number | undefined;
+  let estimatedEndMonth: string | undefined;
+
+  if (totalInstallments && currentInstallment) {
+    remainingInstallments = Math.max(0, totalInstallments - currentInstallment);
+  }
+
+  if (remainingInstallments !== undefined && tx.date) {
+    try {
+      const parts = tx.date.split(/[/-]/);
+      let year = parseInt(parts[0], 10);
+      let month = parseInt(parts[1], 10); // 1-12
+      if (parts[0].length !== 4 && parts[2]?.length === 4) {
+        year = parseInt(parts[2], 10);
+        month = parseInt(parts[1], 10);
+      }
+      
+      const futureDate = new Date(year, (month - 1) + remainingInstallments, 1);
+      const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+      estimatedEndMonth = `${monthNames[futureDate.getMonth()]} ${futureDate.getFullYear()}`;
+    } catch {
+      // ignore
+    }
+  }
+
+  let explanation = '';
+  if (totalInstallments && currentInstallment) {
+    if (remainingInstallments === 0) {
+      explanation = `Dernière mensualité (${currentInstallment}/${totalInstallments}) • Paiement soldé ce mois-ci !`;
+    } else if (remainingInstallments === 1) {
+      explanation = `Échéance ${currentInstallment}/${totalInstallments} • Reste 1 prélèvement${estimatedEndMonth ? ` (fin estimée : ${estimatedEndMonth})` : ''}`;
+    } else {
+      explanation = `Échéance ${currentInstallment}/${totalInstallments} • Reste ${remainingInstallments} prélèvements${estimatedEndMonth ? ` (fin estimée : ${estimatedEndMonth})` : ''}`;
+    }
+  } else if (totalInstallments) {
+    explanation = `Paiement en ${totalInstallments} fois (${provider}) • Calendrier exact non précisé sur le libellé bancaire.`;
+  } else {
+    explanation = `Paiement fractionné en plusieurs fois (${provider}) • Le libellé bancaire ne précise pas le nombre d'échéances restant.`;
+  }
+
+  return {
+    isBNPL: true,
+    provider,
+    currentInstallment,
+    totalInstallments,
+    remainingInstallments,
+    estimatedEndMonth,
+    hasExplicitSchedule: Boolean(totalInstallments && currentInstallment),
+    explanation
+  };
+}
+
+/**
+ * Fournit les métadonnées enrichies, définitions explicites et classification logique pour chaque contrat.
+ * Adopte une transparence humble lorsque les données bancaires brutes sont trop succinctes.
+ */
+export function getSubscriptionMetadata(
+  tx: any,
+  evo?: SubscriptionPriceEvolution,
+  allTransactions?: any[]
+): SubscriptionMetadata {
+  const rawDesc = (tx.rawLabel || tx.description || tx.cleanLabel || '').trim();
+  const label = (tx.cleanLabel || tx.description || tx.rawLabel || '').trim();
+  const upper = `${rawDesc} ${label}`.toUpperCase();
+  const amt = Math.abs(Number(tx.amount !== undefined ? tx.amount : tx.rawAmount) || 0);
+
+  // 1. Carte de crédit / Débit différé (American Express)
+  if (upper.includes('AMERICAN EXPRESS') || upper.includes('AMEX')) {
+    return {
+      cleanTitle: 'Règlement Carte American Express',
+      plainDescription: 'Prélèvement mensuel pour régler vos achats effectués avec votre carte American Express (débit différé). Le montant varie chaque mois selon vos dépenses.',
+      isCreditCard: true,
+      isBankFee: false,
+      isBNPL: false,
+      logicalGroup: 'credit_card',
+      logicalGroupLabel: 'Cartes de Crédit à Débit Différé',
+      logicalGroupOrder: 6
+    };
+  }
+
+  // 2. Frais bancaires / Sobrio / Jazz / Arrêté de compte
+  if (upper.includes('SOBRIO')) {
+    return {
+      cleanTitle: 'Cotisation Sobrio (Société Générale)',
+      plainDescription: 'Package bancaire tout-en-un Société Générale comprenant votre carte bancaire, l\'assurance de vos moyens de paiement et l\'exonération des frais de tenue de compte.',
+      isCreditCard: false,
+      isBankFee: true,
+      isBNPL: false,
+      logicalGroup: 'bank_fees',
+      logicalGroupLabel: 'Frais & Services Bancaires',
+      logicalGroupOrder: 7
+    };
+  }
+
+  if (upper.includes('JAZZ')) {
+    return {
+      cleanTitle: 'Cotisation Jazz (Société Générale)',
+      plainDescription: 'Ancienne offre groupée de services de la Société Générale incluant la carte bancaire et les garanties d\'assurances associées.',
+      isCreditCard: false,
+      isBankFee: true,
+      isBNPL: false,
+      logicalGroup: 'bank_fees',
+      logicalGroupLabel: 'Frais & Services Bancaires',
+      logicalGroupOrder: 7
+    };
+  }
+
+  if (upper.includes('ARRETE') || upper.includes('MINIMUM FORFAITAIRE') || upper.includes('JOURS DEBITEURS') || upper.includes('COMMISSION D\'INTERVENTION') || upper.includes('COMMISSION INTERVENTION')) {
+    return {
+      cleanTitle: 'Frais de compte / Arrêté périodique (Banque)',
+      plainDescription: 'Frais bancaires périodiques appliqués par votre banque : arrêté de compte trimestriel, minimum forfaitaire de tenue de compte ou décompte d\'agios / découverts.',
+      isCreditCard: false,
+      isBankFee: true,
+      isBNPL: false,
+      logicalGroup: 'bank_fees',
+      logicalGroupLabel: 'Frais & Services Bancaires',
+      logicalGroupOrder: 7
+    };
+  }
+
+  // 3. Paiements fractionnés (BNPL : Alma, Klarna, Oney, Floa)
+  const installmentDetails = parseInstallmentDetails(tx, allTransactions);
+  if (installmentDetails.isBNPL) {
+    return {
+      cleanTitle: `Paiement en plusieurs fois (${installmentDetails.provider || 'BNPL'})`,
+      plainDescription: installmentDetails.explanation,
+      isCreditCard: false,
+      isBankFee: false,
+      isBNPL: true,
+      installmentDetails,
+      logicalGroup: 'bnpl',
+      logicalGroupLabel: 'Paiements Fractionnés (3x / 4x)',
+      logicalGroupOrder: 5
+    };
+  }
+
+  // 4. Services Google (Distinction nette Stockage 2,99 € vs YouTube 10,99 € / 12,99 € vs Workspace)
+  if (upper.includes('GOOGLE') || upper.includes('YOUTUBE')) {
+    if (upper.includes('YOUTUBE') || (amt >= 8 && amt <= 15)) {
+      return {
+        cleanTitle: 'Google (YouTube Premium / Streaming)',
+        plainDescription: 'Abonnement vidéo sans publicité YouTube Premium (incluant YouTube Music et la lecture en arrière-plan).',
+        humbleDisclaimer: upper.includes('YOUTUBE') ? undefined : 'ℹ️ Précision : le libellé bancaire étant succinct ("Google"), le tarif de 10,99 €/mois correspond au tarif individuel de YouTube Premium.',
+        isCreditCard: false,
+        isBankFee: false,
+        isBNPL: false,
+        logicalGroup: 'digital',
+        logicalGroupLabel: 'Services Numériques & Streaming',
+        logicalGroupOrder: 4
+      };
+    }
+    if (amt <= 4.50 || upper.includes('ONE') || upper.includes('STORAGE') || upper.includes('DRIVE')) {
+      return {
+        cleanTitle: 'Google (Stockage Cloud Google One)',
+        plainDescription: 'Abonnement de stockage cloud Google One (100 Go ou 200 Go partagés pour Gmail, Google Drive et Google Photos).',
+        humbleDisclaimer: 'ℹ️ Précision : le libellé bancaire étant succinct ("Google"), ce service est identifié d\'après son montant standard de 2,99 €/mois.',
+        isCreditCard: false,
+        isBankFee: false,
+        isBNPL: false,
+        logicalGroup: 'digital',
+        logicalGroupLabel: 'Services Numériques & Streaming',
+        logicalGroupOrder: 4
+      };
+    }
+    return {
+      cleanTitle: 'Google (Services Google / Workspace)',
+      plainDescription: 'Abonnement aux services professionnels ou forfaits supérieurs de Google.',
+      humbleDisclaimer: 'ℹ️ Précision : libellé bancaire succinct ("Google").',
+      isCreditCard: false,
+      isBankFee: false,
+      isBNPL: false,
+      logicalGroup: 'digital',
+      logicalGroupLabel: 'Services Numériques & Streaming',
+      logicalGroupOrder: 4
+    };
+  }
+
+  // 5. Services Apple
+  if (upper.includes('APPLE') || upper.includes('ITUNES') || upper.includes('ICLOUD')) {
+    if (amt <= 3.50 || upper.includes('ICLOUD')) {
+      return {
+        cleanTitle: 'Apple (Stockage iCloud+)',
+        plainDescription: 'Extension de stockage iCloud (50 Go à 0,99 € ou 200 Go à 2,99 €) pour sauvegarder vos photos et appareils Apple.',
+        humbleDisclaimer: 'ℹ️ Précision : identifié d\'après le tarif de stockage standard Apple.',
+        isCreditCard: false,
+        isBankFee: false,
+        isBNPL: false,
+        logicalGroup: 'digital',
+        logicalGroupLabel: 'Services Numériques & Streaming',
+        logicalGroupOrder: 4
+      };
+    }
+    return {
+      cleanTitle: 'Apple Services (Apple Music / Apple One)',
+      plainDescription: 'Abonnement multimédia Apple (Apple Music, Apple TV+ ou bouquet Apple One).',
+      isCreditCard: false,
+      isBankFee: false,
+      isBNPL: false,
+      logicalGroup: 'digital',
+      logicalGroupLabel: 'Services Numériques & Streaming',
+      logicalGroupOrder: 4
+    };
+  }
+
+  // 6. Streaming Divertissement
+  if (upper.includes('NETFLIX') || upper.includes('SPOTIFY') || upper.includes('DEEZER') || upper.includes('DISNEY') || upper.includes('CANAL') || upper.includes('AMAZON PRIME')) {
+    const brand = upper.includes('NETFLIX') ? 'Netflix' :
+                  upper.includes('SPOTIFY') ? 'Spotify' :
+                  upper.includes('DEEZER') ? 'Deezer' :
+                  upper.includes('DISNEY') ? 'Disney+' :
+                  upper.includes('CANAL') ? 'Canal+' : 'Amazon Prime';
+    return {
+      cleanTitle: `${brand} (Streaming Divertissement)`,
+      plainDescription: `Abonnement mensuel de divertissement en streaming (${brand}).`,
+      isCreditCard: false,
+      isBankFee: false,
+      isBNPL: false,
+      logicalGroup: 'digital',
+      logicalGroupLabel: 'Services Numériques & Streaming',
+      logicalGroupOrder: 4
+    };
+  }
+
+  // 7. Télécoms & Box Internet
+  if (upper.includes('FREE MOBILE') || upper.includes('FREEBOX') || upper.includes('ORANGE') || upper.includes('SOSH') || upper.includes('BOUYGUES') || upper.includes('B&YOU') || upper.includes('SFR') || upper.includes('LA POSTE MOBILE')) {
+    const isBox = upper.includes('FREEBOX') || upper.includes('LIVEBOX') || upper.includes('FIBRE') || upper.includes('BBOX') || amt >= 26;
+    const name = upper.includes('FREE') ? (isBox ? 'Freebox Fibre' : 'Forfait Free Mobile') :
+                 upper.includes('ORANGE') ? (isBox ? 'Orange Livebox Fibre' : 'Forfait Orange Mobile') :
+                 upper.includes('SOSH') ? 'Forfait Sosh Mobile' :
+                 upper.includes('BOUYGUES') || upper.includes('B&YOU') ? (isBox ? 'Bbox Bouygues' : 'Forfait B&You') :
+                 upper.includes('SFR') ? 'Forfait SFR Télécom' : 'Forfait Télécom';
+    return {
+      cleanTitle: name,
+      plainDescription: isBox ? 'Abonnement box internet fixe (Fibre / ADSL et services TV inclus).' : 'Abonnement mensuel de téléphonie mobile (appels, SMS et forfait data internet).',
+      isCreditCard: false,
+      isBankFee: false,
+      isBNPL: false,
+      logicalGroup: 'telecom',
+      logicalGroupLabel: 'Télécoms & Box Internet',
+      logicalGroupOrder: 3
+    };
+  }
+
+  // 8. Logement & Énergie
+  if (upper.includes('EDF') || upper.includes('TOTALENERGIES') || upper.includes('ENGIE') || upper.includes('VEOLIA') || upper.includes('SUEZ') || upper.includes('LOYER')) {
+    const isLoyer = upper.includes('LOYER');
+    const isEnergy = upper.includes('EDF') || upper.includes('TOTALENERGIES') || upper.includes('ENGIE');
+    const title = isLoyer ? 'Loyer / Logement' : (isEnergy ? 'Énergie (Électricité / Gaz)' : 'Eau & Services du Logement');
+    return {
+      cleanTitle: title,
+      plainDescription: isLoyer ? 'Paiement mensuel de votre loyer ou charges de logement.' : 'Prélèvement pour votre fourniture d\'énergie ou charges du domicile.',
+      isCreditCard: false,
+      isBankFee: false,
+      isBNPL: false,
+      logicalGroup: 'housing',
+      logicalGroupLabel: 'Logement & Énergie',
+      logicalGroupOrder: 1
+    };
+  }
+
+  // 9. Assurances & Santé
+  if (upper.includes('SOGESSUR') || upper.includes('MACIF') || upper.includes('MAIF') || upper.includes('MATMUT') || upper.includes('ALLIANZ') || upper.includes('AXA') || upper.includes('GROUPAMA') || upper.includes('MGEN') || upper.includes('SWISS LIFE') || upper.includes('HARMONIE')) {
+    return {
+      cleanTitle: tx.cleanLabel || 'Cotisation Assurance & Prévoyance',
+      plainDescription: 'Cotisation d\'assurance (habitation, véhicule, prévoyance ou complémentaire santé mutuelle).',
+      isCreditCard: false,
+      isBankFee: false,
+      isBNPL: false,
+      logicalGroup: 'insurance',
+      logicalGroupLabel: 'Assurances & Prévoyance',
+      logicalGroupOrder: 2
+    };
+  }
+
+  // 10. Fallback humble et transparent
+  const fallbackTitle = tx.cleanLabel && tx.cleanLabel !== 'Opération Bancaire' ? tx.cleanLabel : (tx.description || tx.rawLabel || 'Prélèvement récurrent');
+  return {
+    cleanTitle: fallbackTitle,
+    plainDescription: 'Prélèvement automatique récurrent répertorié sur vos relevés.',
+    humbleDisclaimer: 'ℹ️ Libellé bancaire succinct : les données transmises par votre banque ne permettent pas de préciser la désignation exacte de ce contrat avec certitude.',
+    isCreditCard: false,
+    isBankFee: false,
+    isBNPL: false,
+    logicalGroup: 'other',
+    logicalGroupLabel: 'Autres Prélèvements Récurrents',
+    logicalGroupOrder: 8
+  };
+}
+
+/**
  * Analyse l'évolution du prix d'un abonnement ou prélèvement par rapport à l'historique complet disponible.
  * Compare l'ensemble des mois disponibles (pas seulement les deux derniers) pour détecter toute hausse ou baisse.
+ * Ne déclenche aucune fausse alerte pour les cartes de crédit / débit différé (ex: American Express).
  */
 export function detectSubscriptionEvolution(
   currentTx: { amount: number; rawAmount?: number; date?: string; cleanLabel?: string; rawLabel?: string; description?: string; category?: string; isSubscription?: boolean; type?: string; flowType?: string },
@@ -865,6 +1273,14 @@ export function detectSubscriptionEvolution(
   const serviceKey = normalizeSubscriptionServiceKey(currentTx);
   const serviceName = currentTx.cleanLabel || cleanMerchantDescription(currentTx.rawLabel || currentTx.description || '') || currentTx.description || currentTx.rawLabel || 'Abonnement';
   const currAmt = Math.abs(Number(currentTx.amount !== undefined ? currentTx.amount : currentTx.rawAmount) || 0);
+
+  // Détection Carte de crédit / Débit différé (ex: American Express)
+  const isCreditCard = serviceKey === 'american_express' || 
+    serviceName.toLowerCase().includes('american express') || 
+    serviceName.toLowerCase().includes('amex') ||
+    (currentTx.rawLabel || '').toLowerCase().includes('american express') ||
+    (currentTx.rawLabel || '').toLowerCase().includes('amex') ||
+    (currentTx.cleanLabel || '').toLowerCase().includes('american express');
 
   // Rechercher toutes les opérations correspondantes dans l'historique (débits uniquement)
   const matches = (allTransactions || [])
@@ -901,16 +1317,35 @@ export function detectSubscriptionEvolution(
     }
   }
 
-  // Convertir en tableau chronologique
+  // Convertir en tableau chronologique avec date, mois formaté et montant
   const history: SubscriptionPricePoint[] = Array.from(monthMap.entries())
     .map(([mKey, val]) => ({
       date: val.date,
       amount: val.amount,
       rawLabel: val.rawLabel,
       formattedDate: formatDateFR(val.date),
-      monthKey: mKey
+      monthKey: mKey,
+      monthLabel: formatMonthLabel(mKey || (val.date ? val.date.substring(0, 7) : ''))
     }))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Règle spécifique American Express / Carte de crédit à débit différé :
+  // Les montants varient normalement selon les dépenses carte réelles
+  if (isCreditCard) {
+    const latestAmt = history.length > 0 ? history[history.length - 1].amount : currAmt;
+    return {
+      serviceKey,
+      serviceName: 'Règlement American Express',
+      currentAmount: latestAmt,
+      previousAmount: history.length > 1 ? history[history.length - 2].amount : latestAmt,
+      difference: 0,
+      percentChange: 0,
+      status: 'VARIABLE_DEBIT',
+      history,
+      isCreditCard: true,
+      negotiationAdvice: "Carte à débit différé American Express : le montant prélevé correspond au total de vos dépenses payées avec votre carte sur la période écoulée. Cette variation mensuelle est donc normale et ne constitue pas une hausse d'abonnement."
+    };
+  }
 
   // Si on a au moins 2 mois distincts dans l'historique
   if (history.length >= 2) {
@@ -997,8 +1432,7 @@ export function detectSubscriptionEvolution(
 
 /**
  * Extrait la liste des abonnements et prélèvements uniques actifs à partir de l'ensemble des relevés.
- * Chaque service n'apparaît qu'une seule fois (la dernière occurrence connue ou l'occurrence du mois ciblé),
- * évitant les doublons et permettant une analyse cross-mensuelle parfaite.
+ * Préserve l'ensemble des contrats distincts même chez un même fournisseur (ex: Google 2,99 € ET Google 10,99 €).
  */
 export function extractUniqueActiveSubscriptions(
   scopedTransactions: BankTransaction[],
@@ -1039,18 +1473,36 @@ export function extractUniqueActiveSubscriptions(
     // Trier chronologiquement (le plus récent en premier)
     const sorted = [...txList].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     
-    // Si une transaction appartient aux scopedTransactions, la privilégier comme représentante
-    const scopedMatch = sorted.find(t => scopedTransactions.some(sc => sc.id === t.id));
-    const representative = scopedMatch || sorted[0];
+    // Identifier les correspondances avec le scope ciblé
+    const scopedMatches = sorted.filter(t => scopedTransactions.some(sc => sc.id === t.id));
 
-    if (representative) {
-      uniqueSubs.push(representative);
-      const amt = Math.abs(Number(representative.amount !== undefined ? representative.amount : representative.rawAmount) || 0);
-      totalMonthly += amt;
-    }
+    // Regrouper les correspondances par mois (YYYY-MM)
+    const monthGroups = new Map<string, BankTransaction[]>();
+    const poolForRep = scopedMatches.length > 0 ? scopedMatches : sorted;
+    poolForRep.forEach(t => {
+      const mKey = (t.date || '').substring(0, 7) || 'releve';
+      const list = monthGroups.get(mKey) || [];
+      list.push(t);
+      monthGroups.set(mKey, list);
+    });
+
+    // Retenir le mois le plus récent (chaque abonnement récurrent n'apparaît qu'une fois dans le relevé mensuel)
+    const sortedMonthKeys = Array.from(monthGroups.keys()).sort((a, b) => b.localeCompare(a));
+    const latestMonthKey = sortedMonthKeys[0];
+    const latestMonthTxs = latestMonthKey ? (monthGroups.get(latestMonthKey) || []) : [sorted[0]];
+
+    // Si au sein de ce mois le plus récent, il existe plusieurs débits distincts
+    // (ex: deux abonnements ou lignes souscrits auprès du même organisme), les conserver tous !
+    latestMonthTxs.forEach(rep => {
+      if (rep) {
+        uniqueSubs.push(rep);
+        const amt = Math.abs(Number(rep.amount !== undefined ? rep.amount : rep.rawAmount) || 0);
+        totalMonthly += amt;
+      }
+    });
   });
 
-  // Trier par montant décroissant
+  // Trier par montant décroissant par défaut
   uniqueSubs.sort((a, b) => {
     const amtA = Math.abs(Number(a.amount !== undefined ? a.amount : a.rawAmount) || 0);
     const amtB = Math.abs(Number(b.amount !== undefined ? b.amount : b.rawAmount) || 0);
