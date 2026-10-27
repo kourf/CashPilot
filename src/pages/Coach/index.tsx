@@ -308,6 +308,8 @@ export default function Coach() {
         messages,
         financialProfile,
         scopedTransactions,
+        receipts,
+        products,
         currency
       );
 

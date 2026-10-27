@@ -11,12 +11,12 @@ import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
 // Les variables d'environnement Vite doivent commencer par VITE_
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAnSIXddLfpw3WmX1tTm4CR3fE6aTpusFc",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "cashpilot-app-2026.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "cashpilot-app-2026",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "cashpilot-app-2026.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "246674970418",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:246674970418:web:3da9647b7f5c1c2449292b"
+  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || process.env.VITE_FIREBASE_API_KEY || "AIzaSyAnSIXddLfpw3WmX1tTm4CR3fE6aTpusFc",
+  authDomain: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || process.env.VITE_FIREBASE_AUTH_DOMAIN || "cashpilot-app-2026.firebaseapp.com",
+  projectId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || process.env.VITE_FIREBASE_PROJECT_ID || "cashpilot-app-2026",
+  storageBucket: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || process.env.VITE_FIREBASE_STORAGE_BUCKET || "cashpilot-app-2026.firebasestorage.app",
+  messagingSenderId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "246674970418",
+  appId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || process.env.VITE_FIREBASE_APP_ID || "1:246674970418:web:3da9647b7f5c1c2449292b"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -38,7 +38,7 @@ const storage = getStorage(app);
 const functions = getFunctions(app, 'europe-west1');
 
 // Connexion aux émulateurs locaux si configuré
-if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
+if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_USE_FIREBASE_EMULATOR === 'true') {
   connectFirestoreEmulator(db, 'localhost', 8080);
   connectStorageEmulator(storage, 'localhost', 9199);
   connectFunctionsEmulator(functions, 'localhost', 5001);

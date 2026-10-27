@@ -64,3 +64,108 @@ test('Coach Financial Engine - Profil & Règle 50/30/20', async (t) => {
   assert.ok(context.includes('Logement'));
   assert.ok(context.includes('GRAND LIVRE'));
 });
+
+test('Coach Financial Engine - Datawarehouse Tickets & Articles Multi-Magasins', async (t) => {
+  const receipts = [
+    {
+      id: 'rcpt_1',
+      userId: 'test_user',
+      storeName: 'E.Leclerc - Ville-la-Grand',
+      date: '2026-10-15',
+      totalAmount: 45.50,
+      createdAt: '2026-10-15T12:00:00Z',
+      items: [
+        {
+          id: 'it_1',
+          rawName: 'BAGUETTE TRADITION',
+          normalizedName: 'Baguette tradition',
+          brand: 'Générique',
+          quantity: 2,
+          unitPrice: 0.95,
+          pricePaid: 1.90,
+          category: 'Boulangerie & Pâtisserie',
+          weightOrVolume: '250g',
+          unit: 'pièce'
+        },
+        {
+          id: 'it_2',
+          rawName: 'HARRYS MIE COMPLET 500G',
+          normalizedName: 'Pain de mie complet 500g',
+          brand: 'Harrys',
+          quantity: 1,
+          unitPrice: 1.76,
+          pricePaid: 1.76,
+          category: 'Épicerie',
+          weightOrVolume: '500g',
+          unit: 'pièce'
+        }
+      ]
+    },
+    {
+      id: 'rcpt_2',
+      userId: 'test_user',
+      storeName: 'E.Leclerc - Roques',
+      date: '2026-10-18',
+      totalAmount: 62.10,
+      createdAt: '2026-10-18T15:00:00Z',
+      items: [
+        {
+          id: 'it_3',
+          rawName: 'PAIN DE CAMPAGNE',
+          normalizedName: 'Pain de campagne',
+          brand: 'Générique',
+          quantity: 1,
+          unitPrice: 1.45,
+          pricePaid: 1.45,
+          category: 'Boulangerie & Pâtisserie',
+          weightOrVolume: '400g',
+          unit: 'pièce'
+        }
+      ]
+    },
+    {
+      id: 'rcpt_3',
+      userId: 'test_user',
+      storeName: 'Lidl - Annemasse',
+      date: '2026-10-20',
+      totalAmount: 28.30,
+      createdAt: '2026-10-20T10:00:00Z',
+      items: [
+        {
+          id: 'it_4',
+          rawName: 'BAGUETTE CROUSTILLE',
+          normalizedName: 'Baguette croustille',
+          brand: 'Lidl',
+          quantity: 1,
+          unitPrice: 0.85,
+          pricePaid: 0.85,
+          category: 'Boulangerie & Pâtisserie',
+          weightOrVolume: '250g',
+          unit: 'pièce'
+        }
+      ]
+    }
+  ];
+
+  const profile = buildFinancialProfile([], receipts as any, [], 'EUR');
+  const context = buildCoachSystemContext(profile, [], receipts as any, [], 'EUR');
+
+  // Doit lister TOUS les magasins distincts (notamment les 2 Leclerc différents)
+  assert.ok(context.includes('E.Leclerc - Ville-la-Grand'));
+  assert.ok(context.includes('E.Leclerc - Roques'));
+  assert.ok(context.includes('Lidl - Annemasse'));
+
+  // Doit lister les articles et leurs prix exacts
+  assert.ok(context.includes('Baguette tradition'));
+  assert.ok(context.includes('0.95 €'));
+  assert.ok(context.includes('Pain de mie complet'));
+  assert.ok(context.includes('1.76 €'));
+  assert.ok(context.includes('Pain de campagne'));
+  assert.ok(context.includes('1.45 €'));
+  assert.ok(context.includes('Baguette croustille'));
+  assert.ok(context.includes('0.85 €'));
+
+  // Vérification de la présence de la règle stricte multi-magasins et recherche produit
+  assert.ok(context.includes('RÈGLE OBLIGATOIRE SUR LES ENSEIGNES & MAGASINS'));
+  assert.ok(context.includes('RÈGLE OBLIGATOIRE SUR LA RECHERCHE DE PRODUITS SPÉCIFIQUES'));
+});

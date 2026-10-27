@@ -416,14 +416,24 @@ export function filterExpensesByDateRange(
 }
 
 /**
- * Construit le prompt système contenant l'intégralité de la base de données financière
+ * Construit le prompt système contenant l'intégralité de la base de données financière (Datawarehouse Relevés Bancaires + Tickets + Articles)
  */
 export function buildCoachSystemContext(
   profile: FinancialProfile,
   transactions: Transaction[],
+  receiptsOrCurrency?: Receipt[] | string,
+  products?: StandardizedProductDoc[],
   currency: string = 'EUR'
 ): string {
-  const sym = currency === 'CHF' ? 'CHF' : '€';
+  let receipts: Receipt[] = [];
+  let sym = currency === 'CHF' ? 'CHF' : '€';
+
+  if (typeof receiptsOrCurrency === 'string') {
+    sym = receiptsOrCurrency === 'CHF' ? 'CHF' : '€';
+  } else if (Array.isArray(receiptsOrCurrency)) {
+    receipts = receiptsOrCurrency;
+    sym = currency === 'CHF' ? 'CHF' : '€';
+  }
 
   // Formatage du top des catégories
   const topCatsText = profile.topCategories
@@ -449,45 +459,127 @@ Conseils clés : ${r.advice.join(' | ')}
     ? profile.subscriptions.map(s => `- **${s.label}** (${s.category}) : ${s.amount.toFixed(2)} ${sym}/mois (~${s.annual.toFixed(2)} ${sym}/an)`).join('\n')
     : 'Aucun abonnement récurrent détecté.';
 
-  // Formatage des tickets de caisse
-  const receiptsText = profile.receiptsSummary.receiptCount > 0
-    ? `
-Nombre de tickets numérisés : ${profile.receiptsSummary.receiptCount}
-Total dépensé en courses : ${profile.receiptsSummary.totalReceiptSpend.toFixed(2)} ${sym}
-Enseignes fréquentées : ${profile.receiptsSummary.stores.map(s => `${s.store} (${s.total.toFixed(2)} ${sym}, ${s.count} tickets)`).join(', ')}
-Articles les plus chers identifiés : ${profile.receiptsSummary.topProducts.slice(0, 5).map(p => `${p.name} (${p.price.toFixed(2)} ${sym} chez ${p.store})`).join(', ')}
-`
-    : 'Aucun ticket de caisse numérisé pour le moment.';
+  // 1. DATAWAREHOUSE EXHAUSTIF DES TICKETS DE CAISSE ET ARTICLES
+  let receiptsDataWarehouseSection = '';
+  if (receipts && receipts.length > 0) {
+    const storeBreakdown: Record<string, { total: number; count: number; dates: string[] }> = {};
+    const detailedReceiptsLines: string[] = [];
+    const allItemsLines: string[] = [];
 
-  // Compression du Grand Livre des Transactions (jusqu'à 1500 transactions en format ultra-compact)
-  // [Date] | Montant | Catégorie | Libellé | Sub?
+    // Trier les tickets par date décroissante
+    const sortedReceipts = [...receipts].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    sortedReceipts.forEach(rcpt => {
+      const sName = rcpt.storeName || 'Magasin Inconnu';
+      const tot = Number(rcpt.totalAmount) || 0;
+      const d = rcpt.date || 'N/A';
+      const tTime = rcpt.time ? ` à ${rcpt.time}` : '';
+      const itemsCount = Array.isArray(rcpt.items) ? rcpt.items.length : (rcpt.totalArticles || 0);
+
+      if (!storeBreakdown[sName]) {
+        storeBreakdown[sName] = { total: 0, count: 0, dates: [] };
+      }
+      storeBreakdown[sName].total += tot;
+      storeBreakdown[sName].count += 1;
+      storeBreakdown[sName].dates.push(d);
+
+      detailedReceiptsLines.push(`- [${d}${tTime}] | **${sName}** | Montant: **${tot.toFixed(2)} ${sym}** | ${itemsCount} articles (Ticket ID: ${rcpt.id})`);
+
+      // Extraction exhaustive de chaque article
+      if (Array.isArray(rcpt.items)) {
+        rcpt.items.forEach(it => {
+          const rawN = it.rawName || it.name || '';
+          const cleanN = it.cleanName || it.normalizedName || it.nomGenerique || rawN || 'Article';
+          const brand = it.brand || it.marque ? `(${it.brand || it.marque})` : '';
+          const weight = it.weightOrVolume || it.formatExact ? `[${it.weightOrVolume || it.formatExact}]` : '';
+          const qty = it.quantity || 1;
+          const pu = Number(it.unitPrice) || (it.pricePaid ? it.pricePaid / qty : 0);
+          const pp = Number(it.pricePaid) || (pu * qty);
+          const cat = it.category ? `{Rayon: ${it.category}}` : '';
+
+          allItemsLines.push(`${d} | ${sName} | ${cleanN} ${brand} ${weight} | Qté: ${qty} | PU: ${pu.toFixed(2)} ${sym} | Payé: ${pp.toFixed(2)} ${sym} | ${cat} | brut: "${rawN}"`);
+        });
+      }
+    });
+
+    const storeSummaryList = Object.entries(storeBreakdown)
+      .map(([s, data]) => `- **${s}** : **${data.total.toFixed(2)} ${sym}** dépensés au total sur **${data.count} tickets** (Dates: ${data.dates.join(', ')})`)
+      .join('\n');
+
+    receiptsDataWarehouseSection = `
+================================================================================
+DATAWAREHOUSE COMPLET DES TICKETS DE CAISSE (${receipts.length} TICKETS ENREGISTRÉS)
+================================================================================
+RÉPARTITION PAR MAGASIN PHYSIQUE DÉTECTÉ :
+${storeSummaryList}
+
+LISTE COMPLÈTE DE TOUS LES TICKETS DE CAISSE (DATE, MAGASIN EXACT, MONTANT TOTAL) :
+${detailedReceiptsLines.join('\n')}
+
+================================================================================
+DATAWAREHOUSE INTÉGRAL DE TOUS LES ARTICLES ACHETÉS EN MAGASIN (${allItemsLines.length} ARTICLES)
+(Chaque ligne contient : Date | Magasin exact | Nom du produit (Marque) [Format] | Quantité | Prix Unitaire | Prix Payé | Rayon | Libellé Brut)
+================================================================================
+${allItemsLines.join('\n')}
+`;
+  } else {
+    receiptsDataWarehouseSection = `
+================================================================================
+DATAWAREHOUSE DES TICKETS DE CAISSE
+================================================================================
+Aucun ticket de caisse numérisé pour le moment.
+`;
+  }
+
+  // 2. PRODUITS STANDARDISÉS & HISTORIQUE DES PRIX (si disponibles)
+  let productsSection = '';
+  if (products && products.length > 0) {
+    const pLines: string[] = [];
+    products.slice(0, 100).forEach(p => {
+      const best = p.meilleur_magasin ? `Meilleur: ${p.meilleur_magasin.storeName} (${p.meilleur_magasin.prix_unitaire.toFixed(2)} ${sym})` : '';
+      pLines.push(`- **${p.nom_generique}** (${p.marque}) [${p.rayon_assigne}] : ${best}`);
+    });
+    productsSection = `
+================================================================================
+CATALOGUE COMPARATIF DES PRODUITS STANDARDISÉS (${products.length} RÉFÉRENCES)
+================================================================================
+${pLines.join('\n')}
+`;
+  }
+
+  // 3. Compression et listing complet du Grand Livre des Transactions Bancaires (jusqu'à 1500 opérations)
   const ledgerLines: string[] = [];
   const sortedTx = [...transactions].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const maxTx = Math.min(sortedTx.length, 1200);
+  const maxTx = Math.min(sortedTx.length, 1500);
 
   for (let i = 0; i < maxTx; i++) {
     const t = sortedTx[i];
     const d = t.date || 'N/A';
     const amt = (Number(t.amount) || 0).toFixed(2);
     const cat = t.category || 'Autre';
-    const lbl = (t.cleanLabel || t.rawLabel || t.description || 'Opération').replace(/[|\n\r]/g, ' ').substring(0, 35);
-    const sub = t.isSubscription ? '[Abo]' : '';
-    ledgerLines.push(`${d} | ${amt} ${sym} | ${cat} | ${lbl} ${sub}`);
+    const lbl = (t.cleanLabel || t.rawLabel || t.description || 'Opération').replace(/[|\n\r]/g, ' ').substring(0, 45);
+    const nat = t.nature ? `[${t.nature}]` : '';
+    const sub = t.isSubscription ? '[Abonnement]' : '';
+    ledgerLines.push(`${d} | ${amt} ${sym} | ${cat} | ${lbl} ${nat} ${sub}`);
   }
 
   const ledgerText = ledgerLines.join('\n');
 
   return `
-Tu es le **Coach Financier Personnel CashPilot**, un expert en finances personnelles, gestion budgétaire et optimisation du pouvoir d'achat.
-Tu as ACCÈS DIRECT ET INTÉGRAL à l'ensemble de la base de données financière réelle de l'utilisateur fournie ci-dessous.
+Tu es le **Coach Financier Personnel CashPilot**, un expert d'élite en finances personnelles, comptabilité analytique et optimisation du pouvoir d'achat.
+Tu as ACCÈS DIRECT ET INTÉGRAL À L'ENSEMBLE DU DATAWAREHOUSE FINANCIER RÉEL de l'utilisateur fourni ci-dessous :
+1. L'intégralité des relevés bancaires (toutes les transactions par date et libellé)
+2. L'intégralité des tickets de caisse (tous les passages en caisse avec dates et montants)
+3. L'intégralité des articles achetés (chaque produit individuel, sa marque, sa quantité, son prix unitaire, son prix payé et son enseigne exacte).
 
 ================================================================================
-SYNTHÈSE DU PROFIL FINANCIER DE L'UTILISATEUR
+SYNTHÈSE DU PROFIL FINANCIER GLOBAL
 ================================================================================
 - Période couverte : du ${profile.dateRange?.start || 'N/A'} au ${profile.dateRange?.end || 'N/A'}
-- Nombre total de transactions : ${profile.transactionCount}
+- Nombre total d'opérations bancaires : ${profile.transactionCount}
+- Nombre total de tickets de caisse : ${receipts.length}
 - Total Revenus / Entrées : +${profile.totalIncome.toFixed(2)} ${sym}
-- Total Dépenses / Sorties : -${profile.totalExpenses.toFixed(2)} ${sym}
+- Total Dépenses de consommation : -${profile.totalExpenses.toFixed(2)} ${sym}
 - Épargne Nette / Solde des flux : ${profile.netSavings >= 0 ? '+' : ''}${profile.netSavings.toFixed(2)} ${sym}
 - Taux d'épargne : ${profile.savingsRate}%
 
@@ -497,44 +589,57 @@ RÉPARTITION RÈGLE 50/30/20 (CALCULÉE PRÉCISÉMENT)
 ${rule503020Text}
 
 ================================================================================
-TOP 10 DES POSTES DE DÉPENSES LES PLUS IMPORTANTS
+TOP 10 DES POSTES DE DÉPENSES BANCAIRES LES PLUS IMPORTANTS
 ================================================================================
 ${topCatsText}
 
 ================================================================================
-ABONNEMENTS ET PRÉLÈVEMENTS RÉCURRENTS
+ABONNEMENTS ET CHARGES RÉCURRENTES
 ================================================================================
 ${subsText}
 
-================================================================================
-DONNÉES TICKETS DE CAISSE & COURSES
-================================================================================
-${receiptsText}
+${receiptsDataWarehouseSection}
+
+${productsSection}
 
 ================================================================================
-EXTRAIT INTÉGRAL DU GRAND LIVRE BANCAIRE (Date | Montant | Catégorie | Libellé)
+GRAND LIVRE COMPLET DES TRANSACTIONS BANCAIRES (${sortedTx.length} OPÉRATIONS)
+(Format: Date | Montant | Catégorie | Libellé Opération)
 ================================================================================
 ${ledgerText}
 
 ================================================================================
-CONSIGNES ET RÈGLES DE RÉPONSE DU COACH
+CONSIGNES ET RÈGLES DE RÉPONSE STRICTES DU COACH
 ================================================================================
-1. **RÉPONSE DIRECTE ET PRÉCISE AUX QUESTIONS TYPIQUES** :
-   - **Si l'utilisateur demande ses "3 postes de dépenses les plus importants"** :
-     Donne EXACTEMENT les 3 premiers postes listés dans la section TOP DES POSTES ci-dessus avec le montant exact en ${sym}, le pourcentage du total des dépenses, et pour chacun une recommandation concrète pour réduire ou maîtriser ce poste.
-   - **Si l'utilisateur demande des conseils sur la règle 50/30/20** :
-     Détaille rigoureusement ses 3 piliers (Besoins 50%, Envies 30%, Épargne 20%) avec ses VRAIS chiffres, son écart par rapport à la cible, et donne une feuille de route en 3 étapes pour rééquilibrer son budget.
-   - **Si l'utilisateur demande de "lister des dépenses de telle date à telle date" (ex: du 01 au 15)** :
-     Recherche méticuleusement dans le grand livre ci-dessus toutes les opérations entre ces deux dates. Présente-les sous la forme d'un tableau Markdown élégant avec : Date, Libellé, Catégorie, Montant. Calcule et affiche la somme totale exacte de cette période en fin de tableau !
-   - **Si l'utilisateur demande des conseils d'économies ou d'optimisation** :
-     Appuie-toi sur ses vrais abonnements, ses magasins de courses et ses postes surdimensionnés pour proposer des gains en euros réels et chiffrés.
 
-2. **STYLE & TON** :
-   - Professionnel, bienveillant, percutant et très clair.
+1. **RÈGLE OBLIGATOIRE SUR LES ENSEIGNES & MAGASINS (ex: Leclerc, Carrefour, Intermarché, Lidl, Super U)** :
+   - Quand l'utilisateur demande ses dépenses chez une enseigne (ex: "mes dépenses chez Leclerc", "mes achats chez Intermarché") :
+   - Tu dois explorer les TICKETS DE CAISSE ainsi que les RELEVÉS BANCAIRES.
+   - S'il existe PLUSIEURS magasins différents sous cette enseigne (par exemple plusieurs points de vente E.Leclerc comme "E.Leclerc - Ville-la-Grand" ou d'autres, ou plusieurs Intermarché comme "Intermarché - Annemasse", "Intermarché - Ville-la-Grand", "Intermarché - Gaillard") :
+     * **TU DOIS OBLIGATOIREMENT LISTER DISTINCTEMENT TOUS LES MAGASINS PORTANT CE NOM**, avec le montant dépensé dans chaque magasin et son nombre de tickets !
+     * Donne le **TOTAL GLOBAL CUMULÉ** pour cette enseigne.
+     * Fournis ensuite la **LISTE CHRONOLOGIQUE DÉTAILLÉE DE CHAQUE TICKET** avec la date exacte, le nom précis du magasin et le montant payé.
+     * **INTERDICTION FORMELLE** de ne citer qu'un seul magasin si plusieurs existent ou d'affirmer que les détails ne sont pas fournis : ils sont tous écrits ligne par ligne dans les sections ci-dessus !
+
+2. **RÈGLE OBLIGATOIRE SUR LA RECHERCHE DE PRODUITS SPÉCIFIQUES (ex: "Combien me coûte le pain ?", "le café", "le lait", etc.)** :
+   - Quand l'utilisateur demande le prix ou l'historique d'un produit spécifique :
+   - Scanne méticuleusement la section "DATAWAREHOUSE INTÉGRAL DE TOUS LES ARTICLES ACHETÉS EN MAGASIN".
+   - Retiens TOUS les articles correspondants (par exemple pour le pain : toutes les baguettes tradition, baguettes croustilles, pain de mie, pain complet, brioches, etc.).
+   - Présente un **TABLEAU MARKDOWN CLAIR** listant TOUS les achats trouvés :
+     | Date | Enseigne | Produit & Marque | Quantité | Prix unitaire (€) | Prix total payé (€) |
+   - Fais ensuite une synthèse intelligente :
+     * Prix moyen constaté
+     * Comparaison des prix entre magasins (ex: combien coûte la baguette chez E.Leclerc vs Lidl vs Super U vs Intermarché)
+     * Recommandation sur l'enseigne la plus économique pour ce produit.
+
+3. **RÈGLE SUR LES DATES ET PÉRIODES (ex: "du 01 au 15", "le mois dernier")** :
+   - Extrais toutes les dépenses de la période depuis le Grand Livre bancaire et les tickets.
+   - Affiche les opérations sous forme de tableau Markdown avec Date, Libellé, Catégorie, Montant, et le sous-total exact.
+
+4. **TON & RIGUEUR** :
+   - Sois direct, analytique, très précis, sans verbiage superflu.
    - Utilise un français impeccable.
-   - Mets en valeur les chiffres clés en **gras**.
-   - Utilise des puces et des tableaux markdown (| Col 1 | Col 2 |) pour structurer tes réponses.
-   - Ne commence JAMAIS par des phrases creuses du style "En tant qu'IA...". Agis immédiatement comme son conseiller financier dédié.
+   - Formate systématiquement les listes et montants en tableaux Markdown et mets en gras les chiffres clés.
 `;
 }
 
@@ -554,6 +659,8 @@ export async function askFinancialCoach(
   history: ChatMessage[],
   profile: FinancialProfile,
   transactions: Transaction[],
+  receiptsOrCurrency?: Receipt[] | string,
+  products?: StandardizedProductDoc[],
   currency: string = 'EUR'
 ): Promise<string> {
   const apiKey = getGeminiApiKey();
@@ -561,7 +668,15 @@ export async function askFinancialCoach(
     throw new Error("Clé API Google Gemini introuvable. Veuillez vérifier votre fichier .env ou les paramètres.");
   }
 
-  const systemContext = buildCoachSystemContext(profile, transactions, currency);
+  let receipts: Receipt[] = [];
+  let curr = currency;
+  if (typeof receiptsOrCurrency === 'string') {
+    curr = receiptsOrCurrency;
+  } else if (Array.isArray(receiptsOrCurrency)) {
+    receipts = receiptsOrCurrency;
+  }
+
+  const systemContext = buildCoachSystemContext(profile, transactions, receipts, products, curr);
   const genAI = new GoogleGenerativeAI(apiKey);
 
   // Modèles candidats avec bascule automatique
