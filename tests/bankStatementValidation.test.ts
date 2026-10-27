@@ -133,6 +133,12 @@ test('4. ASSAINISSEMENT DES MESSAGES D\'ERREUR (sanitizeImportErrorMessage)', ()
   const networkErr = new TypeError("Failed to fetch");
   const msg3 = sanitizeImportErrorMessage(networkErr, 'releve.pdf');
   assert.match(msg3, /Erreur de connexion réseau/);
+
+  // Erreur de référence classifyTransaction is not defined
+  const classifyErr = new Error("Erreur Cloud Function Gemini : classifyTransaction is not defined");
+  const msg4 = sanitizeImportErrorMessage(classifyErr, 'GDB_27102026.csv');
+  assert.match(msg4, /Erreur technique lors de la classification/);
+  assert.doesNotMatch(msg4, /is not defined/);
 });
 
 test('5. CONFORMITÉ AU FORMAT RB : RÈGLE STRICTE CSV SANS SOLDE NI DISPO (AUCUN MONTANT DANS FLUX NET)', () => {

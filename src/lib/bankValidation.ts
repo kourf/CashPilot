@@ -85,6 +85,9 @@ export function sanitizeImportErrorMessage(err: unknown, filename?: string): str
   if (message.includes('detectBankName is not defined') || message.includes('detectBankName')) {
     return `Erreur technique lors de la détection de la banque${filePrefix}. Le composant a été mis à jour, veuillez réimporter votre relevé.`;
   }
+  if (message.includes('classifyTransaction is not defined') || message.includes('classifyTransaction')) {
+    return `Erreur technique lors de la classification${filePrefix}. Le module a été mis à jour, veuillez réimporter votre relevé.`;
+  }
   if (message.includes('Clé API Google Gemini introuvable')) {
     return 'Clé API Google Gemini manquante. Veuillez renseigner votre clé API dans les Paramètres pour analyser les relevés PDF.';
   }

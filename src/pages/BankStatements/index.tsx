@@ -82,6 +82,7 @@ export const SUBSCRIPTION_CATEGORIES = new Set([
 import { 
   CATEGORIES, 
   classifyFlowType, 
+  classifyTransaction,
   calculateBankMetrics, 
   calculateAccountSummaries,
   checkDuplicateTransactions, 
@@ -108,7 +109,7 @@ import {
 } from '../../lib/bankUtils';
 import { KpiInfoTooltip } from '../../components/KpiInfoTooltip';
 import { db, storage, functions } from '../../lib/firebase';
-import { doc, deleteDoc, writeBatch, collection, updateDoc } from 'firebase/firestore';
+import { doc, deleteDoc, writeBatch, collection, updateDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 
@@ -1579,6 +1580,8 @@ export const BankStatements: React.FC = () => {
     setFileStatusMessage(`Lecture de ${file.name}...`);
 
     try {
+      const importStartTime = performance.now();
+      let detectedCurrency: "EUR" | "CHF" = currency === 'CHF' ? 'CHF' : 'EUR';
       const accountId = getActiveAccountId();
       let extractedTxs: BankTransaction[] = [];
       let detectedBankName = '';
@@ -1604,9 +1607,12 @@ export const BankStatements: React.FC = () => {
         // Détection automatique de la devise et du nom de banque/compte
         const detectedBank = detectBankName(text);
         const fileDetection = detectAccountFromFilename(file.name);
-        const detectedCurrency = detectStatementCurrency(text) || 'EUR';
-        if (detectedCurrency && detectedCurrency !== currency) {
-          setCurrency(detectedCurrency);
+        const detectedCurrRaw = detectStatementCurrency(text) || 'EUR';
+        if (detectedCurrRaw === 'CHF' || detectedCurrRaw === 'EUR') {
+          detectedCurrency = detectedCurrRaw;
+          if (detectedCurrency !== currency) {
+            setCurrency(detectedCurrency);
+          }
         }
 
         detectedBankName = detectedBank !== 'Compte Courant' ? detectedBank : fileDetection.bankName;
@@ -1633,7 +1639,6 @@ export const BankStatements: React.FC = () => {
         updateImportStatus(startMsg, true);
 
         // Démarrage du chronomètre local (synchronisé avec TransactionsContext)
-        const startTime = performance.now();
         if (aiTimerRef.current) clearInterval(aiTimerRef.current);
         aiTimerRef.current = setInterval(() => {
           setAiAnalysisSeconds(prev => parseFloat((prev + 0.1).toFixed(1)));
@@ -1674,7 +1679,7 @@ export const BankStatements: React.FC = () => {
             clearInterval(aiTimerRef.current);
             aiTimerRef.current = null;
           }
-          const totalDurationSec = ((performance.now() - startTime) / 1000).toFixed(2);
+          const totalDurationSec = ((performance.now() - importStartTime) / 1000).toFixed(2);
 
           const resultMap = new Map<number, any>();
           aiResults.forEach(item => {
@@ -1822,8 +1827,11 @@ export const BankStatements: React.FC = () => {
             detectedBankName = directResult.bankName || 'Banque';
             detectedAccountName = directResult.accountName || `${detectedBankName} - ${directResult.accountType || 'Compte'}`;
             const fileCurrency = directResult.currency || 'EUR';
-            if (fileCurrency && fileCurrency !== currency) {
-              setCurrency(fileCurrency);
+            if (fileCurrency === 'EUR' || fileCurrency === 'CHF') {
+              detectedCurrency = fileCurrency;
+              if (fileCurrency !== currency) {
+                setCurrency(fileCurrency);
+              }
             }
 
             extractedTxs = directResult.transactions.map((t: any, i: number) => {
@@ -1998,7 +2006,7 @@ export const BankStatements: React.FC = () => {
 
       await batch.commit();
 
-      const totalDurationSec = ((performance.now() - (typeof startTime !== 'undefined' ? startTime : performance.now())) / 1000).toFixed(2);
+      const totalDurationSec = ((performance.now() - importStartTime) / 1000).toFixed(2);
       const stats = {
         totalCount: uniqueTxs.length,
         executionTimeSeconds: totalDurationSec,
