@@ -103,6 +103,7 @@ export default function Coach() {
   }, [messages, isLoading]);
 
   const activeModel = getGeminiModelName();
+  const validConversations = conversations.filter(c => c.messages && c.messages.length > 0);
 
   const suggestions = [
     {
@@ -346,7 +347,7 @@ export default function Coach() {
             title="Ouvrir l'historique des conversations"
           >
             <History size={14} className="text-cyan-400 group-hover:scale-110 transition-transform" />
-            <span>Historique ({conversations.length})</span>
+            <span>Historique ({validConversations.length})</span>
           </button>
 
           {/* Bouton Module "Mes Règles & Abonnements" */}
@@ -437,52 +438,66 @@ export default function Coach() {
                 Nouvelle discussion
               </button>
 
-              {conversations.map((conv) => {
-                const isActive = conv.id === activeConversationId;
-                const dateStr = new Date(conv.updatedAt).toLocaleDateString('fr-FR', {
-                  day: 'numeric',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                });
-
-                return (
-                  <div
-                    key={conv.id}
-                    onClick={() => {
-                      setActiveConversationId(conv.id);
-                      setIsHistoryOpen(false);
-                    }}
-                    className={`group w-full p-3 rounded-2xl text-left border transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                      isActive
-                        ? 'bg-cyan-500/[0.12] border-cyan-500/40 text-foreground shadow-sm'
-                        : 'bg-secondary/30 dark:bg-white/[0.02] hover:bg-secondary/60 dark:hover:bg-white/[0.05] border-border/50 dark:border-white/[0.05] text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <MessageSquare size={13} className={isActive ? 'text-cyan-400 shrink-0' : 'text-muted-foreground/60 shrink-0'} />
-                        <h4 className="text-xs font-semibold truncate text-foreground">
-                          {conv.title || 'Discussion sans titre'}
-                        </h4>
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground/80 mt-1 pl-5">
-                        <span>{dateStr}</span>
-                        <span>•</span>
-                        <span>{conv.messages.length} messages</span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={(e) => handleDeleteConversation(e, conv.id)}
-                      className="p-1.5 rounded-lg text-muted-foreground/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-70 group-hover:opacity-100 cursor-pointer"
-                      title="Supprimer cette conversation"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+              {validConversations.length === 0 ? (
+                <div className="py-14 px-4 text-center flex flex-col items-center justify-center space-y-3 animate-in fade-in duration-300">
+                  <div className="w-12 h-12 rounded-2xl bg-secondary/40 dark:bg-white/[0.03] border border-border/50 dark:border-white/[0.05] flex items-center justify-center text-muted-foreground/40">
+                    <MessageSquare size={20} />
                   </div>
-                );
-              })}
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-foreground/80">Aucune discussion archivée</p>
+                    <p className="text-[11px] text-muted-foreground/60 max-w-[220px] mx-auto leading-relaxed">
+                      Vos échanges avec le Coach IA apparaîtront ici automatiquement dès votre première question.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                validConversations.map((conv) => {
+                  const isActive = conv.id === activeConversationId;
+                  const dateStr = new Date(conv.updatedAt).toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={() => {
+                        setActiveConversationId(conv.id);
+                        setIsHistoryOpen(false);
+                      }}
+                      className={`group w-full p-3 rounded-2xl text-left border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                        isActive
+                          ? 'bg-cyan-500/[0.12] border-cyan-500/40 text-foreground shadow-sm'
+                          : 'bg-secondary/30 dark:bg-white/[0.02] hover:bg-secondary/60 dark:hover:bg-white/[0.05] border-border/50 dark:border-white/[0.05] text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare size={13} className={isActive ? 'text-cyan-400 shrink-0' : 'text-muted-foreground/60 shrink-0'} />
+                          <h4 className="text-xs font-semibold truncate text-foreground">
+                            {conv.title || 'Discussion sans titre'}
+                          </h4>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground/80 mt-1 pl-5">
+                          <span>{dateStr}</span>
+                          <span>•</span>
+                          <span>{conv.messages.length} message{conv.messages.length > 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={(e) => handleDeleteConversation(e, conv.id)}
+                        className="p-1.5 rounded-lg text-muted-foreground/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-70 group-hover:opacity-100 cursor-pointer"
+                        title="Supprimer cette discussion de l'historique"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
             <div className="p-4 border-t border-border/60 dark:border-white/[0.06] text-center">
@@ -694,7 +709,7 @@ export default function Coach() {
       <div className="flex-1 flex flex-col justify-between max-w-4xl w-full mx-auto px-4 md:px-6">
         
         {messages.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-12 md:py-20 space-y-8 animate-in fade-in duration-500">
+          <div className="flex-1 flex flex-col items-center justify-center py-8 md:py-16 pb-24 md:pb-8 space-y-6 md:space-y-8 animate-in fade-in duration-500">
             <div className="text-center space-y-3 max-w-2xl px-2">
               <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-cyan-500/10 via-primary/10 to-indigo-500/10 border border-primary/20 mb-1">
                 <Sparkles className="w-8 h-8 text-cyan-400 animate-pulse" />
@@ -766,7 +781,7 @@ export default function Coach() {
           </div>
         ) : (
           <div className="flex-1 flex flex-col py-6 space-y-6">
-            <div className="space-y-6 pb-36">
+            <div className="space-y-6 pb-64 md:pb-40">
               {messages.map((msg) => {
                 const isUser = msg.role === 'user';
                 return (
@@ -854,10 +869,10 @@ export default function Coach() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Zone de Saisie Flottante Pinned en Bas */}
-            <div className="fixed bottom-0 left-0 right-0 md:left-64 z-30 p-4 bg-gradient-to-t from-background via-background/95 to-transparent backdrop-blur-md">
+            {/* Zone de Saisie Flottante Pinned en Bas (au-dessus de la nav mobile sur téléphone) */}
+            <div className="fixed bottom-[4.25rem] md:bottom-0 left-0 right-0 md:left-64 z-40 p-2.5 sm:p-4 bg-gradient-to-t from-background/95 via-background/90 to-transparent backdrop-blur-md">
               <div className="max-w-3xl mx-auto space-y-2">
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs touch-pan-x">
                   <span className="text-muted-foreground text-[11px] font-semibold shrink-0 flex items-center gap-1">
                     <Sparkles size={11} className="text-cyan-400" /> Audit Direct :
                   </span>
@@ -891,7 +906,7 @@ export default function Coach() {
                   </button>
                 </div>
 
-                <div className="relative rounded-3xl bg-[#1e2330]/90 dark:bg-[#131722]/95 border border-border/80 dark:border-white/[0.1] shadow-2xl p-2.5 focus-within:border-cyan-500/50 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all backdrop-blur-2xl flex items-center gap-2">
+                <div className="relative rounded-2xl md:rounded-3xl bg-[#1e2330]/90 dark:bg-[#131722]/95 border border-border/80 dark:border-white/[0.1] shadow-2xl p-2 md:p-2.5 focus-within:border-cyan-500/50 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all backdrop-blur-2xl flex items-center gap-2">
                   <textarea
                     ref={textareaRef}
                     value={inputPrompt}
@@ -900,14 +915,14 @@ export default function Coach() {
                     placeholder="Demander au Coach IA (analyse, modification de budget, règle d'abonnement, archivage)..."
                     rows={1}
                     disabled={isLoading}
-                    className="flex-1 resize-none bg-transparent px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none max-h-32"
+                    className="flex-1 resize-none bg-transparent px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none max-h-32"
                     style={{ minHeight: '38px' }}
                   />
 
                   <button
                     onClick={() => onSend()}
                     disabled={!inputPrompt.trim() || isLoading}
-                    className="w-9 h-9 rounded-full bg-gradient-to-r from-cyan-500 to-primary hover:from-cyan-400 hover:to-primary/90 text-white flex items-center justify-center shrink-0 disabled:opacity-30 disabled:cursor-not-allowed shadow-md shadow-primary/20 transition-all cursor-pointer"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-r from-cyan-500 to-primary hover:from-cyan-400 hover:to-primary/90 text-white flex items-center justify-center shrink-0 disabled:opacity-30 disabled:cursor-not-allowed shadow-md shadow-primary/20 transition-all cursor-pointer"
                   >
                     <Send size={15} />
                   </button>

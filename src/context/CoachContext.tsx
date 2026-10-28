@@ -170,6 +170,125 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const messages = currentConversation.messages;
   const selectedScope = currentConversation.scope || 'all';
 
+  // Helper de sérialisation d'une conversation pour Firestore
+  const formatConversationForFirestore = (c: SavedConversation) => ({
+    id: c.id,
+    title: c.title || 'Discussion',
+    createdAt: c.createdAt || Date.now(),
+    updatedAt: c.updatedAt || Date.now(),
+    scope: c.scope || 'all',
+    messages: (c.messages || []).map(m => {
+      let ts = new Date().toISOString();
+      if (m.timestamp instanceof Date) {
+        ts = m.timestamp.toISOString();
+      } else if (typeof m.timestamp === 'string') {
+        ts = m.timestamp;
+      } else if (typeof m.timestamp === 'number') {
+        ts = new Date(m.timestamp).toISOString();
+      }
+      const cleanMsg: any = {
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: ts,
+        status: m.status || 'done'
+      };
+      if (m.proposedAction) {
+        cleanMsg.proposedAction = JSON.parse(JSON.stringify(m.proposedAction));
+      }
+      return cleanMsg;
+    })
+  });
+
+  const syncConversationToFirestore = useCallback(async (conv: SavedConversation) => {
+    if (!conv || !conv.id) return;
+    // Ne jamais polluer la base partagée avec des conversations vides (0 message)
+    if (!conv.messages || conv.messages.length === 0) return;
+
+    try {
+      const accountId = getActiveAccountId();
+      const docRef = doc(db, `users/${accountId}/coach_conversations/${conv.id}`);
+      await setDoc(docRef, formatConversationForFirestore(conv), { merge: true });
+    } catch (e) {
+      console.warn("Erreur sauvegarde Firestore conversation coach:", e);
+    }
+  }, []);
+
+  const deleteConversationFromFirestore = useCallback(async (convId: string) => {
+    if (!convId) return;
+    try {
+      const accountId = getActiveAccountId();
+      await deleteDoc(doc(db, `users/${accountId}/coach_conversations/${convId}`));
+    } catch (e) {
+      console.warn("Erreur suppression Firestore conversation coach:", e);
+    }
+  }, []);
+
+  // Écouteur temps réel Firestore pour `coach_conversations` (Synchronisation PC <-> Téléphone)
+  useEffect(() => {
+    let unsub: (() => void) | undefined;
+    try {
+      const accountId = getActiveAccountId();
+      const colRef = collection(db, `users/${accountId}/coach_conversations`);
+      unsub = onSnapshot(colRef, (snap) => {
+        if (!snap.empty) {
+          const remoteConvs: SavedConversation[] = snap.docs.map(docSnap => {
+            const data = docSnap.data();
+            return {
+              id: docSnap.id,
+              title: data.title || 'Discussion',
+              createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt) || Date.now(),
+              updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : Date.parse(data.updatedAt) || Date.now(),
+              scope: data.scope || 'all',
+              messages: Array.isArray(data.messages) ? data.messages.map((m: any) => ({
+                ...m,
+                timestamp: m.timestamp?.toDate ? m.timestamp.toDate() : new Date(m.timestamp || Date.now())
+              })) : []
+            };
+          }).filter(c => c.messages && c.messages.length > 0)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+
+          if (remoteConvs.length > 0) {
+            setConversations(prev => {
+              // Si l'utilisateur est sur un brouillon local vierge (0 message), on le préserve au sommet
+              const currentLocal = prev.find(p => p.id === activeConversationId);
+              if (currentLocal && currentLocal.messages.length === 0 && !remoteConvs.some(r => r.id === currentLocal.id)) {
+                return [currentLocal, ...remoteConvs];
+              }
+              return remoteConvs;
+            });
+
+            try {
+              localStorage.setItem(STORAGE_CONVERSATIONS, JSON.stringify(remoteConvs));
+            } catch {}
+          }
+        } else {
+          // Si Firestore est encore vide mais que ce device a des conversations locales valides, on les synchronise
+          try {
+            const saved = localStorage.getItem(STORAGE_CONVERSATIONS);
+            if (saved) {
+              const parsed: SavedConversation[] = JSON.parse(saved);
+              const validLocal = Array.isArray(parsed) ? parsed.filter(c => c.messages && c.messages.length > 0) : [];
+              if (validLocal.length > 0) {
+                validLocal.forEach(conv => {
+                  syncConversationToFirestore(conv);
+                });
+              }
+            }
+          } catch {}
+        }
+      }, (err) => {
+        console.warn("Écouteur coach_conversations hors-ligne:", err);
+      });
+    } catch (e) {
+      console.warn("Erreur init coach_conversations:", e);
+    }
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [activeConversationId, syncConversationToFirestore]);
+
   // Sauvegarde automatique dans localStorage + synchronisation Firestore
   useEffect(() => {
     try {
@@ -341,6 +460,11 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [activeConversationId]);
 
   const handleCreateNewConversation = useCallback(() => {
+    // Si la conversation active est déjà une page blanche (0 message), on y reste sans créer de doublon
+    const current = conversations.find(c => c.id === activeConversationId);
+    if (current && (!current.messages || current.messages.length === 0)) {
+      return;
+    }
     const newConv: SavedConversation = {
       id: `conv-${Date.now()}`,
       title: 'Nouvelle discussion',
@@ -349,14 +473,16 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       messages: [],
       scope: selectedScope
     };
-    setConversations(prev => [newConv, ...prev]);
+    setConversations(prev => [newConv, ...prev.filter(c => c.messages && c.messages.length > 0)]);
     setActiveConversationId(newConv.id);
-  }, [selectedScope, setActiveConversationId]);
+  }, [selectedScope, activeConversationId, conversations, setActiveConversationId]);
 
   const handleDeleteConversation = useCallback((e: React.MouseEvent | null, convId: string) => {
     if (e) e.stopPropagation();
+    deleteConversationFromFirestore(convId);
     setConversations(prev => {
-      if (prev.length <= 1) {
+      const updated = prev.filter(c => c.id !== convId);
+      if (updated.length === 0) {
         const resetConv: SavedConversation = {
           id: `conv-${Date.now()}`,
           title: 'Nouvelle discussion',
@@ -368,26 +494,32 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setActiveConversationId(resetConv.id);
         return [resetConv];
       }
-      const updated = prev.filter(c => c.id !== convId);
       if (activeConversationId === convId && updated.length > 0) {
         setActiveConversationId(updated[0].id);
       }
       return updated;
     });
-  }, [activeConversationId, setActiveConversationId]);
+  }, [activeConversationId, setActiveConversationId, deleteConversationFromFirestore]);
 
   const handleDeleteMessage = useCallback((messageId: string) => {
     setConversations(prev => prev.map(c => {
       if (c.id === activeConversationId) {
-        return {
+        const nextMsgs = c.messages.filter(m => m.id !== messageId);
+        const updated = {
           ...c,
-          messages: c.messages.filter(m => m.id !== messageId),
+          messages: nextMsgs,
           updatedAt: Date.now()
         };
+        if (nextMsgs.length > 0) {
+          syncConversationToFirestore(updated);
+        } else {
+          deleteConversationFromFirestore(c.id);
+        }
+        return updated;
       }
       return c;
     }));
-  }, [activeConversationId]);
+  }, [activeConversationId, syncConversationToFirestore, deleteConversationFromFirestore]);
 
   // 7. Envoi de message persistant en arrière-plan (survit à la navigation inter-onglets)
   const sendMessage = useCallback(async (textToSend?: string) => {
@@ -411,17 +543,16 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ? prompt.slice(0, 42) + (prompt.length > 42 ? '...' : '')
       : currentConversation.title;
 
-    setConversations(prev => prev.map(c => {
-      if (c.id === targetConvId) {
-        return {
-          ...c,
-          title: newTitle,
-          messages: [...c.messages, userMessage],
-          updatedAt: Date.now()
-        };
-      }
-      return c;
-    }));
+    const updatedWithUser: SavedConversation = {
+      ...currentConversation,
+      id: targetConvId,
+      title: newTitle,
+      messages: [...currentConversation.messages, userMessage],
+      updatedAt: Date.now()
+    };
+
+    setConversations(prev => prev.map(c => c.id === targetConvId ? updatedWithUser : c));
+    syncConversationToFirestore(updatedWithUser);
 
     setIsLoading(true);
     setLoadingSeconds(0);
@@ -468,16 +599,16 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         proposedAction
       };
 
-      setConversations(prev => prev.map(c => {
-        if (c.id === targetConvId) {
-          return {
-            ...c,
-            messages: [...c.messages, assistantMessage],
-            updatedAt: Date.now()
-          };
-        }
-        return c;
-      }));
+      const updatedWithAssistant: SavedConversation = {
+        ...currentConversation,
+        id: targetConvId,
+        title: newTitle,
+        messages: [...currentConversation.messages, userMessage, assistantMessage],
+        updatedAt: Date.now()
+      };
+
+      setConversations(prev => prev.map(c => c.id === targetConvId ? updatedWithAssistant : c));
+      syncConversationToFirestore(updatedWithAssistant);
 
       // Si l'utilisateur a navigué sur un autre onglet pendant le chargement, le notifier
       if (typeof window !== 'undefined' && window.location.pathname !== '/coach' && setAppNotification) {
@@ -495,16 +626,16 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         status: 'error'
       };
 
-      setConversations(prev => prev.map(c => {
-        if (c.id === targetConvId) {
-          return {
-            ...c,
-            messages: [...c.messages, errorMessage],
-            updatedAt: Date.now()
-          };
-        }
-        return c;
-      }));
+      const updatedWithError: SavedConversation = {
+        ...currentConversation,
+        id: targetConvId,
+        title: newTitle,
+        messages: [...currentConversation.messages, userMessage, errorMessage],
+        updatedAt: Date.now()
+      };
+
+      setConversations(prev => prev.map(c => c.id === targetConvId ? updatedWithError : c));
+      syncConversationToFirestore(updatedWithError);
     } finally {
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
@@ -519,14 +650,15 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     isLoading,
     activeConversationId,
     messages,
-    currentConversation.title,
+    currentConversation,
     financialProfile,
     scopedTransactions,
     receipts,
     products,
     currency,
     costOfLivingBudgets,
-    setAppNotification
+    setAppNotification,
+    syncConversationToFirestore
   ]);
 
   // 8. CRUD Règles Personnalisées ("Mes Règles & Abonnements")
@@ -852,7 +984,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Mettre à jour le statut de la carte dans le message
       setConversations(prev => prev.map(c => {
         if (c.id === activeConversationId) {
-          return {
+          const updated = {
             ...c,
             messages: c.messages.map(m => {
               if (m.id === messageId && m.proposedAction) {
@@ -860,7 +992,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   ...m,
                   proposedAction: {
                     ...m.proposedAction,
-                    status: 'validated',
+                    status: 'validated' as const,
                     executedAt: nowIso,
                     archiveId
                   }
@@ -870,6 +1002,8 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }),
             updatedAt: Date.now()
           };
+          syncConversationToFirestore(updated);
+          return updated;
         }
         return c;
       }));
@@ -893,13 +1027,14 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     receipts,
     archivedItems,
     activeConversationId,
-    setAppNotification
+    setAppNotification,
+    syncConversationToFirestore
   ]);
 
   const rejectProposedAction = useCallback((messageId: string) => {
     setConversations(prev => prev.map(c => {
       if (c.id === activeConversationId) {
-        return {
+        const updated = {
           ...c,
           messages: c.messages.map(m => {
             if (m.id === messageId && m.proposedAction) {
@@ -907,7 +1042,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 ...m,
                 proposedAction: {
                   ...m.proposedAction,
-                  status: 'cancelled'
+                  status: 'cancelled' as const
                 }
               };
             }
@@ -915,10 +1050,12 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }),
           updatedAt: Date.now()
         };
+        syncConversationToFirestore(updated);
+        return updated;
       }
       return c;
     }));
-  }, [activeConversationId]);
+  }, [activeConversationId, syncConversationToFirestore]);
 
   // Restaurer un élément archivé (depuis le bouton Undo du chat OU depuis la Corbeille dans Paramètres)
   const restoreArchivedItem = useCallback(async (archiveId: string) => {
@@ -1012,7 +1149,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setConversations(prev => prev.map(c => {
       if (c.id === activeConversationId) {
-        return {
+        const updated = {
           ...c,
           messages: c.messages.map(m => {
             if (m.id === messageId && m.proposedAction) {
@@ -1020,7 +1157,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 ...m,
                 proposedAction: {
                   ...m.proposedAction,
-                  status: 'undone',
+                  status: 'undone' as const,
                   undoneAt: new Date().toISOString()
                 }
               };
@@ -1029,10 +1166,12 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }),
           updatedAt: Date.now()
         };
+        syncConversationToFirestore(updated);
+        return updated;
       }
       return c;
     }));
-  }, [messages, restoreArchivedItem, activeConversationId]);
+  }, [messages, restoreArchivedItem, activeConversationId, syncConversationToFirestore]);
 
   const permanentlyDeleteArchivedItem = useCallback(async (archiveId: string) => {
     const accountId = getActiveAccountId();
