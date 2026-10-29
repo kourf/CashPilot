@@ -294,26 +294,26 @@ RÈGLES COMPTABLES ET D'AUDIT FINANCIER STRICTES :
    Le champ "rawLabel" contient le libellé complet brut de l'opération (issu directement et exclusivement de la colonne F du relevé bancaire, ex: Société Générale). Il contient l'ensemble des mentions critiques (type de flux SEPA/CB/VIR, identifiant émetteur, libellé commercial réel, références de contrat ou de mandat).
    Base-toi EXCLUSIVEMENT sur ce "rawLabel" et sur le montant "amount". Ne te fie à AUCUNE catégorie bancaire externe préexistante (les catégories fournies par les banques étant fréquemment vagues ou erronées).
 2. merchantName : Nom réel, nettoyé et standardisé du commerçant, enseigne ou organisme (sans aucun code technique bancaire, numéro de carte, date ou ville).
-   Exemples : "Carrefour", "TotalEnergies", "Free Mobile", "Netflix", "Pharmacie", "McDonald's", "SNCF", "CAF", "EDF", "France Travail".
+   Exemples : "Carrefour", "TotalEnergies", "Free Mobile", "Netflix", "Pharmacie", "McDonald's", "SNCF", "CAF", "EDF", "France Travail", "Coop", "Migros", "Swisscom", "Helsana", "CFF / SBB", "Serafe".
 3. category : DISTINGUE CLAIREMENT chaque opération en lui assignant la catégorie précise la plus adaptée parmi la liste officielle suivante (STRICTEMENT l'une d'elles) :
-   - "Alimentation & Courses" : supermarchés, hypermarchés, épiceries, boulangeries, boucheries (Carrefour, Leclerc, Intermarché, Lidl, Aldi, Auchan, Monoprix, Picard, etc.)
-   - "Transports & Carburant" : stations essence, carburant, péages, parkings, transports, train, taxis, Uber (Total, BP, Shell, Esso, Vinci, APRR, SNCF, RATP, Uber, Bolt, etc.)
+   - "Alimentation & Courses" : supermarchés, hypermarchés, épiceries, boulangeries, boucheries (Carrefour, Leclerc, Intermarché, Lidl, Aldi, Auchan, Monoprix, Picard, Coop, Migros, Denner, Volg, Landi, etc.)
+   - "Transports & Carburant" : stations essence, carburant, péages, parkings, transports, train, taxis, Uber (Total, BP, Shell, Esso, Vinci, APRR, SNCF, RATP, CFF / SBB, TPG, Uber, Bolt, etc.)
    - "Restaurants & Sorties" : restaurants, fast-food, livraisons repas, cafés, bars (McDonald's, Burger King, KFC, Subway, Deliveroo, Uber Eats, etc.)
-   - "Logement & Énergie" : loyer, électricité, gaz, eau, charges (EDF, Engie, TotalEnergies, Veolia, etc.)
-   - "Abonnements & Télécom" : forfaits mobile, box internet, streaming, salle de sport, logiciels (Free, Orange, SFR, Bouygues, Netflix, Spotify, Disney+, Basic-Fit, etc.)
-   - "Assurances" : assurance auto, habitation, santé, prévoyance (Macif, Maif, Allianz, Axa, Groupama, Matmut, etc.)
-   - "Santé" : pharmacies, médecins, dentistes, optique, laboratoires, hôpitaux
-   - "Shopping & Maison" : habillement, équipement, bricolage, bazar, high-tech (Amazon, Fnac, Darty, Zara, H&M, Ikea, Leroy Merlin, Action, etc.)
+   - "Logement & Énergie" : loyer, régies immobilières (Wincasa, Livit, Privera), électricité, gaz, eau, charges (EDF, Engie, TotalEnergies, Veolia, SIG Genève, Romande Énergie, BKW, etc.)
+   - "Abonnements & Télécom" : forfaits mobile, box internet, streaming, salle de sport, redevance radio/TV Serafe (Free, Orange, SFR, Bouygues, Swisscom, Sunrise, Salt, Wingo, Serafe, Netflix, Spotify, Disney+, Basic-Fit, etc.)
+   - "Assurances" : assurance auto, habitation, RC ménage, prévoyance (Macif, Maif, Allianz, Axa, Groupama, Matmut, La Mobilière, etc.)
+   - "Santé" : primes maladie LAMal & complémentaires (Helsana, Groupe Mutuel, CSS, Swica, Concordia, Sanitas, Visana, Assura), pharmacies, médecins, dentistes, optique, hôpitaux
+   - "Shopping & Maison" : habillement, équipement, bricolage, bazar, high-tech (Amazon, Fnac, Darty, Zara, H&M, Ikea, Manor, Galaxus, Digitec, Brack.ch, Otto's, Action, etc.)
    - "Loisirs & Activités" : cinéma, parcs, vacances, jeux vidéo, culture (UGC, Pathé, Steam, PlayStation, Booking, Airbnb, etc.)
    - "Frais bancaires" : cotisations carte, frais de tenue de compte, commissions, agios
    - "Impôts & Amendes" : impôts, taxes, trésor public, amendes, DGFIP
    - "Paiement fractionné" : paiements en plusieurs fois (Klarna, Alma, PayPal 4x, Oney)
-   - "Virements Famille & Proches" : virements émis ou reçus entre proches, amis, Wero, Paylib, Lydia, prénoms de proches
+   - "Virements Famille & Proches" : virements émis ou reçus entre proches, amis, Wero, Paylib, Lydia, paiements TWINT P2P entre personnes
    - "Salaire & Revenus" : salaires, paie employeur, virements de revenus professionnels
    - "Aides & Allocations" : CAF, France Travail / Pôle Emploi, indemnités, sécurité sociale
-   - "Épargne & Investissement" : virements vers livrets (Livret A, LDDS, PEA, assurance-vie)
+   - "Épargne & Investissement" : virements vers livrets (Livret A, LDDS, PEA, assurance-vie) et 3e pilier 3a prévoyance suisse (VIAC, Finpension, Frankly, Säule 3a)
    - "Autre" : uniquement si totalement impossible à déterminer
-4. isSubscription : VRAI (true) uniquement pour les abonnements ou prélèvements récurrents mensuels (télécom, box, streaming, assurances, énergie, loyer, salle de sport, mentions PRLV, PRELEVEMENT, ECHEANCE, COTISATION). FAUX (false) pour les achats par carte ou paiements ponctuels.
+4. isSubscription : VRAI (true) uniquement pour les abonnements ou prélèvements récurrents mensuels (télécom Swisscom/Orange, box, streaming, primes maladie LAMal Helsana/Groupe Mutuel/CSS, énergie SIG/TotalEnergies, loyer/régie, redevance Serafe, abonnement CFF Demi-tarif/AG, mentions PRLV, PRELEVEMENT, LSV+, EBILL, ECHEANCE, COTISATION). FAUX (false) pour les achats par carte ou paiements ponctuels.
 
 Renvoie UNIQUEMENT un tableau JSON d'objets :
 [

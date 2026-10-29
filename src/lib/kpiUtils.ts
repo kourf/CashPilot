@@ -7,6 +7,7 @@ export interface Transaction {
   description?: string;
   amount: number;
   direction: 'credit' | 'debit';
+  currency?: 'EUR' | 'CHF';
   category: string;
   subcategory?: string;
   nature?: 'fixe' | 'variable' | 'exceptionnelle' | 'autre';
@@ -532,27 +533,45 @@ export const formatBankAmount = (
 };
 
 /**
- * Détection robuste de la devise d'un relevé bancaire (CHF vs EUR).
+ * Détection automatique et robuste de la devise d'un relevé bancaire (CHF vs EUR).
+ * Gère précisément les IBAN suisses (CH...) vs français (FR...), les en-têtes types de compte,
+ * les banques helvétiques (UBS, BCV, PostFinance, Raiffeisen, Yuh, Neon, ZKB) et les opérations caractéristiques (TWINT, LSV+, eBill, Serafe).
  * Si CHF n'est pas détecté avec certitude, le fallback par défaut est STRICTEMENT 'EUR'.
  */
 export const detectStatementCurrency = (contentOrHeader?: string): 'CHF' | 'EUR' => {
   if (!contentOrHeader) return 'EUR';
-  const upper = contentOrHeader.toUpperCase();
+  const trimmed = contentOrHeader.trim();
+  const upper = trimmed.toUpperCase();
 
-  // Priorité absolue à l'Euro (€) si présent ou si banque / organisme français
-  if (
-    upper.includes('EUR') || 
-    upper.includes('EUROS') || 
-    upper.includes('€') ||
-    upper.includes('FRANCE') ||
-    upper.includes('FRANCE TRAVAIL') ||
-    upper.includes('POLE EMPLOI') ||
-    upper.includes('PÔLE EMPLOI') ||
-    upper.includes('CAF') ||
+  // 1. Valeur unitaire directe
+  if (upper === 'CHF' || upper === 'FRANCS SUISSES' || upper === 'FRANC SUISSE') return 'CHF';
+  if (upper === 'EUR' || upper === 'EUROS' || upper === '€') return 'EUR';
+
+  // 2. Détection d'un IBAN suisse (CH...) vs français (FR...)
+  const hasSwissIban = /\bCH\d{2}[0-9A-Z\s]{12,24}\b/i.test(trimmed) || /\bIBAN\s*:?\s*CH\d{2}/i.test(trimmed);
+  const hasFrenchIban = /\bFR\d{2}[0-9A-Z\s]{14,28}\b/i.test(trimmed) || /\bFR76\b/i.test(trimmed) || /\bIBAN\s*:?\s*FR\d{2}/i.test(trimmed);
+
+  // 3. En-têtes explicites de devise de compte
+  const hasChfCurrencyHeader = 
+    /\b(?:DEVISE|MONNAIE|CURRENCY|WAEHRUNG|WÄHRUNG|VALUTA)\s*(?:DU\s+COMPTE|DES\s+COMPTES|DU\s+RELEVE)?\s*[:=]?\s*CHF\b/i.test(trimmed) ||
+    /\bCOMPTE\s+(?:EN\s+)?CHF\b/i.test(trimmed) ||
+    /\bKONTO\s+(?:IN\s+)?CHF\b/i.test(trimmed) ||
+    /\bSOLDE\s+(?:EN\s+)?CHF\b/i.test(trimmed) ||
+    /\bMONTANT\s+(?:EN\s+)?CHF\b/i.test(trimmed) ||
+    /\bSALDO\s+(?:IN\s+)?CHF\b/i.test(trimmed) ||
+    /\bBETRAG\s+(?:IN\s+)?CHF\b/i.test(trimmed);
+
+  const hasEurCurrencyHeader = 
+    /\b(?:DEVISE|MONNAIE|CURRENCY)\s*(?:DU\s+COMPTE|DES\s+COMPTES|DU\s+RELEVE)?\s*[:=]?\s*(?:EUR|€)\b/i.test(trimmed) ||
+    /\bCOMPTE\s+(?:EN\s+)?EUR\b/i.test(trimmed) ||
+    /\bSOLDE\s+(?:EN\s+)?EUR\b/i.test(trimmed);
+
+  // 4. Détection des banques françaises officielles
+  const isFrenchBank = 
     upper.includes('SOCIETE GENERALE') ||
     upper.includes('SOCIÉTÉ GÉNÉRALE') ||
     upper.includes('BOURSORAMA') ||
-    upper.includes('BOURSO') ||
+    upper.includes('BOURSOBANK') ||
     upper.includes('FORTUNEO') ||
     upper.includes('CREDIT AGRICOLE') ||
     upper.includes('CRÉDIT AGRICOLE') ||
@@ -564,27 +583,79 @@ export const detectStatementCurrency = (contentOrHeader?: string): 'CHF' | 'EUR'
     upper.includes('LA BANQUE POSTALE') ||
     upper.includes('CAISSE D\'EPARGNE') ||
     upper.includes('CAISSE D\'ÉPARGNE') ||
+    upper.includes('HELLO BANK') ||
+    upper.includes('MONABANQ') ||
     upper.includes('SOGESSUR') ||
-    upper.includes('GROUPAMA') ||
-    upper.includes('TOTALENERGIES') ||
-    upper.includes('FR76') ||
-    upper.includes('IBAN: FR')
-  ) {
+    upper.includes('FRANCE TRAVAIL') ||
+    upper.includes('POLE EMPLOI') ||
+    upper.includes('PÔLE EMPLOI') ||
+    upper.includes('CAF LOIRE') ||
+    upper.includes('CAF DE');
+
+  // Si c'est un compte / banque explicitement français sans IBAN suisse ni en-tête CHF explicite
+  if ((hasFrenchIban || isFrenchBank || hasEurCurrencyHeader) && !hasSwissIban && !hasChfCurrencyHeader) {
     return 'EUR';
   }
 
-  // Seul un relevé de compte explicitement et purement suisse émis par une banque helvétique est en CHF.
-  // Une simple transaction frontalière ou un abonnement en devises (ex: Swype CHF) ne doit JAMAIS changer la devise du relevé.
-  const isChf = 
-    (upper.includes('VALUTA: CHF') ||
-     upper.includes('DEVISE DU COMPTE: CHF') ||
-     upper.includes('MONNAIE DU COMPTE: CHF') ||
-     upper.includes('POSTFINANCE') ||
-     upper.includes('BANQUE CANTONALE')) &&
-    !upper.includes('FR76') &&
-    !upper.includes('FRANCE');
+  // 5. Détection des banques suisses officielles
+  const isSwissBank = 
+    /\bUBS\b/i.test(trimmed) ||
+    upper.includes('POSTFINANCE') ||
+    upper.includes('RAIFFEISEN') ||
+    upper.includes('BANQUE CANTONALE') ||
+    /\bBCV\b/i.test(trimmed) ||
+    /\bBCGE\b/i.test(trimmed) ||
+    /\bBCNE\b/i.test(trimmed) ||
+    /\bBCVS\b/i.test(trimmed) ||
+    /\bBCJ\b/i.test(trimmed) ||
+    /\bZKB\b/i.test(trimmed) ||
+    upper.includes('ZÜRCHER KANTONALBANK') ||
+    upper.includes('ZURCHER KANTONALBANK') ||
+    /\bNEON\b/i.test(trimmed) ||
+    /\bYUH\b/i.test(trimmed) ||
+    upper.includes('MIGROS BANK') ||
+    upper.includes('BANQUE MIGROS') ||
+    upper.includes('VALIANT') ||
+    upper.includes('SWISSQUOTE');
 
-  return isChf ? 'CHF' : 'EUR';
+  // 6. Opérations caractéristiques et institutions purement helvétiques
+  const hasSwissOperations = 
+    /\bTWINT\b/i.test(trimmed) ||
+    /\bLSV\+?\b/i.test(trimmed) ||
+    /\bEBILL\b/i.test(trimmed) ||
+    /\bSERAFE\b/i.test(trimmed) ||
+    upper.includes('QR-FACTURE') ||
+    upper.includes('QR-RECHNUNG') ||
+    upper.includes('BVR') ||
+    upper.includes('SIC / SIX') ||
+    upper.includes('HELSANA') ||
+    upper.includes('GROUPE MUTUEL') ||
+    upper.includes('SWICA') ||
+    upper.includes('SWISSCOM');
+
+  // Règle de décision :
+  // Si IBAN suisse détecté -> CHF
+  if (hasSwissIban && !hasFrenchIban) {
+    return 'CHF';
+  }
+
+  // Si en-tête explicite CHF -> CHF
+  if (hasChfCurrencyHeader) {
+    return 'CHF';
+  }
+
+  // Si banque suisse identifiée et (mention de CHF ou opérations caractéristiques suisses)
+  if (isSwissBank && (upper.includes('CHF') || hasSwissOperations)) {
+    return 'CHF';
+  }
+
+  // Si opérations suisses combinées à la mention CHF
+  if (hasSwissOperations && upper.includes('CHF') && !isFrenchBank && !hasFrenchIban) {
+    return 'CHF';
+  }
+
+  // Fallback par défaut
+  return 'EUR';
 };
 
 export interface CostOfLivingCategoryGroup {

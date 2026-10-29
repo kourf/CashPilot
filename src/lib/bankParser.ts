@@ -1,4 +1,5 @@
 import Papa from 'papaparse';
+import { detectStatementCurrency } from './kpiUtils.ts';
 
 export type FlowType = 'INCOME' | 'FIXED_EXPENSE' | 'VARIABLE_EXPENSE' | 'SAVINGS_TRANSFER';
 
@@ -11,6 +12,7 @@ export interface BankTransaction {
    */
   description: string;
   amount: number;
+  currency?: 'EUR' | 'CHF';
   flowType: FlowType;
   category: string;
   account: string;
@@ -66,9 +68,27 @@ export const CATEGORIES = [
 
 /**
  * Détection automatique du nom de la banque depuis les métadonnées, en-têtes et libellés du CSV
+ * (Supporte les banques françaises, suisses et néobanques internationales)
  */
 export function detectBankName(csvContent: string): string {
   const lower = (csvContent || '').toLowerCase();
+
+  // Banques suisses helvétiques (UBS, PostFinance, Raiffeisen, BCV, Yuh, Neon, ZKB...)
+  if (lower.includes('postfinance')) return 'PostFinance';
+  if (/\bubs\b|ubs switzerland|ubs ag/i.test(lower)) return 'UBS';
+  if (/\bcredit suisse\b/i.test(lower)) return 'Crédit Suisse';
+  if (/\bbcv\b|banque cantonale vaudoise/i.test(lower)) return 'BCV';
+  if (/\braiffeisen\b/i.test(lower)) return 'Raiffeisen';
+  if (/\byuh\b/i.test(lower)) return 'Yuh';
+  if (/\bneon\b|neon bank/i.test(lower)) return 'Neon';
+  if (/\bbcge\b|banque cantonale de geneve|banque cantonale de genève/i.test(lower)) return 'BCGE';
+  if (/\bzkb\b|zürcher kantonalbank|zurcher kantonalbank/i.test(lower)) return 'Zürcher Kantonalbank';
+  if (lower.includes('migros bank') || lower.includes('banque migros')) return 'Banque Migros';
+  if (lower.includes('banque cantonale') || lower.includes('kantonalbank')) return 'Banque Cantonale';
+  if (lower.includes('swissquote')) return 'Swissquote';
+  if (lower.includes('valiant')) return 'Valiant';
+
+  // Banques françaises
   if (
     lower.includes('logitel') ||
     lower.includes('sogessur') ||
@@ -85,7 +105,103 @@ export function detectBankName(csvContent: string): string {
   if (lower.includes('credit agricole') || lower.includes('crédit agricole') || lower.includes('ca-')) return 'Crédit Agricole';
   if (lower.includes('bourso') || lower.includes('boursorama')) return 'BoursoBank';
   if (lower.includes('n26')) return 'N26';
+  if (lower.includes('lcl')) return 'LCL';
+  if (lower.includes('cic')) return 'CIC';
+  if (lower.includes('credit mutuel') || lower.includes('crédit mutuel')) return 'Crédit Mutuel';
+  if (lower.includes('la banque postale')) return 'La Banque Postale';
+  if (lower.includes('caisse d\'epargne') || lower.includes('caisse d\'épargne')) return 'Caisse d\'Épargne';
+
   return 'Compte Courant';
+}
+
+/**
+ * Normalisation robuste d'une date de relevé bancaire (formats français, suisses et ISO) :
+ * Gère JJ.MM.AAAA (DD.MM.YYYY), AAAA.MM.JJ (YYYY.MM.DD), JJ.MM.AA (DD.MM.YY),
+ * JJ/MM/AAAA (DD/MM/YYYY), AAAA-MM-JJ (YYYY-MM-DD).
+ * Retourne la date au format ISO YYYY-MM-DD standardisé.
+ */
+export function parseBankDate(rawDate?: string | null): string {
+  if (!rawDate) return '';
+  const trimmed = String(rawDate).trim();
+
+  // 1. Format ISO : YYYY-MM-DD ou YYYY.MM.DD ou YYYY/MM/DD
+  const isoMatch = trimmed.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+  if (isoMatch) {
+    const y = isoMatch[1];
+    const m = isoMatch[2].padStart(2, '0');
+    const d = isoMatch[3].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  // 2. Format standard européen : DD.MM.YYYY ou DD/MM/YYYY ou DD-MM-YYYY
+  const dmyMatch = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+  if (dmyMatch) {
+    const d = dmyMatch[1].padStart(2, '0');
+    const m = dmyMatch[2].padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${y}-${m}-${d}`;
+  }
+
+  // 3. Format court suisse/allemand : DD.MM.YY ou DD/MM/YY ou DD-MM-YY
+  const shortMatch = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2})$/);
+  if (shortMatch) {
+    const d = shortMatch[1].padStart(2, '0');
+    const m = shortMatch[2].padStart(2, '0');
+    const yy = parseInt(shortMatch[3], 10);
+    const y = yy >= 70 ? `19${yy}` : `20${String(yy).padStart(2, '0')}`;
+    return `${y}-${m}-${d}`;
+  }
+
+  return '';
+}
+
+/**
+ * Normalisation universelle d'un montant bancaire (français, suisse ou international) :
+ * Gère les apostrophes de milliers suisses (1'450.50, 1’450.50), les espaces (1 450,50),
+ * les signes négatifs en fin de chaîne (1'450.50-), les suffixes comptables DB/CR,
+ * et les devises intégrées (CHF, EUR, €).
+ */
+export function parseBankAmount(rawAmount: string | number | null | undefined): number {
+  if (rawAmount === null || rawAmount === undefined) return 0;
+  if (typeof rawAmount === 'number') return isNaN(rawAmount) ? 0 : rawAmount;
+  
+  let s = String(rawAmount).trim();
+  if (!s) return 0;
+
+  // 1. Détection du signe négatif (début, fin de chaîne ou marqueur DB/DR)
+  let isNegative = false;
+  if (s.startsWith('-') || s.endsWith('-') || /\b(DB|DR)\b/i.test(s)) {
+    isNegative = true;
+  }
+
+  // 2. Nettoyage des espaces, devises, marqueurs et apostrophes suisses
+  s = s.replace(/[\s\u00A0\u202F\u2007]+/g, '');
+  s = s.replace(/['’ʻʼ]/g, '');
+  s = s.replace(/(?:CHF|EUR|€|USD|\$|DB|DR|CR|\+|\-)/gi, '');
+
+  // 3. Gestion de la virgule et du point décimal
+  if (s.includes('.') && s.includes(',')) {
+    const lastDot = s.lastIndexOf('.');
+    const lastComma = s.lastIndexOf(',');
+    if (lastComma > lastDot) {
+      // Format 1.450,50 -> virgule décimale
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      // Format 1,450.50 -> point décimal
+      s = s.replace(/,/g, '');
+    }
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.');
+  }
+
+  // Nettoyage strict
+  s = s.replace(/[^\d.]/g, '');
+  if (!s) return 0;
+
+  const parsed = parseFloat(s);
+  if (isNaN(parsed)) return 0;
+
+  return isNegative ? -Math.abs(parsed) : Math.abs(parsed);
 }
 
 /**
@@ -139,6 +255,89 @@ export function cleanMerchantDescription(raw: string): string {
   if (upper.includes('ONEY')) return 'Oney (3x/4x)';
   if (upper.includes('KLARNA')) return 'Klarna (Paiement fractionné)';
 
+  // Organismes, télécoms, assurances et commerçants suisses prioritaires
+  if (upper.includes('SERAFE')) return 'Serafe (Redevance Radio/TV)';
+  if (upper.includes('SWISSCOM')) return 'Swisscom';
+  if (upper.includes('SUNRISE')) return 'Sunrise';
+  if (upper.includes('SALT MOBILE') || (upper.includes('SALT') && (upper.includes('PRLV') || upper.includes('CH') || upper.includes('FACTURE')))) return 'Salt';
+  if (upper.includes('WINGO')) return 'Wingo';
+  if (upper.includes('YALLO')) return 'Yallo';
+
+  // Assurances suisses (LAMal & Complémentaires)
+  if (upper.includes('HELSANA')) return 'Helsana (Assurance Maladie)';
+  if (upper.includes('GROUPE MUTUEL') || upper.includes('MUTUEL ASSURANCE')) return 'Groupe Mutuel (Assurance Maladie)';
+  if (upper.includes('CSS') && (upper.includes('ASSURANCE') || upper.includes('KRANKEN') || upper.includes('SANTE') || upper.includes('SANTÉ') || upper.includes('PRIME'))) return 'CSS Assurance (Santé)';
+  if (upper.includes('SWICA')) return 'Swica (Assurance Maladie)';
+  if (upper.includes('CONCORDIA') && (upper.includes('ASSURANCE') || upper.includes('KRANKEN') || upper.includes('SANTE') || upper.includes('PRIME'))) return 'Concordia (Assurance Maladie)';
+  if (upper.includes('SANITAS')) return 'Sanitas (Assurance Maladie)';
+  if (upper.includes('VISANA')) return 'Visana (Assurance Maladie)';
+  if (upper.includes('ASSURA')) return 'Assura (Assurance Maladie)';
+  if (upper.includes('KPT ') || upper.startsWith('KPT')) return 'KPT (Assurance Maladie)';
+  if (upper.includes('MOBILIERE') || upper.includes('MOBILIAR')) return 'La Mobilière (Assurance)';
+
+  // Énergie suisse
+  if (upper.includes('SIG') && (upper.includes('GENEVE') || upper.includes('GENÈVE') || upper.includes('SERVICES INDUSTRIELS'))) return 'SIG (Services Industriels de Genève)';
+  if (upper.includes('ROMANDE ENERGIE') || upper.includes('ROMANDE ÉNERGIE')) return 'Romande Énergie';
+  if (upper.includes('BKW') && (upper.includes('ENERGIE') || upper.includes('POWER') || upper.includes('AG'))) return 'BKW Energie';
+  if (upper.includes('PRIMEO ENERGIE')) return 'Primeo Energie';
+
+  // Transports suisses
+  if (upper.includes('CFF') || upper.includes('SBB') || upper.includes('FFS')) {
+    if (upper.includes('DEMI-TARIF') || upper.includes('DEMI TARIF') || upper.includes('HALBTAX')) return 'CFF Demi-Tarif';
+    if (upper.includes('AG') || upper.includes('ABONNEMENT GENERAL') || upper.includes('GENERALABONNEMENT')) return 'CFF Abonnement Général';
+    return 'CFF / SBB';
+  }
+  if (upper.includes('TPG') || upper.includes('TRANSPORTS PUBLICS GENEVOIS')) return 'TPG (Transports Publics Genevois)';
+  if (upper.includes('TRANSPORTS LAUSANNOIS') || upper.includes('TL LAUSANNE')) return 'TL (Transports Lausannois)';
+
+  // Prévoyance suisse (3e pilier 3a)
+  if (upper.includes('VIAC')) return 'VIAC (Pilier 3a)';
+  if (upper.includes('FINPENSION')) return 'Finpension (Pilier 3a)';
+  if (upper.includes('FRANKLY')) return 'Frankly (Pilier 3a)';
+  if (upper.includes('PILIER 3A') || upper.includes('SAULE 3A') || upper.includes('SÄULE 3A') || upper.includes('3EME PILIER')) return 'Prévoyance 3a (Épargne)';
+
+  // Régies immobilières suisses (Loyer)
+  if (upper.includes('WINCASA')) return 'Wincasa (Loyer)';
+  if (upper.includes('LIVIT')) return 'Livit (Loyer)';
+  if (upper.includes('PRIVERA')) return 'Privera (Loyer)';
+  if (upper.includes('REGIE NAEF') || upper.includes('RÉGIE NAEF') || upper.includes('NAEF IMMOBILIER')) return 'Régie Naef (Loyer)';
+  if (upper.includes('GEROFINANCE')) return 'Gerofinance (Loyer)';
+  if (upper.includes('COMPTOIR IMMOBILIER')) return 'Comptoir Immobilier (Loyer)';
+
+  // Grande distribution et commerces suisses
+  if (upper.includes('COOP PRONTO')) return 'Coop Pronto';
+  if (/\bCOOP\b/i.test(clean) && !upper.includes('COOPR') && !upper.includes('COOPRO')) return 'Coop';
+  if (upper.includes('MIGROS') || upper.includes('MIGROLINO')) return 'Migros';
+  if (upper.includes('DENNER')) return 'Denner';
+  if (upper.includes('MANOR')) return 'Manor';
+  if (upper.includes('GALAXUS') || upper.includes('DIGITEC')) return 'Galaxus / Digitec';
+  if (upper.includes('BRACK.CH') || upper.includes('BRACK CH')) return 'Brack.ch';
+  if (upper.includes('OTTO\'S') || upper.includes('OTTOS')) return 'Otto\'s';
+  if (upper.includes('VOLG')) return 'Volg';
+  if (upper.includes('LANDI')) return 'Landi';
+  if (upper.includes('ALDI SUISSE')) return 'Aldi Suisse';
+  if (upper.includes('LIDL SCHWEIZ') || upper.includes('LIDL SUISSE')) return 'Lidl Suisse';
+
+  // Paiements TWINT (suisses)
+  if (upper.includes('TWINT')) {
+    let twintSubject = clean
+      .replace(/\bTWINT\b/gi, '')
+      .replace(/\bP2P\b/gi, '')
+      .replace(/\bMARCHAND\b/gi, '')
+      .replace(/\+?41\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}|\b07[6-9]\d{7}\b/g, '')
+      .trim();
+    if (twintSubject.length >= 2) {
+      const formatted = twintSubject
+        .toLowerCase()
+        .split(' ')
+        .filter(Boolean)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+      return `${formatted} (TWINT)`;
+    }
+    return 'Paiement TWINT';
+  }
+
   // Détection des virements vers proches / personnes physiques : VIR ... POUR: [Nom] ou DE: [Nom]
   const pourMatch = clean.match(/(?:POUR|DE|FAVEUR DE)\s*:\s*([^/,\-]+)/i);
   if (pourMatch && pourMatch[1]) {
@@ -163,7 +362,9 @@ export function cleanMerchantDescription(raw: string): string {
     }
   }
 
-  // Supprime les préfixes techniques bancaires courants français
+  // Supprime les préfixes techniques bancaires courants français et suisses
+  clean = clean.replace(/^(?:EBILL|E-BILL|LSV\+?|QR-FACTURE|QR-RECHNUNG|BVR|SIC|SIX)\s*[:\-]?\s*/i, '');
+  clean = clean.replace(/^TWINT\s+(?:P2P\s+|MARCHAND\s+)?/i, '');
   clean = clean.replace(/^PAIEMENT\s+PAR\s+CARTE\s+DU\s+\d{1,2}\/\d{1,2}(?:\/\d{2,4})?(?:\s*(?:A\s*)?\d{1,2}[:hH]\d{2})?\s*/i, '');
   clean = clean.replace(/^PAIEMENT\s+CARTE\s+DU\s+\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s*/i, '');
   clean = clean.replace(/^ACHAT\s+(?:PAR\s+)?CARTE\s+DU\s+\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s*/i, '');
@@ -315,8 +516,18 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     }
   }
 
-  // 2. Virements Famille & Proches (Wero, Paylib, Lyf, Vir inst, Prénoms & Noms de proches)
+  // 2. Virements Famille, Proches & TWINT P2P (Wero, Paylib, Lyf, Vir inst, TWINT P2P)
+  const isTwintP2P = norm.includes('twint') && 
+    !norm.includes('coop') && 
+    !norm.includes('migros') && 
+    !norm.includes('denner') && 
+    !norm.includes('manor') && 
+    !norm.includes('galaxus') && 
+    !norm.includes('cff') && 
+    !norm.includes('sbb');
+
   const isFamily = 
+    isTwintP2P ||
     norm.includes('famille') || 
     norm.includes('solidarite') || 
     norm.includes('argent de poche') ||
@@ -337,14 +548,14 @@ export function classifyTransaction(rawDescription: string, amount: number): {
   if (isFamily) {
     if (amount > 0) {
       return {
-        cleanDesc: cleanDesc || 'Virement Reçu (Proches)',
+        cleanDesc: cleanDesc || (isTwintP2P ? 'Virement Reçu (TWINT)' : 'Virement Reçu (Proches)'),
         flowType: 'INCOME',
         category: 'Virement Reçu (Proches)',
         isSubscription: false
       };
     } else {
       return {
-        cleanDesc: cleanDesc || "Virements Famille & Proches",
+        cleanDesc: cleanDesc || (isTwintP2P ? 'Paiement TWINT' : "Virements Famille & Proches"),
         flowType: 'VARIABLE_EXPENSE',
         category: 'Virements Famille & Proches',
         isSubscription: false
@@ -352,7 +563,28 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     }
   }
 
-  // 3. Mouvements internes, virements compte à compte & épargne (Neutralisés du reste à vivre)
+  // 3. Mouvements internes, virements compte à compte, 3e pilier 3a & épargne (Neutralisés du reste à vivre)
+  // Prévoyance suisse (3e pilier 3a : VIAC, Finpension, Frankly, Säule 3a)
+  const isSwiss3a = 
+    norm.includes('viac') ||
+    norm.includes('finpension') ||
+    norm.includes('frankly') ||
+    norm.includes('pilier 3a') ||
+    norm.includes('saule 3a') ||
+    norm.includes('säule 3a') ||
+    norm.includes('3eme pilier') ||
+    norm.includes('3ème pilier') ||
+    norm.includes('prevoyance 3a') ||
+    norm.includes('prévoyance 3a');
+
+  if (isSwiss3a) {
+    return {
+      cleanDesc: cleanDesc || 'Prévoyance 3a (Épargne)',
+      flowType: 'SAVINGS_TRANSFER',
+      category: 'Épargne & Investissement',
+      isSubscription: false
+    };
+  }
   // Attention : Ne neutraliser QUE les vrais mouvements d'épargne personnels et comptes propres
   const isInternalAccount = (norm.includes('virement interne') || norm.includes('compte a compte') || norm.includes('virement de compte')) &&
     !norm.includes('de: generation') && !norm.includes('cpam');
@@ -557,6 +789,27 @@ export function classifyTransaction(rawDescription: string, amount: number): {
   }
 
   // 8. Charges Fixes & Abonnements (Montants négatifs)
+  // Primes d'assurance maladie suisse LAMal & LCA (Helsana, Groupe Mutuel, CSS, Swica, Concordia, Sanitas, Visana, Assura)
+  if (
+    norm.includes('helsana') ||
+    norm.includes('groupe mutuel') ||
+    norm.includes('mutuel assurance') ||
+    (norm.includes('css') && (norm.includes('assurance') || norm.includes('kranken') || norm.includes('sante') || norm.includes('prime'))) ||
+    norm.includes('swica') ||
+    (norm.includes('concordia') && (norm.includes('assurance') || norm.includes('kranken') || norm.includes('sante') || norm.includes('prime'))) ||
+    norm.includes('sanitas') ||
+    norm.includes('visana') ||
+    norm.includes('assura') ||
+    norm.includes('kpt')
+  ) {
+    return { cleanDesc: cleanDesc || 'Assurance Maladie (LAMal)', flowType: 'FIXED_EXPENSE', category: 'Santé', isSubscription: true };
+  }
+
+  // Redevance radio/télévision suisse Serafe
+  if (norm.includes('serafe') || norm.includes('billag')) {
+    return { cleanDesc: cleanDesc || 'Serafe (Redevance)', flowType: 'FIXED_EXPENSE', category: 'Abonnements & Télécom', isSubscription: true };
+  }
+
   // Logement & Énergie
   if (
     norm.includes('totalenergies') ||
@@ -569,7 +822,14 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('ekwateur') ||
     norm.includes('iberdrola') ||
     norm.includes('sowee') ||
-    norm.includes('gaz de france')
+    norm.includes('gaz de france') ||
+    norm.includes('sig geneve') ||
+    norm.includes('sig genève') ||
+    norm.includes('services industriels de geneve') ||
+    norm.includes('romande energie') ||
+    norm.includes('romande énergie') ||
+    norm.includes('bkw') ||
+    norm.includes('primeo energie')
   ) {
     return { cleanDesc: 'TotalEnergies', flowType: 'FIXED_EXPENSE', category: 'Logement & Énergie', isSubscription: true };
   }
@@ -597,7 +857,15 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('laforet') ||
     norm.includes('guy hoquet') ||
     norm.includes('copropriete') ||
-    norm.includes('charges copro')
+    norm.includes('charges copro') ||
+    norm.includes('wincasa') ||
+    norm.includes('livit') ||
+    norm.includes('privera') ||
+    norm.includes('regie naef') ||
+    norm.includes('régie naef') ||
+    norm.includes('naef immobilier') ||
+    norm.includes('gerofinance') ||
+    norm.includes('comptoir immobilier')
   ) {
     return { cleanDesc: cleanDesc || 'Loyer & Charges', flowType: 'FIXED_EXPENSE', category: 'Logement & Énergie', isSubscription: true };
   }
@@ -625,7 +893,9 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('alan ') ||
     norm.includes('mgen') ||
     norm.includes('assurance') ||
-    norm.includes('prevoyance')
+    norm.includes('prevoyance') ||
+    norm.includes('mobiliere') ||
+    norm.includes('mobiliar')
   ) {
     return { cleanDesc: cleanDesc || 'Assurance', flowType: 'FIXED_EXPENSE', category: 'Assurances', isSubscription: true };
   }
@@ -642,6 +912,12 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('bouygues telecom') ||
     norm.includes('bouygues') ||
     norm.includes('swype') ||
+    norm.includes('swisscom') ||
+    norm.includes('sunrise') ||
+    norm.includes('salt mobile') ||
+    (norm.includes('salt') && (norm.includes('prlv') || norm.includes('ch') || norm.includes('facture'))) ||
+    norm.includes('wingo') ||
+    norm.includes('yallo') ||
     norm.includes('sosh') ||
     norm.includes('red by sfr') ||
     norm.includes('coriolis') ||
@@ -719,6 +995,29 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     return { cleanDesc: cleanDesc || 'Frais Bancaires', flowType: 'FIXED_EXPENSE', category: 'Frais bancaires', isSubscription: false };
   }
 
+  // Abonnements et pass de transport récurrents (CFF Demi-tarif, AG SBB, Navigo, SNCF, TPG) -> Transports & Carburant
+  if (
+    norm.includes('cff') ||
+    norm.includes('sbb') ||
+    norm.includes('ffs') ||
+    norm.includes('tpg') ||
+    norm.includes('transports lausannois') ||
+    norm.includes('navigo') ||
+    norm.includes('sncf abonnement') ||
+    norm.includes('demi-tarif') ||
+    norm.includes('halbtax') ||
+    norm.includes('abonnement general') ||
+    norm.includes('generalabonnement')
+  ) {
+    const isSubPass = norm.includes('demi-tarif') || norm.includes('halbtax') || norm.includes('abonnement general') || norm.includes('generalabonnement') || norm.includes('navigo') || norm.includes('abonnement') || norm.includes('forfait');
+    return {
+      cleanDesc: cleanDesc || (isSubPass ? 'Abonnement CFF' : 'CFF / SBB'),
+      flowType: isSubPass ? 'FIXED_EXPENSE' : 'VARIABLE_EXPENSE',
+      category: 'Transports & Carburant',
+      isSubscription: isSubPass
+    };
+  }
+
   // Prélèvements et Abonnements récurrents génériques (PRLV, PRELEVEMENT, ECHEANCE, ABONNEMENT, FORFAIT)
   if (
     amount < 0 && (
@@ -791,6 +1090,12 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('coop') ||
     norm.includes('migros') ||
     norm.includes('migrolino') ||
+    norm.includes('denner') ||
+    norm.includes('volg') ||
+    norm.includes('landi') ||
+    norm.includes('aldi suisse') ||
+    norm.includes('lidl schweiz') ||
+    norm.includes('lidl suisse') ||
     norm.includes('comptoir de la vian')
   ) {
     return { cleanDesc: cleanDesc || 'Alimentation & Courses', flowType: 'VARIABLE_EXPENSE', category: 'Alimentation & Courses', isSubscription: false };
@@ -882,6 +1187,13 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('sephora') ||
     norm.includes('nocibe') ||
     norm.includes('marionnaud') ||
+    norm.includes('manor') ||
+    norm.includes('galaxus') ||
+    norm.includes('digitec') ||
+    norm.includes('brack.ch') ||
+    norm.includes('brack ch') ||
+    norm.includes('otto\'s') ||
+    norm.includes('ottos') ||
     norm.includes('xiaomi')
   ) {
     return { cleanDesc: cleanDesc || 'Shopping & Maison', flowType: 'VARIABLE_EXPENSE', category: 'Shopping & Maison', isSubscription: false };
@@ -907,7 +1219,7 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     return { cleanDesc: cleanDesc || 'Loisirs & Activités', flowType: 'VARIABLE_EXPENSE', category: 'Loisirs & Activités', isSubscription: false };
   }
 
-  // Transports & Véhicule
+  // Transports, CFF / SBB & Véhicule
   if (
     norm.includes('sodi est') ||
     norm.includes('carter-cash') ||
@@ -925,6 +1237,15 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('sanef') ||
     norm.includes('vinci autoroutes') ||
     norm.includes('sncf') ||
+    norm.includes('cff') ||
+    norm.includes('sbb') ||
+    norm.includes('ffs') ||
+    norm.includes('tpg') ||
+    norm.includes('transports lausannois') ||
+    norm.includes('demi-tarif') ||
+    norm.includes('halbtax') ||
+    norm.includes('abonnement general') ||
+    norm.includes('generalabonnement') ||
     norm.includes('ratp') ||
     norm.includes('train') ||
     norm.includes('ter') ||
@@ -947,7 +1268,13 @@ export function classifyTransaction(rawDescription: string, amount: number): {
     norm.includes('speedy') ||
     norm.includes('controle technique')
   ) {
-    return { cleanDesc: cleanDesc || 'Transport & Véhicule', flowType: 'VARIABLE_EXPENSE', category: 'Transports & Carburant', isSubscription: false };
+    const isSubPass = norm.includes('demi-tarif') || norm.includes('halbtax') || norm.includes('abonnement general') || norm.includes('generalabonnement') || norm.includes('ag cff');
+    return {
+      cleanDesc: cleanDesc || (isSubPass ? 'Abonnement CFF' : 'Transport & Véhicule'),
+      flowType: isSubPass ? 'FIXED_EXPENSE' : 'VARIABLE_EXPENSE',
+      category: 'Transports & Carburant',
+      isSubscription: isSubPass
+    };
   }
 
   // Santé & Pharmacie
@@ -1089,6 +1416,7 @@ export interface CleanBankStatementRow {
   date: string;     // YYYY-MM-DD
   rawLabel: string; // Libellé brut d'origine uniquement
   amount: number;   // Montant numérique signé
+  currency?: 'EUR' | 'CHF';
 }
 
 function normalizeBankHeader(h: string): string {
@@ -1231,8 +1559,9 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
   const rows = (parsed.data as string[][]) || [];
   if (rows.length < 2) return [];
 
-  // Détection de la banque
+  // Détection de la banque et de la devise
   const detectedBank = detectBankName(csvContent);
+  const detectedCurrency = detectStatementCurrency(csvContent);
   const isSG = detectedBank === 'Société Générale' ||
     /societe generale|société générale|logitel|gdb_|sogessur|\bsg\b/i.test(csvContent);
 
@@ -1311,17 +1640,9 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
     const cols = rows[i];
     if (!cols || cols.length < 2) continue;
 
-    // 1. Date (YYYY-MM-DD)
+    // 1. Date (YYYY-MM-DD normalisée via parseBankDate)
     let rawDate = dateIdx >= 0 && cols[dateIdx] ? cols[dateIdx] : cols[0];
-    let formattedDate = '';
-    if (rawDate) {
-      const dmy = String(rawDate).match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
-      if (dmy) {
-        formattedDate = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
-      } else if (/^\d{4}-\d{2}-\d{2}/.test(String(rawDate))) {
-        formattedDate = String(rawDate).slice(0, 10);
-      }
-    }
+    const formattedDate = parseBankDate(rawDate);
     if (!formattedDate) continue;
 
     // 2. Libellé brut d'origine :
@@ -1359,17 +1680,16 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
     const sanitizedLabel = sanitizeRawBankLabel(rawLabel);
     if (!sanitizedLabel) continue;
 
-    // 3. Montant
+    // 3. Montant (Normalisation via parseBankAmount, gérant apostrophes suisses, trailing minus et espaces)
     let amount = 0;
     if (debitIdx >= 0 || creditIdx >= 0) {
       const debitRaw = debitIdx >= 0 ? String(cols[debitIdx] || '') : '';
       const creditRaw = creditIdx >= 0 ? String(cols[creditIdx] || '') : '';
-      const debit = parseFloat(debitRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0;
-      const credit = parseFloat(creditRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0;
+      const debit = parseBankAmount(debitRaw);
+      const credit = parseBankAmount(creditRaw);
       amount = credit !== 0 ? Math.abs(credit) : -Math.abs(debit);
     } else if (amountIdx >= 0 && cols[amountIdx]) {
-      const cleanAmt = String(cols[amountIdx]).replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-      amount = parseFloat(cleanAmt) || 0;
+      amount = parseBankAmount(cols[amountIdx]);
     }
 
     if (isNaN(amount) || amount === 0) continue;
@@ -1381,12 +1701,13 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
     }
     seenRowKeys.add(rowKey);
 
-    // Conserve UNIQUEMENT Date, Libellé brut assaini (Colonne F), Montant
+    // Conserve UNIQUEMENT Date, Libellé brut assaini (Colonne F), Montant, Devise
     cleanRows.push({
       index: itemIndex++,
       date: formattedDate,
       rawLabel: sanitizedLabel,
-      amount
+      amount,
+      currency: detectedCurrency
     });
   }
 
@@ -1394,10 +1715,11 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
 }
 
 /**
- * Parseur universel de relevés bancaires multi-formats CSV (Société Générale, Fortuneo, Revolut, etc.)
+ * Parseur universel de relevés bancaires multi-formats CSV (Société Générale, Fortuneo, Revolut, banques suisses UBS, PostFinance, BCV, etc.)
  */
-export function parseCSVBankStatement(csvContent: string): { bankName: string; transactions: BankTransaction[] } {
+export function parseCSVBankStatement(csvContent: string): { bankName: string; currency?: 'EUR' | 'CHF'; transactions: BankTransaction[] } {
   const bankName = detectBankName(csvContent);
+  const detectedCurrency = detectStatementCurrency(csvContent);
   
   // 1. Parsing robuste avec PapaParse (gestion des délimiteurs ;, virgules, tabulations, guillemets et sauts de ligne)
   const parsed = Papa.parse(csvContent.trim(), {
@@ -1405,7 +1727,7 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
   });
 
   const rows = (parsed.data as string[][]) || [];
-  if (rows.length < 2) return { bankName, transactions: [] };
+  if (rows.length < 2) return { bankName, currency: detectedCurrency, transactions: [] };
 
   // 2. Détection intelligente de la ligne d'en-tête
   let headerLineIndex = 0;
@@ -1483,17 +1805,9 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
     const cols = rows[i];
     if (!cols || cols.length < 2) continue;
 
-    // 1. Parsing de la date
+    // 1. Parsing de la date (normalisée via parseBankDate)
     let rawDate = dateIdx >= 0 && cols[dateIdx] ? cols[dateIdx] : cols[0];
-    let formattedDate = new Date().toISOString().split('T')[0];
-    if (rawDate) {
-      const dmy = String(rawDate).match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
-      if (dmy) {
-        formattedDate = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
-      } else if (/^\d{4}-\d{2}-\d{2}/.test(String(rawDate))) {
-        formattedDate = String(rawDate).slice(0, 10);
-      }
-    }
+    const formattedDate = parseBankDate(rawDate) || new Date().toISOString().split('T')[0];
 
     // 2. Sélection directe et exclusive du libellé complet (Colonne F pour SG, sans aucune pollution par les colonnes G et H)
     let rawDescription = '';
@@ -1522,17 +1836,16 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
       }
     }
 
-    // 3. Parsing du montant
+    // 3. Parsing du montant (normalisé via parseBankAmount, supportant apostrophes suisses, trailing minus et espaces)
     let amount = 0;
     if (debitIdx >= 0 || creditIdx >= 0) {
       const debitRaw = debitIdx >= 0 ? String(cols[debitIdx] || '') : '';
       const creditRaw = creditIdx >= 0 ? String(cols[creditIdx] || '') : '';
-      const debit = parseFloat(debitRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0;
-      const credit = parseFloat(creditRaw.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0;
+      const debit = parseBankAmount(debitRaw);
+      const credit = parseBankAmount(creditRaw);
       amount = credit !== 0 ? Math.abs(credit) : -Math.abs(debit);
     } else if (amountIdx >= 0 && cols[amountIdx]) {
-      const cleanAmt = String(cols[amountIdx]).replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-      amount = parseFloat(cleanAmt) || 0;
+      amount = parseBankAmount(cols[amountIdx]);
     }
 
     if (isNaN(amount) || amount === 0) continue;
@@ -1552,6 +1865,7 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
       rawLabel: rawDescription, // Le Libellé complet original préservé
       cleanLabel: cleanDesc,
       amount,
+      currency: detectedCurrency,
       flowType,
       category,
       account: bankName,
@@ -1563,5 +1877,5 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
     });
   }
 
-  return { bankName, transactions: results };
+  return { bankName, currency: detectedCurrency, transactions: results };
 }

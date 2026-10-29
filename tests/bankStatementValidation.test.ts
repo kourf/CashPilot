@@ -12,6 +12,8 @@ import {
   isBankDescriptionHeader,
   classifyTransaction,
   formatDateFR,
+  parseBankDate,
+  parseBankAmount,
   CATEGORIES
 } from '../src/lib/bankParser.ts';
 import { 
@@ -33,7 +35,8 @@ import {
 import { 
   matchesCostOfLivingItem, 
   DEFAULT_COST_OF_LIVING_ITEMS, 
-  CATEGORY_GROUPS_CONFIG 
+  CATEGORY_GROUPS_CONFIG,
+  detectStatementCurrency
 } from '../src/lib/kpiUtils.ts';
 
 test('1. DÉTECTION DU NOM DE BANQUE (detectBankName)', () => {
@@ -71,6 +74,42 @@ test('1. DÉTECTION DU NOM DE BANQUE (detectBankName)', () => {
     detectBankName("Revolut Bank UAB\n01/02/2026;Top-up;50.00"),
     'Revolut',
     'Doit détecter Revolut'
+  );
+
+  assert.equal(
+    detectBankName("UBS Switzerland AG\n01.08.2026;Paiement;-50.00"),
+    'UBS',
+    'Doit détecter UBS'
+  );
+
+  assert.equal(
+    detectBankName("PostFinance E-Banking\n01.08.2026;Virement;-100.00"),
+    'PostFinance',
+    'Doit détecter PostFinance'
+  );
+
+  assert.equal(
+    detectBankName("BCV Banque Cantonale Vaudoise\n01.08.2026;Achat;-20.00"),
+    'BCV',
+    'Doit détecter BCV'
+  );
+
+  assert.equal(
+    detectBankName("Raiffeisen Schweiz\n01.08.2026;Achat;-30.00"),
+    'Raiffeisen',
+    'Doit détecter Raiffeisen'
+  );
+
+  assert.equal(
+    detectBankName("Neon Bank Account\n01.08.2026;Paiement TWINT;-15.00"),
+    'Neon',
+    'Doit détecter Neon'
+  );
+
+  assert.equal(
+    detectBankName("Yuh App Account\n01.08.2026;Paiement;-40.00"),
+    'Yuh',
+    'Doit détecter Yuh'
   );
 
   assert.equal(
@@ -1037,4 +1076,199 @@ test('14. FUSION ET COMPLÉMENTARITÉ : COÛT DE LA VIE ET FIXATION DU BUDGET DA
   assert.ok(carburantItem);
   const diffCarburant = carburantItem.amount - realSpentCarburant; // 120 - 65.50 = +54.50 € restant
   assert.equal(diffCarburant, 54.50, 'L écart budgétaire restant doit être de 54.50 €');
+});
+
+test('15. RELEVÉS BANCAIRES SUISSES : MULTI-DEVISES (CHF/EUR), NORMALISATION DATES & MONTANTS, LEXIQUE ÉCONOMIQUE HELVÉTIQUE', () => {
+  // 15.1: Détection multi-devises automatique (CHF vs EUR)
+  assert.equal(detectStatementCurrency('CHF'), 'CHF');
+  assert.equal(detectStatementCurrency('EUR'), 'EUR');
+  assert.equal(detectStatementCurrency('Compte courant UBS Switzerland - Devise: CHF'), 'CHF');
+  assert.equal(detectStatementCurrency('PostFinance Relevé de compte - IBAN CH93 0900 0000 1234 5678 9'), 'CHF');
+  assert.equal(detectStatementCurrency('BCV Banque Cantonale Vaudoise - Solde: 4\'500.00 CHF'), 'CHF');
+  assert.equal(detectStatementCurrency('Neon Bank - Monnaie du compte: CHF - IBAN CH38 0888 8000 1111 2222 3'), 'CHF');
+  assert.equal(detectStatementCurrency('Yuh Compte Personnel - TWINT et eBill disponibles'), 'CHF');
+  assert.equal(detectStatementCurrency('Raiffeisen Schweiz - Compte sociétaire CHF'), 'CHF');
+  
+  // Rétrocompatibilité stricte banques françaises : Même si un marchand frontalier ou mention Swype CHF est présent, reste EUR
+  assert.equal(detectStatementCurrency('Société Générale - Relevé de compte - IBAN FR76 3000 3000 1234 5678 9012 345'), 'EUR');
+  assert.equal(detectStatementCurrency('BoursoBank - Opération Swype CHF 15.00'), 'EUR');
+  assert.equal(detectStatementCurrency('Fortuneo Banque - 01/02/2026 - Carte x7791'), 'EUR');
+
+  // 15.2: Normalisation des montants suisses (parseBankAmount)
+  // Apostrophes de milliers standard (') et typographique (’), espaces et trailing minus (-)
+  assert.equal(parseBankAmount("1'450.50"), 1450.50);
+  assert.equal(parseBankAmount("1’450.50"), 1450.50);
+  assert.equal(parseBankAmount("-1'450.50"), -1450.50);
+  assert.equal(parseBankAmount("1'450.50-"), -1450.50, 'Doit gérer le signe négatif trailing en fin de montant');
+  assert.equal(parseBankAmount("1 250,00"), 1250.00);
+  assert.equal(parseBankAmount("1'250.00 CHF"), 1250.00);
+  assert.equal(parseBankAmount("350.25 DB"), -350.25, 'Suffixe DB comptable');
+  assert.equal(parseBankAmount("1'800.00 CR"), 1800.00, 'Suffixe CR comptable');
+
+  // 15.3: Normalisation des dates suisses (parseBankDate)
+  assert.equal(parseBankDate("24.08.2026"), '2026-08-24', 'Format suisse JJ.MM.AAAA avec points');
+  assert.equal(parseBankDate("2026.08.24"), '2026-08-24', 'Format suisse AAAA.MM.JJ avec points');
+  assert.equal(parseBankDate("24.08.26"), '2026-08-24', 'Format court JJ.MM.AA avec points');
+  assert.equal(parseBankDate("24/08/2026"), '2026-08-24', 'Format JJ/MM/AAAA');
+  assert.equal(parseBankDate("2026-08-24"), '2026-08-24', 'Format ISO YYYY-MM-DD');
+
+  // 15.4: Lexique économique et bancaire suisse (cleanMerchantDescription & classifyTransaction)
+  // Prévoyance 3e pilier 3a (VIAC, Finpension, Frankly) -> Épargne & Investissement
+  const viac = classifyTransaction("VIAC PILIER 3A VERSEMENT MENSUEL", -500.00);
+  assert.equal(viac.flowType, 'SAVINGS_TRANSFER');
+  assert.equal(viac.category, 'Épargne & Investissement');
+  assert.equal(cleanMerchantDescription("VIAC PILIER 3A VERSEMENT"), 'VIAC (Pilier 3a)');
+
+  // Assurance maladie LAMal (Helsana, Groupe Mutuel, CSS, Swica, Concordia, Sanitas, Visana, Assura) -> Charge Fixe Santé
+  const helsana = classifyTransaction("HELSANA ASSURANCES SA PRIME MENSUELLE LAMAL", -420.50);
+  assert.equal(helsana.flowType, 'FIXED_EXPENSE');
+  assert.equal(helsana.category, 'Santé');
+  assert.equal(helsana.isSubscription, true);
+
+  const groupeMutuel = classifyTransaction("GROUPE MUTUEL ASSURANCE MALADIE ET ACCIDENTS", -385.00);
+  assert.equal(groupeMutuel.flowType, 'FIXED_EXPENSE');
+  assert.equal(groupeMutuel.category, 'Santé');
+  assert.equal(groupeMutuel.isSubscription, true);
+
+  const css = classifyTransaction("CSS ASSURANCE MALADIE SA FACTURE NO 98765432", -410.00);
+  assert.equal(css.flowType, 'FIXED_EXPENSE');
+  assert.equal(css.category, 'Santé');
+  assert.equal(css.isSubscription, true);
+
+  // Redevance Serafe -> Charge Fixe Abonnements & Télécom
+  const serafe = classifyTransaction("SERAFE AG REDEVANCE RADIO TELEVISION 2026", -335.00);
+  assert.equal(serafe.flowType, 'FIXED_EXPENSE');
+  assert.equal(serafe.category, 'Abonnements & Télécom');
+  assert.equal(serafe.isSubscription, true);
+  assert.equal(cleanMerchantDescription("SERAFE AG REDEVANCE"), 'Serafe (Redevance Radio/TV)');
+
+  // Télécoms suisses (Swisscom, Sunrise, Salt, Wingo) -> Charge Fixe Abonnements & Télécom
+  const swisscom = classifyTransaction("SWISSCOM (SUISSE) SA FACTURE MENSUELLE", -89.90);
+  assert.equal(swisscom.flowType, 'FIXED_EXPENSE');
+  assert.equal(swisscom.category, 'Abonnements & Télécom');
+  assert.equal(swisscom.isSubscription, true);
+
+  const sunrise = classifyTransaction("SUNRISE GMBH FORFAIT MOBILE", -45.00);
+  assert.equal(sunrise.flowType, 'FIXED_EXPENSE');
+  assert.equal(sunrise.category, 'Abonnements & Télécom');
+  assert.equal(sunrise.isSubscription, true);
+
+  // Énergie suisse (SIG Genève, Romande Énergie, BKW) -> Logement & Énergie
+  const sig = classifyTransaction("SERVICES INDUSTRIELS DE GENEVE SIG ELECTRICITE", -120.00);
+  assert.equal(sig.flowType, 'FIXED_EXPENSE');
+  assert.equal(sig.category, 'Logement & Énergie');
+  assert.equal(sig.isSubscription, true);
+
+  // Régie immobilière suisse (Wincasa, Livit, Privera) -> Logement & Énergie
+  const wincasa = classifyTransaction("WINCASA AG LOYER APPARTEMENT ET CHARGES", -1850.00);
+  assert.equal(wincasa.flowType, 'FIXED_EXPENSE');
+  assert.equal(wincasa.category, 'Logement & Énergie');
+  assert.equal(wincasa.isSubscription, true);
+
+  // Transports suisses CFF / SBB : Pass Demi-tarif / AG en charge fixe, billets ponctuels en variable
+  const cffAbo = classifyTransaction("CFF SBB ABONNEMENT DEMI-TARIF 1 AN", -190.00);
+  assert.equal(cffAbo.flowType, 'FIXED_EXPENSE');
+  assert.equal(cffAbo.category, 'Transports & Carburant');
+  assert.equal(cffAbo.isSubscription, true);
+
+  const cffBillet = classifyTransaction("CFF SBB BILLET GENEVE-LAUSANNE", -22.40);
+  assert.equal(cffBillet.flowType, 'VARIABLE_EXPENSE');
+  assert.equal(cffBillet.category, 'Transports & Carburant');
+
+  // Supermarchés suisses (Coop, Migros, Denner, Volg, Landi) -> Alimentation & Courses
+  const coop = classifyTransaction("COOP SUPERMARCHE GENEVE", -68.40);
+  assert.equal(coop.flowType, 'VARIABLE_EXPENSE');
+  assert.equal(coop.category, 'Alimentation & Courses');
+
+  const migros = classifyTransaction("MIGROS GENEVE RIVE", -45.20);
+  assert.equal(migros.flowType, 'VARIABLE_EXPENSE');
+  assert.equal(migros.category, 'Alimentation & Courses');
+
+  const denner = classifyTransaction("DENNER SATELLITE", -28.90);
+  assert.equal(denner.flowType, 'VARIABLE_EXPENSE');
+  assert.equal(denner.category, 'Alimentation & Courses');
+
+  // Shopping suisse (Manor, Galaxus, Digitec, Brack.ch) -> Shopping & Maison
+  const galaxus = classifyTransaction("GALAXUS AG ZURICH", -149.00);
+  assert.equal(galaxus.flowType, 'VARIABLE_EXPENSE');
+  assert.equal(galaxus.category, 'Shopping & Maison');
+
+  const manor = classifyTransaction("MANOR LAUSANNE ACHAT RAYON MODE", -79.90);
+  assert.equal(manor.flowType, 'VARIABLE_EXPENSE');
+  assert.equal(manor.category, 'Shopping & Maison');
+
+  // TWINT P2P (entre particuliers) -> Virement Famille & Proches
+  const twintSent = classifyTransaction("TWINT P2P ALEXANDRE MULLER", -50.00);
+  assert.equal(twintSent.flowType, 'VARIABLE_EXPENSE');
+  assert.equal(twintSent.category, 'Virements Famille & Proches');
+
+  const twintReceived = classifyTransaction("TWINT P2P SOPHIE VAUCHER", 35.00);
+  assert.equal(twintReceived.flowType, 'INCOME');
+  assert.equal(twintReceived.category, 'Virement Reçu (Proches)');
+
+  // 15.5: Parsing complet d'un relevé bancaire suisse CSV (Format UBS / PostFinance avec devises CHF, apostrophes et dates avec points)
+  const swissCSV = `UBS Switzerland AG;Compte courant privé CHF;IBAN CH93 0023 0230 9876 5432 1;Devise: CHF
+Date;Description;Débit;Crédit
+01.08.2026;WINCASA AG LOYER MENSUEL;1'850.00;
+05.08.2026;HELSANA ASSURANCES SA PRIME LAMAL;420.50;
+10.08.2026;COOP SUPERMARCHE LAUSANNE;;-
+10.08.2026;COOP SUPERMARCHE LAUSANNE;132.80;
+12.08.2026;SWISSCOM SUISSE FORFAIT MOBILE;79.90;
+15.08.2026;SERAFE AG REDEVANCE;335.00;
+18.08.2026;VIAC PILIER 3A VERSEMENT;500.00;
+20.08.2026;TWINT P2P JULIEN DUPONT;;40.00
+25.08.2026;SALAIRE MENSUEL SOCIETE HORLOGERE;;6'450.00`;
+
+  const parsedSwiss = parseCSVBankStatement(swissCSV);
+  assert.equal(parsedSwiss.bankName, 'UBS');
+  assert.equal(parsedSwiss.currency, 'CHF');
+  assert.equal(parsedSwiss.transactions.length, 8, '8 transactions valides doivent être extraites (la ligne montant vide ignorée)');
+
+  // Vérification de la première transaction (Loyer Wincasa)
+  const tLoyer = parsedSwiss.transactions.find(t => t.rawLabel.includes('WINCASA'));
+  assert.ok(tLoyer);
+  assert.equal(tLoyer.date, '2026-08-01', 'Date 01.08.2026 convertie en 2026-08-01');
+  assert.equal(tLoyer.amount, -1850.00, "Montant 1'850.00 converti en -1850.00");
+  assert.equal(tLoyer.currency, 'CHF');
+  assert.equal(tLoyer.category, 'Logement & Énergie');
+  assert.equal(tLoyer.flowType, 'FIXED_EXPENSE');
+
+  // Vérification de l'assurance maladie LAMal
+  const tHelsana = parsedSwiss.transactions.find(t => t.rawLabel.includes('HELSANA'));
+  assert.ok(tHelsana);
+  assert.equal(tHelsana.amount, -420.50);
+  assert.equal(tHelsana.currency, 'CHF');
+  assert.equal(tHelsana.category, 'Santé');
+  assert.equal(tHelsana.isSubscription, true);
+
+  // Vérification de l'épargne 3e pilier VIAC
+  const tViac = parsedSwiss.transactions.find(t => t.rawLabel.includes('VIAC'));
+  assert.ok(tViac);
+  assert.equal(tViac.amount, -500.00);
+  assert.equal(tViac.currency, 'CHF');
+  assert.equal(tViac.flowType, 'SAVINGS_TRANSFER');
+  assert.equal(tViac.category, 'Épargne & Investissement');
+
+  // Vérification du virement TWINT reçu
+  const tTwint = parsedSwiss.transactions.find(t => t.rawLabel.includes('TWINT'));
+  assert.ok(tTwint);
+  assert.equal(tTwint.amount, 40.00);
+  assert.equal(tTwint.currency, 'CHF');
+  assert.equal(tTwint.flowType, 'INCOME');
+  assert.equal(tTwint.category, 'Virement Reçu (Proches)');
+
+  // Vérification du salaire
+  const tSalaire = parsedSwiss.transactions.find(t => t.rawLabel.includes('SALAIRE'));
+  assert.ok(tSalaire);
+  assert.equal(tSalaire.amount, 6450.00, "Montant 6'450.00 converti en +6450.00");
+  assert.equal(tSalaire.currency, 'CHF');
+  assert.equal(tSalaire.flowType, 'INCOME');
+  assert.equal(tSalaire.category, 'Salaire & Revenus');
+
+  // Vérification via extractCleanBankStatementRows
+  const cleanRows = extractCleanBankStatementRows(swissCSV);
+  assert.equal(cleanRows.length, 8);
+  assert.equal(cleanRows[0].currency, 'CHF');
+  assert.equal(cleanRows[0].date, '2026-08-01');
+  assert.equal(cleanRows[0].amount, -1850.00);
 });
