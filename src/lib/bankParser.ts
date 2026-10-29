@@ -5,6 +5,10 @@ export type FlowType = 'INCOME' | 'FIXED_EXPENSE' | 'VARIABLE_EXPENSE' | 'SAVING
 export interface BankTransaction {
   id: string;
   date: string; // YYYY-MM-DD
+  /**
+   * Libellé propre et standardisé du commerçant / tiers (ex: "Intermarché", "Orange Fibre", "France Travail").
+   * Dérivé exclusivement depuis le libellé complet brut (colonne F).
+   */
   description: string;
   amount: number;
   flowType: FlowType;
@@ -16,7 +20,15 @@ export interface BankTransaction {
   confidence?: 'high' | 'medium' | 'low';
   status?: 'Reconciled' | 'Pending' | 'Internal Transfer';
   monthKey?: string;
+  /**
+   * Libellé complet brut d'origine issu directement et exclusivement de la colonne F (« Libellé complet » pour SG).
+   * Contient l'intégralité des mentions SEPA/CB/VIR, identifiants émetteurs et références,
+   * sans aucune pollution par les colonnes G (« Catégorie ») ou H (« Sous-Catégorie »).
+   */
   rawLabel?: string;
+  /**
+   * Nom commercial nettoyé équivalent à description.
+   */
   cleanLabel?: string;
   [key: string]: any;
 }
@@ -77,23 +89,21 @@ export function detectBankName(csvContent: string): string {
 }
 
 /**
- * Nettoie et assainit le libellé brut d'une ligne de relevé bancaire (élimine les points superflus, double espaces et codes parasites)
+ * Nettoie et assainit le libellé brut d'une ligne de relevé bancaire.
+ * Normalise les espaces insécables et ponctuations parasites sans JAMAIS tronquer
+ * les mentions critiques de la colonne F (SEPA, CB, VIR, mandat, contrat, identifiant émetteur).
  */
 export function sanitizeRawBankLabel(raw: string): string {
   if (!raw) return '';
   let s = String(raw).trim();
   // Normalisation des espaces insécables et caractères d'espacement bizarres
   s = s.replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, ' ');
+  // Supprime les guillemets d'encadrement CSV éventuels
+  s = s.replace(/^["']+|["']+$/g, '');
   // Supprime les suites de points (ex: "...", "..", "....")
   s = s.replace(/\.{2,}/g, ' ');
-  // Élimine les mentions de fin de ligne parasites
-  s = s.replace(/\s+COMMERCE ELECTRONIQUE.*$/i, '');
-  s = s.replace(/\s+NOTRE REF:\s*.*$/i, '');
-  s = s.replace(/\s+REF:\s*.*$/i, '');
-  s = s.replace(/\s+MANDAT\s*.*$/i, '');
-  s = s.replace(/\s+ICS:\s*.*$/i, '');
-  // Supprime la ponctuation traînante ou isolée en début/fin
-  s = s.replace(/^[\s"'\-.,;:/]+|[\s"'\-.,;:/]+$/g, '');
+  // Supprime la ponctuation traînante ou isolée en tout début/fin
+  s = s.replace(/^[\s\-.,;:/]+|[\s\-.,;:/]+$/g, '');
   s = s.replace(/\s{2,}/g, ' ');
   return s.trim();
 }
@@ -1100,6 +1110,7 @@ export function isBankCategoryHeader(h: string): boolean {
     norm.includes('cat') || // categorie, category, categories, sous-cat, etc.
     norm.includes('rubrique') ||
     norm.includes('classif') ||
+    norm.includes('classement') ||
     norm.includes('famille') ||
     norm.includes('groupe') ||
     norm.includes('nature') ||
@@ -1113,6 +1124,8 @@ export function isBankCategoryHeader(h: string): boolean {
     norm.includes('compte') ||
     norm.includes('iban') ||
     norm.includes('bic') ||
+    norm.includes('sous-classe') ||
+    norm.includes('sous classe') ||
     norm === 'type' ||
     norm.startsWith('type ') ||
     norm.includes('type op') ||
@@ -1146,8 +1159,69 @@ export function isBankDescriptionHeader(h: string): boolean {
 }
 
 /**
- * Filtre et supprime TOUTES les colonnes inutiles ou trompeuses de la banque (y compris les catégories bancaires fausses).
- * Ne conserve strictement que 3 informations fiables : Date, Libellé de compte brut, et Montant.
+ * Recherche prioritaire et robuste de la colonne F (« Libellé complet »).
+ * Pour les relevés Société Générale (SG), le CSV standard est structuré sur 8 colonnes :
+ * - Col A (index 0) : Date de l'opération
+ * - Col B (index 1) : Date de valeur
+ * - Col C (index 2) : Montant
+ * - Col D (index 3) : Devise
+ * - Col E (index 4) : Libellé simplifié / court
+ * - Col F (index 5) : Libellé complet (mentions complètes SEPA/CB/VIR, marchand, références)
+ * - Col G (index 6) : Catégorie banque (STRICTEMENT EXCLUE)
+ * - Col H (index 7) : Sous-Catégorie banque (STRICTEMENT EXCLUE)
+ * 
+ * Cette fonction retourne l'index de la colonne F :
+ * 1) En priorité par intitulé d'en-tête explicite (« Libellé complet », « Détail », etc.)
+ * 2) En cas de fichier Société Générale ou format 8 colonnes, par détection positionnelle sur la colonne F (index 5)
+ */
+export function findFullDescriptionColumnIndex(
+  headers: string[],
+  isSG: boolean = false,
+  dateColIndices: Set<number> = new Set(),
+  amountIndices: Set<number> = new Set()
+): number {
+  // 1. Détection prioritaire par en-tête explicite
+  const explicitIdx = headers.findIndex((h, idx) => {
+    if (dateColIndices.has(idx) || amountIndices.has(idx)) return false;
+    if (isBankCategoryHeader(h)) return false;
+    const norm = normalizeBankHeader(h);
+    return (
+      (norm.includes('libelle') && (
+        norm.includes('complet') ||
+        norm.includes('detail') ||
+        norm.includes('complementaire') ||
+        norm.includes('enrichi') ||
+        norm.includes('etendu') ||
+        norm.includes('long')
+      )) ||
+      (norm.includes('texte') && norm.includes('complet')) ||
+      (norm.includes('information') && (norm.includes('complementaire') || norm.includes('detail'))) ||
+      (norm.includes('detail') && (norm.includes('operation') || norm.includes('ecriture'))) ||
+      norm === 'libelle complet' ||
+      norm === 'libelle detaille'
+    );
+  });
+  if (explicitIdx >= 0) return explicitIdx;
+
+  // 2. Détection positionnelle sur les fichiers Société Générale (SG) ou 8 colonnes
+  if (isSG || headers.length >= 8) {
+    if (
+      headers.length > 5 &&
+      !dateColIndices.has(5) &&
+      !amountIndices.has(5) &&
+      !isBankCategoryHeader(headers[5])
+    ) {
+      return 5;
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * Filtre et supprime TOUTES les colonnes inutiles ou trompeuses de la banque (y compris les catégories bancaires fausses G et H).
+ * Isole directement et exclusivement la colonne F (« Libellé complet ») pour Société Générale.
+ * Ne conserve strictement que 3 informations fiables : Date, Libellé de compte brut (Colonne F), et Montant.
  */
 export function extractCleanBankStatementRows(csvContent: string): CleanBankStatementRow[] {
   const parsed = Papa.parse(csvContent.trim(), {
@@ -1157,6 +1231,11 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
   const rows = (parsed.data as string[][]) || [];
   if (rows.length < 2) return [];
 
+  // Détection de la banque
+  const detectedBank = detectBankName(csvContent);
+  const isSG = detectedBank === 'Société Générale' ||
+    /societe generale|société générale|logitel|gdb_|sogessur|\bsg\b/i.test(csvContent);
+
   // Détection de la ligne d'en-tête
   let headerLineIndex = 0;
   let maxScore = -1;
@@ -1165,7 +1244,7 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
     let score = 0;
     if (rowJoined.includes('date')) score += 3;
     if (rowJoined.includes('libelle') || rowJoined.includes('desc') || rowJoined.includes('operation')) score += 3;
-    if (rowJoined.includes('montant') || rowJoined.includes('debit') || rowJoined.includes('credit')) score += 3;
+    if (rowJoined.includes('montant') || rowJoined.includes('amount') || rowJoined.includes('debit') || rowJoined.includes('credit')) score += 3;
     if (score > maxScore) {
       maxScore = score;
       headerLineIndex = i;
@@ -1187,29 +1266,42 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
   );
   if (dateIdx === -1) dateIdx = headers.findIndex(h => h.includes('date'));
 
-  // Détection des colonnes de libellés / descriptions (en excluant formellement toute catégorie ou métadonnée)
+  const amountIdx = headers.findIndex(h => h.includes('montant') || h.includes('amount') || (h.includes('valeur') && !h.includes('date')));
+  const debitIdx = headers.findIndex(h => h.includes('debit'));
+  const creditIdx = headers.findIndex(h => h.includes('credit'));
+  const amountColIndices = new Set<number>();
+  if (amountIdx >= 0) amountColIndices.add(amountIdx);
+  if (debitIdx >= 0) amountColIndices.add(debitIdx);
+  if (creditIdx >= 0) amountColIndices.add(creditIdx);
+
+  // Recherche prioritaire de la colonne F (« Libellé complet »)
+  const fullDescColIdx = findFullDescriptionColumnIndex(headers, isSG, dateColIndices, amountColIndices);
+
+  // Détection des autres colonnes de libellés / descriptions pour rétrocompatibilité
   const descColIndices: number[] = [];
   headers.forEach((h, idx) => {
     if (dateColIndices.has(idx)) return;
+    if (amountColIndices.has(idx)) return;
     if (isBankCategoryHeader(h)) return; // EXCLUSION STRICTE DES CATÉGORIES BANCAIRES
+    if (isSG && (idx === 6 || idx === 7)) return; // Colonnes G et H SG STRICTEMENT IGNORÉES
     if (isBankDescriptionHeader(h)) {
       descColIndices.push(idx);
     }
   });
 
-  // Si plusieurs colonnes descriptives existent (ex: Libellé + Détail de l'écriture), on les ordonne
-  // en plaçant les détails les plus complets
-  descColIndices.sort((a, b) => {
-    const ha = headers[a];
-    const hb = headers[b];
-    const scoreA = (ha.includes('detail') || ha.includes('complet') || ha.includes('complementaire') || ha.includes('enrichi')) ? 2 : 1;
-    const scoreB = (hb.includes('detail') || hb.includes('complet') || hb.includes('complementaire') || hb.includes('enrichi')) ? 2 : 1;
-    return scoreB - scoreA;
-  });
-
-  const amountIdx = headers.findIndex(h => h.includes('montant') || (h.includes('valeur') && !h.includes('date')));
-  const debitIdx = headers.findIndex(h => h.includes('debit'));
-  const creditIdx = headers.findIndex(h => h.includes('credit'));
+  if (fullDescColIdx >= 0) {
+    const others = descColIndices.filter(idx => idx !== fullDescColIdx);
+    descColIndices.length = 0;
+    descColIndices.push(fullDescColIdx, ...others);
+  } else {
+    descColIndices.sort((a, b) => {
+      const ha = headers[a];
+      const hb = headers[b];
+      const scoreA = (ha.includes('detail') || ha.includes('complet') || ha.includes('complementaire') || ha.includes('enrichi')) ? 2 : 1;
+      const scoreB = (hb.includes('detail') || hb.includes('complet') || hb.includes('complementaire') || hb.includes('enrichi')) ? 2 : 1;
+      return scoreB - scoreA;
+    });
+  }
 
   const cleanRows: CleanBankStatementRow[] = [];
   const seenRowKeys = new Set<string>();
@@ -1232,29 +1324,24 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
     }
     if (!formattedDate) continue;
 
-    // 2. Libellé brut d'origine (capturé UNIQUEMENT depuis les vraies colonnes de compte, sans colonne catégorie)
+    // 2. Libellé brut d'origine :
+    // RÈGLE ABSOLUE D'AUDIT FINANCIER :
+    // Si la colonne F (« Libellé complet ») est présente (ou fichier SG), mapper directement et exclusivement sur la colonne F !
+    // Aucune concaténation avec les colonnes courtes (colonne E) et exclusion totale des colonnes G et H.
     let rawLabel = '';
-    if (descColIndices.length > 0) {
-      const parts: string[] = [];
-      for (const idx of descColIndices) {
-        const val = String(cols[idx] || '').trim();
-        if (
-          val &&
-          val.length > 1 &&
-          !parts.some(p => p.toLowerCase().includes(val.toLowerCase()) || val.toLowerCase().includes(p.toLowerCase()))
-        ) {
-          parts.push(val);
-        }
-      }
-      rawLabel = parts.join(' ').trim();
+    if (fullDescColIdx >= 0 && cols[fullDescColIdx] && String(cols[fullDescColIdx]).trim()) {
+      rawLabel = String(cols[fullDescColIdx]).trim();
+    } else if (descColIndices.length > 0) {
+      rawLabel = String(cols[descColIndices[0]] || '').trim();
     }
 
     // Fallback de sécurité : chercher une cellule textuelle en ignorant STRICTEMENT toute colonne catégorie
     if (!rawLabel) {
       for (let c = 0; c < cols.length; c++) {
         if (dateColIndices.has(c)) continue;
-        if (c === amountIdx || c === debitIdx || c === creditIdx) continue;
+        if (amountColIndices.has(c)) continue;
         if (isBankCategoryHeader(headers[c])) continue; // NE JAMAIS PRENDRE UNE COLONNE CATÉGORIE
+        if (isSG && (c === 6 || c === 7)) continue; // Colonnes G et H SG STRICTEMENT IGNORÉES
         const val = String(cols[c] || '').trim();
         if (
           val.length > 2 && 
@@ -1294,7 +1381,7 @@ export function extractCleanBankStatementRows(csvContent: string): CleanBankStat
     }
     seenRowKeys.add(rowKey);
 
-    // Conserve UNIQUEMENT Date, Libellé brut assaini, Montant
+    // Conserve UNIQUEMENT Date, Libellé brut assaini (Colonne F), Montant
     cleanRows.push({
       index: itemIndex++,
       date: formattedDate,
@@ -1328,7 +1415,7 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
     let score = 0;
     if (rowJoined.includes('date')) score += 3;
     if (rowJoined.includes('libelle') || rowJoined.includes('desc') || rowJoined.includes('operation')) score += 3;
-    if (rowJoined.includes('montant') || rowJoined.includes('debit') || rowJoined.includes('credit')) score += 3;
+    if (rowJoined.includes('montant') || rowJoined.includes('amount') || rowJoined.includes('debit') || rowJoined.includes('credit')) score += 3;
     if (score > maxScore) {
       maxScore = score;
       headerLineIndex = i;
@@ -1357,40 +1444,38 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
     dateIdx = headers.findIndex(h => h.includes('date'));
   }
   
-  // 3. RÈGLE CRITIQUE UTILISATEUR :
-  // Priorité absolue au « Libellé complet » pour capturer le vrai marchand
-  // Et NE JAMAIS se focaliser sur « Catégorie » ou « Sous-Catégorie » de la banque
-  let fullDescIdx = headers.findIndex(h => {
-    return (
-      (h.includes('libelle') && h.includes('complet')) ||
-      (h.includes('libelle') && h.includes('detail')) ||
-      (h.includes('libelle') && h.includes('complementaire')) ||
-      (h.includes('libelle') && h.includes('enrichi')) ||
-      (h.includes('libelle') && h.includes('etendu')) ||
-      (h.includes('libelle') && h.includes('long')) ||
-      (h.includes('texte') && h.includes('complet')) ||
-      (h.includes('information') && h.includes('complementaire')) ||
-      (h.includes('detail') && h.includes('operation'))
-    );
-  });
+  // 3. RÈGLE CRITIQUE UTILISATEUR (SOCIÉTÉ GÉNÉRALE & AUDIT STRICT) :
+  // Priorité absolue au « Libellé complet » (colonne F / index 5) pour capturer le vrai marchand et les mentions SEPA/CB/VIR
+  // Et IGNORER TOTALEMENT les colonnes G (« Catégorie ») et H (« Sous-Catégorie »)
+  const isSG = bankName === 'Société Générale' ||
+    /societe generale|société générale|logitel|gdb_|sogessur|\bsg\b/i.test(csvContent);
+
+  // Montant : EXCLURE STRICTEMENT 'date valeur' (qui contient 'valeur' mais est une date !)
+  const amountIdx = headers.findIndex(h => 
+    h.includes('montant') || 
+    h.includes('amount') || 
+    (h.includes('valeur') && !h.includes('date'))
+  );
+  const debitIdx = headers.findIndex(h => h.includes('debit'));
+  const creditIdx = headers.findIndex(h => h.includes('credit'));
+  const amountColIndices = new Set<number>();
+  if (amountIdx >= 0) amountColIndices.add(amountIdx);
+  if (debitIdx >= 0) amountColIndices.add(debitIdx);
+  if (creditIdx >= 0) amountColIndices.add(creditIdx);
+
+  const fullDescIdx = findFullDescriptionColumnIndex(headers, isSG, dateColIndices, amountColIndices);
 
   // Fallback description index - en excluant rigoureusement toute colonne Date ou Catégorie / Sous-Catégorie
   let fallbackDescIdx = -1;
   if (fullDescIdx === -1) {
     fallbackDescIdx = headers.findIndex((h, idx) => {
-      if (dateColIndices.has(idx)) return false; // JAMAIS UNE COLONNE DATE
-      if (isBankCategoryHeader(h)) return false; // STRICTEMENT IGNORÉ (Catégories bancaires fausses)
+      if (dateColIndices.has(idx)) return false;
+      if (amountColIndices.has(idx)) return false;
+      if (isBankCategoryHeader(h)) return false;
+      if (isSG && (idx === 6 || idx === 7)) return false; // Colonnes G et H SG formellement exclues
       return isBankDescriptionHeader(h);
     });
   }
-
-  // Montant : EXCLURE STRICTEMENT 'date valeur' (qui contient 'valeur' mais est une date !)
-  const amountIdx = headers.findIndex(h => 
-    h.includes('montant') || 
-    (h.includes('valeur') && !h.includes('date'))
-  );
-  const debitIdx = headers.findIndex(h => h.includes('debit'));
-  const creditIdx = headers.findIndex(h => h.includes('credit'));
 
   const results: BankTransaction[] = [];
 
@@ -1410,7 +1495,7 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
       }
     }
 
-    // 2. Sélection stricte du libellé complet (en ignorant totalement Catégorie & Sous-Catégorie et colonnes de Date)
+    // 2. Sélection directe et exclusive du libellé complet (Colonne F pour SG, sans aucune pollution par les colonnes G et H)
     let rawDescription = '';
     if (fullDescIdx >= 0 && cols[fullDescIdx] && String(cols[fullDescIdx]).trim()) {
       rawDescription = String(cols[fullDescIdx]).trim();
@@ -1419,7 +1504,8 @@ export function parseCSVBankStatement(csvContent: string): { bankName: string; t
     } else {
       for (let c = 0; c < cols.length; c++) {
         if (dateColIndices.has(c)) continue; // STRICTEMENT IGNORER LES DATES
-        if (c === amountIdx || c === debitIdx || c === creditIdx) continue;
+        if (amountColIndices.has(c)) continue;
+        if (isSG && (c === 6 || c === 7)) continue; // STRICTEMENT IGNORER LES COLONNES G ET H SG
         const hName = headers[c] || '';
         if (isBankCategoryHeader(hName)) continue; // STRICTEMENT IGNORÉ (Catégories bancaires fausses)
         const val = String(cols[c] || '').trim();

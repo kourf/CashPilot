@@ -289,10 +289,12 @@ MISSION :
 Analyse et catégorise avec une haute précision ces transactions bancaires brutes (Date, Libellé brut, Montant) :
 ${JSON.stringify(chunk)}
 
-RÈGLES COMPTABLES ET DE CATÉGORISATION STRICTES :
-1. Base-toi EXCLUSIVEMENT sur le libellé brut "rawLabel" (nom de l'opération / du compte) et le montant "amount". Ne te fie à AUCUNE catégorie bancaire externe préexistante (les catégories de banques étant fausses ou vagues).
+RÈGLES COMPTABLES ET D'AUDIT FINANCIER STRICTES :
+1. SOURCE UNIQUE ET EXCLUSIVE (COLONNE F - LIBELLÉ COMPLET) :
+   Le champ "rawLabel" contient le libellé complet brut de l'opération (issu directement et exclusivement de la colonne F du relevé bancaire, ex: Société Générale). Il contient l'ensemble des mentions critiques (type de flux SEPA/CB/VIR, identifiant émetteur, libellé commercial réel, références de contrat ou de mandat).
+   Base-toi EXCLUSIVEMENT sur ce "rawLabel" et sur le montant "amount". Ne te fie à AUCUNE catégorie bancaire externe préexistante (les catégories fournies par les banques étant fréquemment vagues ou erronées).
 2. merchantName : Nom réel, nettoyé et standardisé du commerçant, enseigne ou organisme (sans aucun code technique bancaire, numéro de carte, date ou ville).
-   Exemples : "Carrefour", "TotalEnergies", "Free Mobile", "Netflix", "Pharmacie", "McDonald's", "SNCF", "CAF", "EDF".
+   Exemples : "Carrefour", "TotalEnergies", "Free Mobile", "Netflix", "Pharmacie", "McDonald's", "SNCF", "CAF", "EDF", "France Travail".
 3. category : DISTINGUE CLAIREMENT chaque opération en lui assignant la catégorie précise la plus adaptée parmi la liste officielle suivante (STRICTEMENT l'une d'elles) :
    - "Alimentation & Courses" : supermarchés, hypermarchés, épiceries, boulangeries, boucheries (Carrefour, Leclerc, Intermarché, Lidl, Aldi, Auchan, Monoprix, Picard, etc.)
    - "Transports & Carburant" : stations essence, carburant, péages, parkings, transports, train, taxis, Uber (Total, BP, Shell, Esso, Vinci, APRR, SNCF, RATP, Uber, Bolt, etc.)
@@ -311,7 +313,7 @@ RÈGLES COMPTABLES ET DE CATÉGORISATION STRICTES :
    - "Aides & Allocations" : CAF, France Travail / Pôle Emploi, indemnités, sécurité sociale
    - "Épargne & Investissement" : virements vers livrets (Livret A, LDDS, PEA, assurance-vie)
    - "Autre" : uniquement si totalement impossible à déterminer
-4. isSubscription : VRAI (true) uniquement pour les abonnements ou prélèvements récurrents mensuels (télécom, box, streaming, assurances, énergie, loyer, salle de sport). FAUX (false) pour les achats par carte ou paiements ponctuels.
+4. isSubscription : VRAI (true) uniquement pour les abonnements ou prélèvements récurrents mensuels (télécom, box, streaming, assurances, énergie, loyer, salle de sport, mentions PRLV, PRELEVEMENT, ECHEANCE, COTISATION). FAUX (false) pour les achats par carte ou paiements ponctuels.
 
 Renvoie UNIQUEMENT un tableau JSON d'objets :
 [

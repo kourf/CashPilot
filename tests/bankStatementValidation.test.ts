@@ -5,6 +5,9 @@ import assert from 'node:assert/strict';
 import { 
   detectBankName,
   extractCleanBankStatementRows,
+  parseCSVBankStatement,
+  findFullDescriptionColumnIndex,
+  cleanMerchantDescription,
   isBankCategoryHeader,
   isBankDescriptionHeader,
   classifyTransaction,
@@ -253,6 +256,121 @@ test('6. EXCLUSION STRICTE DES COLONNES CATÉGORIES DU RB LORS DE L\'IMPORT CSV'
   assert.equal(rowsC.length, 1);
   assert.match(rowsC[0].rawLabel, /PHARMACIE DE LA GARE/);
   assert.doesNotMatch(rowsC[0].rawLabel, /Santé & Prévoyance/);
+});
+
+test('6b. RELEVÉS SOCIÉTÉ GÉNÉRALE (SG) : MAPPING EXCLUSIF SUR COLONNE F (« LIBELLÉ COMPLET ») ET IGNORANCE TOTALE DES COLONNES G ET H', () => {
+  // Test A : Format standard Société Générale (8 colonnes avec intitulés explicites)
+  // Col A: Date | Col B: Date valeur | Col C: Montant | Col D: Devise | Col E: Libellé | Col F: Libellé complet | Col G: Catégorie | Col H: Sous-catégorie
+  const sgCsvStandard = `Date opération;Date valeur;Montant;Devise;Libellé;Libellé complet;Catégorie;Sous-catégorie
+02/01/2026;02/01/2026;-45,20;EUR;PAIEMENT CARTE;PAIEMENT PAR CARTE DU 02/01/2026 INTERMARCHE GAILLARD CB*5432;Vie quotidienne;Alimentation
+05/01/2026;05/01/2026;-89,50;EUR;PRELEVEMENT;PRLV SEPA TOTALENERGIES ELEC DE: TOTALENERGIES ID: FR123456 REF: 987654 MANDAT: 123;Habitat;Energie
+10/01/2026;10/01/2026;-10,99;EUR;PRELEVEMENT;PRLV SEPA GOOGLE SERVICES DE: GOOGLE ONE REF: 456;Divers;Services
+15/01/2026;15/01/2026;-34,90;EUR;PRELEVEMENT;PRLV SEPA ORANGE FIBRE REF: 554433;Loisirs;Internet
+18/01/2026;18/01/2026;-8,20;EUR;COTISATION;COTISATION SOBRIO DE: SOCIETE GENERALE;Frais;Tenue compte
+25/01/2026;25/01/2026;2450,00;EUR;VIREMENT;VIR RECU LOGITEL DE: FRANCE TRAVAIL REF: 78910 MOTIF: ALLOCATIONS;Ressources;Prestations`;
+
+  // 1. Vérification de l'extraction des lignes via extractCleanBankStatementRows
+  const rows = extractCleanBankStatementRows(sgCsvStandard);
+  assert.equal(rows.length, 6, 'Doit extraire 6 opérations valides');
+
+  // Opération 1 : Intermarché
+  // Le rawLabel doit être DIRECTEMENT et EXCLUSIVEMENT la colonne F
+  assert.equal(rows[0].rawLabel, 'PAIEMENT PAR CARTE DU 02/01/2026 INTERMARCHE GAILLARD CB*5432');
+  assert.doesNotMatch(rows[0].rawLabel, /Vie quotidienne|Alimentation/, 'Ne doit contenir aucune mention des colonnes G et H');
+  assert.equal(rows[0].amount, -45.20);
+  assert.equal(rows[0].date, '2026-01-02');
+  const merchant1 = cleanMerchantDescription(rows[0].rawLabel);
+  assert.match(merchant1, /Intermarché Gaillard|Intermarche Gaillard/i);
+  const class1 = classifyTransaction(rows[0].rawLabel, rows[0].amount);
+  assert.equal(class1.category, 'Alimentation & Courses');
+  assert.equal(class1.flowType, 'VARIABLE_EXPENSE');
+  assert.equal(class1.isSubscription, false);
+
+  // Opération 2 : TotalEnergies (Abonnement / Charge fixe détectée via PRLV SEPA et mandat)
+  assert.equal(rows[1].rawLabel, 'PRLV SEPA TOTALENERGIES ELEC DE: TOTALENERGIES ID: FR123456 REF: 987654 MANDAT: 123');
+  assert.doesNotMatch(rows[1].rawLabel, /Habitat|Energie/);
+  assert.equal(rows[1].amount, -89.50);
+  const merchant2 = cleanMerchantDescription(rows[1].rawLabel);
+  assert.equal(merchant2, 'TotalEnergies');
+  const class2 = classifyTransaction(rows[1].rawLabel, rows[1].amount);
+  assert.equal(class2.category, 'Logement & Énergie');
+  assert.equal(class2.flowType, 'FIXED_EXPENSE');
+  assert.equal(class2.isSubscription, true, 'PRLV SEPA TotalEnergies doit être reconnu comme abonnement fixe');
+
+  // Opération 3 : Google One
+  assert.equal(rows[2].rawLabel, 'PRLV SEPA GOOGLE SERVICES DE: GOOGLE ONE REF: 456');
+  assert.doesNotMatch(rows[2].rawLabel, /Divers|Services/);
+  const class3 = classifyTransaction(rows[2].rawLabel, rows[2].amount);
+  assert.equal(class3.category, 'Abonnements & Télécom');
+  assert.equal(class3.flowType, 'FIXED_EXPENSE');
+  assert.equal(class3.isSubscription, true);
+
+  // Opération 4 : Orange Fibre
+  assert.equal(rows[3].rawLabel, 'PRLV SEPA ORANGE FIBRE REF: 554433');
+  const merchant4 = cleanMerchantDescription(rows[3].rawLabel);
+  assert.equal(merchant4, 'Orange Fibre');
+  const class4 = classifyTransaction(rows[3].rawLabel, rows[3].amount);
+  assert.equal(class4.category, 'Abonnements & Télécom');
+  assert.equal(class4.flowType, 'FIXED_EXPENSE');
+  assert.equal(class4.isSubscription, true);
+
+  // Opération 5 : Cotisation Sobrio (SG)
+  assert.equal(rows[4].rawLabel, 'COTISATION SOBRIO DE: SOCIETE GENERALE');
+  const merchant5 = cleanMerchantDescription(rows[4].rawLabel);
+  assert.equal(merchant5, 'Cotisation Sobrio (Société Générale)');
+  const class5 = classifyTransaction(rows[4].rawLabel, rows[4].amount);
+  assert.equal(class5.category, 'Frais bancaires');
+  assert.equal(class5.flowType, 'FIXED_EXPENSE');
+
+  // Opération 6 : France Travail (Revenu positif)
+  assert.equal(rows[5].rawLabel, 'VIR RECU LOGITEL DE: FRANCE TRAVAIL REF: 78910 MOTIF: ALLOCATIONS');
+  assert.equal(rows[5].amount, 2450.00);
+  const merchant6 = cleanMerchantDescription(rows[5].rawLabel);
+  assert.equal(merchant6, 'France Travail');
+  const class6 = classifyTransaction(rows[5].rawLabel, rows[5].amount);
+  assert.equal(class6.category, 'Aides & Allocations');
+  assert.equal(class6.flowType, 'INCOME');
+
+  // 2. Vérification via parseCSVBankStatement
+  const parseResult = parseCSVBankStatement(sgCsvStandard);
+  assert.equal(parseResult.bankName, 'Société Générale');
+  assert.equal(parseResult.transactions.length, 6);
+  assert.equal(parseResult.transactions[0].rawLabel, 'PAIEMENT PAR CARTE DU 02/01/2026 INTERMARCHE GAILLARD CB*5432');
+  assert.match(parseResult.transactions[0].description, /Intermarché Gaillard|Intermarche Gaillard/i);
+  assert.doesNotMatch(parseResult.transactions[0].rawLabel!, /Vie quotidienne|Alimentation/);
+  assert.equal(parseResult.transactions[1].rawLabel, 'PRLV SEPA TOTALENERGIES ELEC DE: TOTALENERGIES ID: FR123456 REF: 987654 MANDAT: 123');
+  assert.equal(parseResult.transactions[1].isSubscription, true);
+
+  // Test B : SG détecté positionnellement via en-tête Société Générale et index 5 (colonne F)
+  const sgPositionalCsv = `Société Générale - Extrait de compte\nDate;Date valeur;Montant;Devise;Libellé simpl;Détail complet;Cat;SousCat
+12/02/2026;12/02/2026;-19,99;EUR;PRLV;PRLV SEPA FREE MOBILE REF 9988;Téléphonie;Mobile
+14/02/2026;14/02/2026;-55,00;EUR;ACHAT CB;PAIEMENT TOTAL RELAIS DU MONT CB;Carburant;Essence`;
+
+  const rowsPos = extractCleanBankStatementRows(sgPositionalCsv);
+  assert.equal(rowsPos.length, 2);
+  assert.equal(rowsPos[0].rawLabel, 'PRLV SEPA FREE MOBILE REF 9988');
+  assert.doesNotMatch(rowsPos[0].rawLabel, /Téléphonie|Mobile/);
+  assert.equal(rowsPos[1].rawLabel, 'PAIEMENT TOTAL RELAIS DU MONT CB');
+  assert.doesNotMatch(rowsPos[1].rawLabel, /Carburant|Essence/);
+
+  // Test C : Rétrocompatibilité avec les autres banques
+  // Format Fortuneo (4 colonnes)
+  const fortuneoCsv = `Date operation;Date valeur;Libelle;Montant
+01/02/2026;01/02/2026;CARTE CARREFOUR MARKET;-32.10
+02/02/2026;02/02/2026;VIR SEPA SALAIRE EMPLOYEUR;2800.00`;
+  const rowsFortuneo = extractCleanBankStatementRows(fortuneoCsv);
+  assert.equal(rowsFortuneo.length, 2);
+  assert.equal(rowsFortuneo[0].rawLabel, 'CARTE CARREFOUR MARKET');
+  assert.equal(rowsFortuneo[1].rawLabel, 'VIR SEPA SALAIRE EMPLOYEUR');
+
+  // Format Revolut / standard 3 colonnes
+  const stdCsv = `Date;Description;Amount
+2026-02-05;MCDONALDS;-15.50
+2026-02-06;NETFLIX;-17.99`;
+  const rowsStd = extractCleanBankStatementRows(stdCsv);
+  assert.equal(rowsStd.length, 2);
+  assert.equal(rowsStd[0].rawLabel, 'MCDONALDS');
+  assert.equal(rowsStd[1].rawLabel, 'NETFLIX');
 });
 
 test('7. DISTINCTION PRÉCISE ET GRANULAIRE DES CATÉGORIES BASÉE EXCLUSIVEMENT SUR LE LIBELLÉ', () => {
