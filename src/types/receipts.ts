@@ -67,6 +67,15 @@ export interface ReceiptItem {
   formatExact?: string; // Format / contenance exacte lue sur le ticket (ex: "510g")
   marque?: string; // Alias vers brand
   nomGenerique?: string; // Alias vers normalizedName
+
+  // --- NOUVEAUX CHAMPS PROMOTIONS & REMISES SPÉCIFIQUES ---
+  initialPrice?: number; // Prix brut de base catalogue avant remise (ex: 11.50 €)
+  discountAmount?: number; // Montant de la remise spécifique sur l'article (ex: 2.30 €)
+  discountRate?: number; // Pourcentage de remise constaté ou calculé (ex: 20%)
+  isPromo?: boolean; // VRAI si l'article a bénéficié d'une promo/remise immédiate
+  discountType?: string; // Libellé/motif (ex: "Remise immédiate", "Avantage carte", "Date courte", "Promo lot")
+  initialUnitPrice?: number; // Prix unitaire de référence catalogue hors promo (€/kg ou €/L)
+  netUnitPrice?: number; // Prix unitaire net remisé (€/kg ou €/L)
 }
 
 /**
@@ -110,6 +119,12 @@ export interface StorePriceDetail {
   quantity: number;
   rawName: string;
   unit: string;
+  isPromo?: boolean;
+  discountAmount?: number;
+  discountRate?: number;
+  discountType?: string;
+  initialUnitPrice?: number;
+  initialPrice?: number;
 }
 
 export type ProductComparisonStatus = 'UNIQUE' | 'COMPARABLE';
@@ -277,6 +292,9 @@ export interface StandardizedProductDoc {
     prix_paye: number;
     quantite: number;
     receiptId: string;
+    is_promo?: boolean;
+    remise?: number;
+    prix_base_unitaire?: number;
   }>;
 
   meilleur_magasin?: {
@@ -311,6 +329,12 @@ export interface StoreOfferDetail {
   magasin_id?: string; // ID physique (ex: "super_u_etrembieres")
   receiptId?: string; // ID du ticket source
   rawName?: string; // Nom brut sur le ticket
+  is_promo?: boolean; // Indicateur promo active
+  remise?: number; // Montant de la remise produit (€)
+  taux_remise?: number; // Pourcentage de réduction (%)
+  motif_remise?: string; // Motif de la promo ("Remise immédiate", etc.)
+  prix_base_unitaire?: number; // Prix unitaire hors promo (€/kg ou €/L)
+  prix_brut?: number; // Prix brut avant remise (€)
 }
 
 export interface PriceHistoryItem {

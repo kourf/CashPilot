@@ -139,8 +139,9 @@ export default function Receipts() {
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const [selectedProductForEvolution, setSelectedProductForEvolution] = useState<ProductComparisonRow | null>(null);
 
-  // Bonus UI : Bouton "Masquer les produits sans comparaison"
+  // Bonus UI : Bouton "Masquer les produits sans comparaison" & Filtre Promotions
   const [hideUncomparable, setHideUncomparable] = useState(false);
+  const [showPromosOnly, setShowPromosOnly] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAisleFilter, setSelectedAisleFilter] = useState<string>('ALL');
 
@@ -308,7 +309,7 @@ export default function Receipts() {
   // TABLEAU CROISÉ MULTI-ENSEIGNES : REGROUPEMENT PAR CLÉ DE BESOIN GÉNÉRIQUE
   // L'interface lit directement les documents Firestore { nom_generique, rayon, offres_magasins }
   // ============================================================================
-  const { allStores, crossTableRows, totalComparableCount, totalUniqueCount } = useMemo(() => {
+  const { allStores, crossTableRows, totalComparableCount, totalUniqueCount, totalPromosCount } = useMemo(() => {
     const storeMap = new Map<string, { id: string; displayName: string; googleMapsUrl?: string; address?: string }>();
     const hiddenSet = new Set(hiddenProductNames.map(k => k.trim().toLowerCase()));
 
@@ -334,6 +335,12 @@ export default function Receipts() {
         marque: string;
         format: string;
         date: string;
+        isPromo?: boolean;
+        discountAmount?: number;
+        discountRate?: number;
+        discountType?: string;
+        initialUnitPrice?: number;
+        initialPrice?: number;
       }>;
       storeCount: number;
       isComparable: boolean;
@@ -344,6 +351,7 @@ export default function Receipts() {
       cheapestStore: string;
       sampleBrands: string[];
       sampleRawRow?: ProductComparisonRow;
+      hasAnyPromo?: boolean;
     }> = [];
 
     // 2. CONSOLIDATION EXTRÊME EN 3 COUCHES : Empreinte Pure + Famille Canonique + Fusion Magasins
@@ -428,6 +436,12 @@ export default function Receipts() {
           });
         }
 
+        const isItemPromo = Boolean(sp.isPromo || (sp.discountAmount && sp.discountAmount > 0));
+        const discAmt = sp.discountAmount || 0;
+        const discRate = sp.discountRate || (sp.initialPrice && discAmt > 0 ? Math.round((discAmt / sp.initialPrice) * 100) : 0);
+        const initUnitPrice = sp.initialUnitPrice || sp.unitPrice;
+        const initPrice = sp.initialPrice || (discAmt > 0 ? Number((sp.pricePaid + discAmt).toFixed(2)) : sp.pricePaid);
+
         // COUCHE 3.1 : Conserver l'offre la plus récente (ou la plus avantageuse à date égale)
         const existingOffer = entry.storeOffers[canonicalStoreName];
         if (
@@ -441,7 +455,13 @@ export default function Receipts() {
             prixPaye: sp.pricePaid,
             marque: sp.brand || 'Générique',
             format: sp.weightOrVolume || '1 pièce',
-            date: sp.date
+            date: sp.date,
+            isPromo: isItemPromo,
+            discountAmount: discAmt,
+            discountRate: discRate,
+            discountType: sp.discountType || '',
+            initialUnitPrice: initUnitPrice,
+            initialPrice: initPrice
           };
         }
 
@@ -476,6 +496,7 @@ export default function Receipts() {
 
       const cheapestStoreEntry = Object.entries(validOffers).find(([_, o]: any) => o.prixUnitaire === lowestPrice);
       const cheapestStore = cheapestStoreEntry ? cheapestStoreEntry[0] : '';
+      const hasAnyPromo = Object.values(validOffers).some((o: any) => Boolean(o.isPromo || (o.discountAmount && o.discountAmount > 0)));
 
       rows.push({
         cleBesoin: entry.canonicalKey,
@@ -490,24 +511,32 @@ export default function Receipts() {
         priceDiffPercent,
         cheapestStore,
         sampleBrands: Array.from(entry.sampleBrands),
-        sampleRawRow: entry.sampleRawRow
+        sampleRawRow: entry.sampleRawRow,
+        hasAnyPromo
       });
     });
 
     const compCount = rows.filter(r => r.isComparable).length;
     const uniqCount = rows.length - compCount;
+    const promoCount = rows.filter(r => r.hasAnyPromo).length;
 
     return {
       allStores: storesList,
       crossTableRows: rows,
       totalComparableCount: compCount,
-      totalUniqueCount: uniqCount
+      totalUniqueCount: uniqCount,
+      totalPromosCount: promoCount
     };
   }, [matrix, hiddenProductNames]);
 
   // Filtrage réactif de la vue
   const filteredRows = useMemo(() => {
     return crossTableRows.filter(row => {
+      // 0. Filtre Promotions Uniquement
+      if (showPromosOnly && !row.hasAnyPromo) {
+        return false;
+      }
+
       // 1. Bonus UI : Masquer les produits sans comparaison (lignes avec 1 seul magasin)
       if (hideUncomparable && row.storeCount < 2) {
         return false;
@@ -529,7 +558,7 @@ export default function Receipts() {
 
       return true;
     });
-  }, [crossTableRows, hideUncomparable, selectedAisleFilter, searchTerm]);
+  }, [crossTableRows, showPromosOnly, hideUncomparable, selectedAisleFilter, searchTerm]);
 
   // RÈGLE 2 : REGROUPEMENT PAR EN-TÊTES DE SECTION TRANSVERSAUX (RAYONS EN MAJUSCULES)
   const groupedAisles = useMemo(() => {
@@ -948,6 +977,28 @@ export default function Receipts() {
                 ))}
               </select>
 
+              {/* FILTRE : PROMOTIONS & REMISES UNIQUEMENT */}
+              <button
+                type="button"
+                onClick={() => setShowPromosOnly(!showPromosOnly)}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs",
+                  showPromosOnly
+                    ? "bg-amber-500/20 border-amber-500/40 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30"
+                    : "bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground border-border/80"
+                )}
+                title={showPromosOnly ? "Afficher tous les articles" : "Filtrer uniquement les articles ayant une remise ou promotion"}
+              >
+                <Zap size={13} className={showPromosOnly ? "text-amber-500 fill-amber-500" : "text-amber-500"} />
+                <span>{showPromosOnly ? "Toutes les offres" : "Promos uniquement"}</span>
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.2 rounded-full font-mono font-semibold",
+                  showPromosOnly ? "bg-amber-500/30 text-amber-700 dark:text-amber-300" : "bg-muted text-muted-foreground"
+                )}>
+                  {totalPromosCount}
+                </span>
+              </button>
+
               {/* BONUS UI : BOUTON "MASQUER LES PRODUITS SANS COMPARAISON" */}
               <button
                 type="button"
@@ -1137,7 +1188,13 @@ export default function Receipts() {
                                 tabIndex={0}
                                 title="Survolez pour afficher les détails du relevé"
                               >
-                                {/* VUE ÉPURÉE : UNIQUEMENT LE PRIX AU KILO/LITRE EN GRAS ET EN GRAND */}
+                                {/* VUE ÉPURÉE : PRIX AU KILO/LITRE AVEC DÉTECTION PRÉCISE DES PROMOTIONS */}
+                                {offer.isPromo && offer.initialUnitPrice && offer.initialUnitPrice > offer.prixUnitaire && (
+                                  <span className="text-[10px] font-mono text-muted-foreground/70 line-through block leading-none mb-0.5" title="Prix régulier hors promotion">
+                                    {formatCurrency(offer.initialUnitPrice, { showSign: false })}
+                                  </span>
+                                )}
+
                                 <div className={cn(
                                   "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight transition-transform duration-150 group-hover:scale-105",
                                   isCheapestInRow ? "text-emerald-600 dark:text-emerald-400 font-extrabold" : "text-foreground"
@@ -1148,13 +1205,22 @@ export default function Receipts() {
                                   </span>
                                 </div>
 
-                                {/* DISCRET BADGE MOINS CHER */}
-                                {isCheapestInRow && (
-                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 mt-0.5">
-                                    <Check size={9} className="stroke-[3]" />
-                                    Moins cher
-                                  </span>
-                                )}
+                                {/* BADGES : PROMOTION & MOINS CHER */}
+                                <div className="flex flex-wrap items-center justify-center gap-1 mt-0.5">
+                                  {offer.isPromo && (
+                                    <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                      <Zap size={8} className="fill-amber-500" />
+                                      -{offer.discountRate || Math.round(((offer.discountAmount || 0) / (offer.initialPrice || 1)) * 100)}%
+                                    </span>
+                                  )}
+
+                                  {isCheapestInRow && (
+                                    <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                                      <Check size={9} className="stroke-[3]" />
+                                      Moins cher
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </td>
                           );
@@ -1258,6 +1324,42 @@ export default function Receipts() {
 
           {/* Corps de l'infobulle : Détails stricts stockés dans Firestore */}
           <div className="space-y-1.5 text-[11px]">
+            {/* ENCART PROMOTION SI ACTIVE */}
+            {floatingTooltip.offer.is_promo || floatingTooltip.offer.isPromo ? (
+              <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-300 space-y-1 mb-1.5">
+                <div className="flex items-center justify-between font-bold text-[10px]">
+                  <span className="flex items-center gap-1">
+                    <Zap size={10} className="fill-amber-500 shrink-0" />
+                    Offre Promotionnelle :
+                  </span>
+                  <span>
+                    -{floatingTooltip.offer.taux_remise || floatingTooltip.offer.discountRate || Math.round((((floatingTooltip.offer.remise || floatingTooltip.offer.discountAmount) || 0) / (floatingTooltip.offer.prix_brut || floatingTooltip.offer.initialPrice || 1)) * 100)}%
+                  </span>
+                </div>
+                {Boolean(floatingTooltip.offer.remise || floatingTooltip.offer.discountAmount) && (
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-muted-foreground">Remise appliquée :</span>
+                    <span className="font-mono font-semibold">
+                      -{formatCurrency(floatingTooltip.offer.remise || floatingTooltip.offer.discountAmount || 0, { showSign: false })}
+                    </span>
+                  </div>
+                )}
+                {(floatingTooltip.offer.prix_base_unitaire || floatingTooltip.offer.initialUnitPrice) && (
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-muted-foreground">Base hors remise :</span>
+                    <span className="font-mono line-through">
+                      {formatCurrency(floatingTooltip.offer.prix_base_unitaire || floatingTooltip.offer.initialUnitPrice, { showSign: false })}/{floatingTooltip.offer.unite}
+                    </span>
+                  </div>
+                )}
+                {(floatingTooltip.offer.motif_remise || floatingTooltip.offer.discountType) && (
+                  <div className="text-[9px] text-muted-foreground italic truncate">
+                    Motif : {floatingTooltip.offer.motif_remise || floatingTooltip.offer.discountType}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground font-medium">Prix payé :</span>
               <span className="font-mono font-bold text-foreground">

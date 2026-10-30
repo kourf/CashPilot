@@ -11,7 +11,8 @@ import {
   Loader2,
   Tag,
   ShieldAlert,
-  Percent
+  Percent,
+  Zap
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { 
@@ -49,11 +50,17 @@ interface ReceiptValidationModalProps {
       brand?: string;
       pricePaid?: number;
       price?: number;
+      initialPrice?: number;
+      discountAmount?: number;
+      discountRate?: number;
+      isPromo?: boolean;
+      discountType?: string;
       quantity?: number;
       weightOrVolume?: string;
       weightOrVolumeValue?: number;
       weightOrVolumeUnit?: string;
       unitPrice?: number;
+      initialUnitPrice?: number;
       referenceUnitPrice?: number;
       category: SupermarketAisle | string;
       categoryKey?: SupermarketAisleKey;
@@ -109,6 +116,15 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
   const [items, setItems] = useState<ReceiptItem[]>(() => {
     return (initialData.items || []).map((it, idx) => {
       const pricePaid = Number(it.pricePaid ?? it.price) || 0;
+      const discountAmount = Math.max(0, Number(it.discountAmount) || 0);
+      const initialPrice = Number(it.initialPrice) > 0 
+        ? Number(it.initialPrice) 
+        : (discountAmount > 0 ? Number((pricePaid + discountAmount).toFixed(2)) : pricePaid);
+      const isPromo = Boolean(it.isPromo || discountAmount > 0);
+      const discountRate = Number(it.discountRate) > 0 
+        ? Number(it.discountRate) 
+        : (initialPrice > 0 && discountAmount > 0 ? Math.round((discountAmount / initialPrice) * 100) : 0);
+
       const quantity = Math.max(1, Number(it.quantity) || 1);
       const weightOrVolume = String(it.weightOrVolume || '').trim();
       const comp = computeUnitPrice(
@@ -118,10 +134,20 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
         it.weightOrVolumeValue, 
         it.weightOrVolumeUnit
       );
+      const initialComp = computeUnitPrice(
+        initialPrice,
+        weightOrVolume,
+        quantity,
+        it.weightOrVolumeValue,
+        it.weightOrVolumeUnit
+      );
       const unit = it.unit || comp.unit;
-      const unitPrice = Number(it.referenceUnitPrice || it.unitPrice) > 0 
-        ? Number(it.referenceUnitPrice || it.unitPrice) 
+      const unitPrice = Number(it.unitPrice || it.referenceUnitPrice) > 0 
+        ? Number(it.unitPrice || it.referenceUnitPrice) 
         : comp.unitPrice;
+      const initialUnitPrice = Number(it.initialUnitPrice) > 0
+        ? Number(it.initialUnitPrice)
+        : (initialComp.unitPrice > 0 ? initialComp.unitPrice : unitPrice);
       const aisle = normalizeAisle(it.categoryKey || it.category);
 
       return {
@@ -131,11 +157,17 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
         brand: it.brand || 'Générique',
         pricePaid: Number(pricePaid.toFixed(2)),
         price: Number(pricePaid.toFixed(2)),
+        initialPrice: Number(initialPrice.toFixed(2)),
+        discountAmount: Number(discountAmount.toFixed(2)),
+        discountRate,
+        isPromo,
+        discountType: it.discountType || '',
         quantity,
         weightOrVolume,
         weightOrVolumeValue: it.weightOrVolumeValue,
         weightOrVolumeUnit: it.weightOrVolumeUnit,
         unitPrice: Number(unitPrice.toFixed(2)),
+        initialUnitPrice: Number(initialUnitPrice.toFixed(2)),
         referenceUnitPrice: Number(unitPrice.toFixed(2)),
         category: aisle.label,
         categoryKey: aisle.key,
@@ -151,6 +183,8 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
 
   // Calcul du total des lignes pour vérification d'audit (Règle 3)
   const sumItems = Number(items.reduce((acc, it) => acc + (Number(it.pricePaid) || 0), 0).toFixed(2));
+  const sumItemDiscounts = Number(items.reduce((acc, it) => acc + (Number(it.discountAmount) || 0), 0).toFixed(2));
+  const sumGrossItems = Number(items.reduce((acc, it) => acc + (Number(it.initialPrice || it.pricePaid) || 0), 0).toFixed(2));
   const subtotal = initialData.totalArticles !== undefined 
     ? initialData.totalArticles 
     : (initialData.subtotal !== undefined ? initialData.subtotal : sumItems);
@@ -169,15 +203,56 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
     setItems(prev => {
       const updated = [...prev];
       const item = { ...updated[index], [field]: value };
-      if (field === 'pricePaid' || field === 'quantity' || field === 'weightOrVolume') {
-        const p = field === 'pricePaid' ? Number(value) : item.pricePaid;
-        const q = field === 'quantity' ? Number(value) : item.quantity;
-        const w = field === 'weightOrVolume' ? String(value) : item.weightOrVolume;
-        const comp = computeUnitPrice(p, w, q);
-        item.unitPrice = comp.unitPrice;
-        item.unit = comp.unit;
+      
+      const q = field === 'quantity' ? Math.max(1, Number(value) || 1) : Math.max(1, Number(item.quantity) || 1);
+      const w = field === 'weightOrVolume' ? String(value || '') : String(item.weightOrVolume || '');
+
+      if (field === 'discountAmount') {
+        const disc = Math.max(0, Number(value) || 0);
+        item.discountAmount = disc;
+        if (item.initialPrice && item.initialPrice > 0) {
+          item.pricePaid = Number(Math.max(0, item.initialPrice - disc).toFixed(2));
+          item.price = item.pricePaid;
+        }
+        item.isPromo = disc > 0;
+        item.discountRate = (item.initialPrice && item.initialPrice > 0 && disc > 0)
+          ? Math.round((disc / item.initialPrice) * 100)
+          : 0;
+      } else if (field === 'initialPrice') {
+        const initP = Math.max(0, Number(value) || 0);
+        item.initialPrice = initP;
+        const disc = Number(item.discountAmount) || 0;
+        item.pricePaid = Number(Math.max(0, initP - disc).toFixed(2));
+        item.price = item.pricePaid;
+        item.isPromo = disc > 0;
+        item.discountRate = (initP > 0 && disc > 0) ? Math.round((disc / initP) * 100) : 0;
+      } else if (field === 'pricePaid') {
+        const p = Math.max(0, Number(value) || 0);
+        item.pricePaid = p;
         item.price = p;
+        if (item.initialPrice && item.initialPrice > p) {
+          item.discountAmount = Number((item.initialPrice - p).toFixed(2));
+          item.isPromo = item.discountAmount > 0;
+          item.discountRate = Math.round((item.discountAmount / item.initialPrice) * 100);
+        } else if (!item.initialPrice || item.initialPrice <= p) {
+          item.initialPrice = p;
+          item.discountAmount = 0;
+          item.isPromo = false;
+          item.discountRate = 0;
+        }
       }
+
+      // Recompute unit prices
+      const curNet = Number(item.pricePaid) || 0;
+      const curInit = Number(item.initialPrice) || curNet;
+      const compNet = computeUnitPrice(curNet, w, q);
+      const compInit = computeUnitPrice(curInit, w, q);
+
+      item.unitPrice = compNet.unitPrice;
+      item.unit = compNet.unit;
+      item.referenceUnitPrice = compNet.unitPrice;
+      item.initialUnitPrice = compInit.unitPrice > 0 ? compInit.unitPrice : compNet.unitPrice;
+
       updated[index] = item;
       return updated;
     });
@@ -193,9 +268,16 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
         brand: 'Générique',
         pricePaid: 0,
         price: 0,
+        initialPrice: 0,
+        discountAmount: 0,
+        discountRate: 0,
+        isPromo: false,
+        discountType: '',
         quantity: 1,
         weightOrVolume: '',
         unitPrice: 0,
+        initialUnitPrice: 0,
+        referenceUnitPrice: 0,
         category: 'Produits frais & Crèmerie',
         unit: 'pièce'
       }
@@ -238,11 +320,24 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
     // Validation des articles avec calcul rigoureux
     const validItems: ReceiptItem[] = items.map((it, idx) => {
       const pricePaid = Number(Number(it.pricePaid || it.price || 0).toFixed(2));
+      const discountAmount = Number(Number(it.discountAmount || 0).toFixed(2));
+      const initialPrice = Number(it.initialPrice) > 0 
+        ? Number(Number(it.initialPrice).toFixed(2)) 
+        : (discountAmount > 0 ? Number((pricePaid + discountAmount).toFixed(2)) : pricePaid);
+      const isPromo = Boolean(it.isPromo || discountAmount > 0);
+      const discountRate = Number(it.discountRate) > 0 
+        ? Math.round(Number(it.discountRate)) 
+        : (initialPrice > 0 && discountAmount > 0 ? Math.round((discountAmount / initialPrice) * 100) : 0);
+
       const quantity = Math.max(1, Number(it.quantity || 1));
       const weightOrVolume = (it.weightOrVolume || '').trim();
       const comp = computeUnitPrice(pricePaid, weightOrVolume, quantity, it.weightOrVolumeValue, it.weightOrVolumeUnit);
+      const initialComp = computeUnitPrice(initialPrice, weightOrVolume, quantity, it.weightOrVolumeValue, it.weightOrVolumeUnit);
       const aisle = normalizeAisle(it.categoryKey || it.category);
       const unitPrice = Number(it.unitPrice) > 0 ? Number(Number(it.unitPrice).toFixed(2)) : (it.referenceUnitPrice || comp.unitPrice);
+      const initialUnitPrice = Number(it.initialUnitPrice) > 0 
+        ? Number(Number(it.initialUnitPrice).toFixed(2)) 
+        : (initialComp.unitPrice > 0 ? initialComp.unitPrice : unitPrice);
       const cleBesoin = it.cle_besoin || generateGenericNeedKey(it.normalizedName || it.rawName, it.brand);
       const superKey = it.superKey || generateSuperKey(it.brand || 'generique', it.normalizedName || it.rawName, weightOrVolume || '1_piece');
 
@@ -253,11 +348,17 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
         brand: it.brand?.trim() || 'Générique',
         pricePaid,
         price: pricePaid,
+        initialPrice,
+        discountAmount,
+        discountRate,
+        isPromo,
+        discountType: it.discountType || '',
         quantity,
         weightOrVolume,
         weightOrVolumeValue: it.weightOrVolumeValue,
         weightOrVolumeUnit: it.weightOrVolumeUnit,
         unitPrice,
+        initialUnitPrice,
         referenceUnitPrice: unitPrice,
         category: aisle.label,
         categoryKey: aisle.key,
@@ -437,17 +538,24 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
             {/* REMISES & CONTRÔLE COMPTABLE D'AUDIT (RÈGLE 3) */}
             <div className="p-3.5 rounded-xl bg-secondary/20 border border-border/70 space-y-2.5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground">Sous-total articles :</span>
+                    <span className="text-muted-foreground">Sous-total net :</span>
                     <span className="font-mono font-bold text-foreground">
                       {formatCurrency(sumItems, { showSign: false })}
                     </span>
                   </div>
 
+                  {sumItemDiscounts > 0 && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
+                      <Zap size={11} className="fill-amber-500/30" />
+                      <span>Remises sur lignes : -{formatCurrency(sumItemDiscounts, { showSign: false })}</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-1.5">
                     <Percent size={13} className="text-emerald-500" />
-                    <span className="text-muted-foreground">Remises :</span>
+                    <span className="text-muted-foreground">Remise ticket globale :</span>
                     <input
                       type="number"
                       step="0.01"
@@ -473,14 +581,14 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                 <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-center justify-between">
                   <span className="flex items-center gap-1.5 font-bold">
                     <Check size={14} />
-                    Audit Mathématique Conforme : (Articles {formatCurrency(sumItems, { showSign: false })} {totalDiscounts > 0 ? `- Remises ${formatCurrency(totalDiscounts, { showSign: false })}` : ''} = Net {formatCurrency(totalAmount, { showSign: false })})
+                    Audit Mathématique Conforme : (Articles net {formatCurrency(sumItems, { showSign: false })} {totalDiscounts > 0 ? `- Remise globale ${formatCurrency(totalDiscounts, { showSign: false })}` : ''} = Net {formatCurrency(totalAmount, { showSign: false })})
                   </span>
                 </div>
               ) : (
                 <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <span className="flex items-center gap-1.5 font-semibold">
                     <AlertCircle size={14} className="shrink-0" />
-                    Écart de calcul : {formatCurrency(diffEquation, { showSign: false })} (Articles : {formatCurrency(sumItems, { showSign: false })} {totalDiscounts > 0 ? `- Remises : ${formatCurrency(totalDiscounts, { showSign: false })}` : ''} ≠ Total : {formatCurrency(totalAmount, { showSign: false })})
+                    Écart de calcul : {formatCurrency(diffEquation, { showSign: false })} (Net articles : {formatCurrency(sumItems, { showSign: false })} {totalDiscounts > 0 ? `- Remise globale : ${formatCurrency(totalDiscounts, { showSign: false })}` : ''} ≠ Total : {formatCurrency(totalAmount, { showSign: false })})
                   </span>
                   <button
                     type="button"
@@ -522,6 +630,12 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                         <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">
                           {idx + 1}
                         </span>
+                        {item.isPromo && (
+                          <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
+                            <Zap size={9} className="fill-amber-500/30" />
+                            Promo -{item.discountRate || Math.round(((item.discountAmount || 0) / (item.initialPrice || 1)) * 100)}%
+                          </span>
+                        )}
                         {item.rawName && item.rawName !== item.normalizedName ? (
                           <span className="text-[10px] text-muted-foreground font-mono truncate" title={item.rawName}>
                             Ticket : {item.rawName}
@@ -590,11 +704,40 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                       </div>
                     </div>
 
-                    {/* PRIX, CONTENANCE, QUANTITÉ */}
+                    {/* DÉCOMPOSITION FINANCIÈRE : BRUT, REMISE, NET */}
                     <div className="grid grid-cols-3 gap-2">
                       <div>
                         <label className="text-[10px] font-bold text-muted-foreground block mb-1">
-                          Prix payé (€) *
+                          Prix Brut (€)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.initialPrice ?? item.pricePaid}
+                          onChange={(e) => handleItemChange(idx, 'initialPrice', parseFloat(e.target.value) || 0)}
+                          className="w-full px-2 py-1.5 text-xs text-right rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                          Remise (€)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.discountAmount || ''}
+                          placeholder="0.00"
+                          onChange={(e) => handleItemChange(idx, 'discountAmount', parseFloat(e.target.value) || 0)}
+                          className="w-full px-2 py-1.5 text-xs text-right rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono text-amber-600 dark:text-amber-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                          Net payé (€) *
                         </label>
                         <input
                           type="number"
@@ -603,10 +746,13 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                           required
                           value={item.pricePaid}
                           onChange={(e) => handleItemChange(idx, 'pricePaid', parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1.5 text-xs text-right rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono font-bold"
+                          className="w-full px-2 py-1.5 text-xs text-right rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono font-bold text-emerald-600 dark:text-emerald-400"
                         />
                       </div>
+                    </div>
 
+                    {/* CONTENANCE & QUANTITÉ */}
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] font-bold text-muted-foreground block mb-1">
                           Format / Poids
@@ -637,11 +783,21 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                     </div>
 
                     {/* PRIX DE RÉFÉRENCE CALCULÉ */}
-                    <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-border/40 text-muted-foreground">
-                      <span>Prix standardisé :</span>
-                      <span className="font-mono font-bold text-foreground">
-                        {formatCurrency(item.unitPrice, { showSign: false })} / {item.unit || 'pièce'}
-                      </span>
+                    <div className="flex flex-col gap-0.5 text-[11px] pt-1.5 border-t border-border/40 text-muted-foreground">
+                      <div className="flex items-center justify-between">
+                        <span>Prix standardisé net :</span>
+                        <span className="font-mono font-bold text-foreground">
+                          {formatCurrency(item.unitPrice, { showSign: false })} / {item.unit || 'pièce'}
+                        </span>
+                      </div>
+                      {item.isPromo && item.initialUnitPrice && item.initialUnitPrice > item.unitPrice && (
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span>Prix base hors promo :</span>
+                          <span className="font-mono line-through">
+                            {formatCurrency(item.initialUnitPrice, { showSign: false })} / {item.unit || 'pièce'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -650,17 +806,19 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
               {/* 2. VUE DESKTOP : TABLEAU COMPLET (HIDDEN SM:BLOCK) */}
               <div className="hidden sm:block border border-border/80 rounded-xl overflow-hidden bg-card/60">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[850px] text-xs">
+                  <table className="w-full text-left border-collapse min-w-[1050px] text-xs">
                     <thead>
                       <tr className="border-b border-border/80 bg-muted/40 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                        <th className="py-2.5 px-3 w-[22%]">Libellé Normalisé *</th>
-                        <th className="py-2.5 px-3 w-[14%]">Marque</th>
-                        <th className="py-2.5 px-3 w-[12%]">Contenance/Poids</th>
-                        <th className="py-2.5 px-3 w-[22%]">Rayon Assigné *</th>
-                        <th className="py-2.5 px-3 w-[11%] text-right">Prix Payé (€)</th>
-                        <th className="py-2.5 px-3 w-[11%] text-right">Prix Réf. (€/u)</th>
-                        <th className="py-2.5 px-3 w-[5%] text-center">Qté</th>
-                        <th className="py-2.5 px-3 w-[5%] text-center">Action</th>
+                        <th className="py-2.5 px-3 w-[21%]">Libellé Normalisé *</th>
+                        <th className="py-2.5 px-3 w-[11%]">Marque</th>
+                        <th className="py-2.5 px-3 w-[9%]">Format/Poids</th>
+                        <th className="py-2.5 px-3 w-[17%]">Rayon Assigné *</th>
+                        <th className="py-2.5 px-3 w-[9%] text-right">Prix Brut (€)</th>
+                        <th className="py-2.5 px-3 w-[9%] text-right">Remise (€)</th>
+                        <th className="py-2.5 px-3 w-[9%] text-right">Net Payé (€)</th>
+                        <th className="py-2.5 px-3 w-[9%] text-right">Prix Réf. (€/u)</th>
+                        <th className="py-2.5 px-3 w-[3%] text-center">Qté</th>
+                        <th className="py-2.5 px-3 w-[3%] text-center">Action</th>
                       </tr>
                     </thead>
 
@@ -721,7 +879,39 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                             </select>
                           </td>
 
-                          {/* PRIX PAYÉ */}
+                          {/* PRIX BRUT */}
+                          <td className="p-2 px-3 text-right">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={item.initialPrice ?? item.pricePaid}
+                              onChange={(e) => handleItemChange(idx, 'initialPrice', parseFloat(e.target.value) || 0)}
+                              className="w-16 px-1.5 py-1 text-xs text-right rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono ml-auto"
+                            />
+                          </td>
+
+                          {/* REMISE */}
+                          <td className="p-2 px-3 text-right">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={item.discountAmount || ''}
+                                placeholder="0.00"
+                                onChange={(e) => handleItemChange(idx, 'discountAmount', parseFloat(e.target.value) || 0)}
+                                className="w-16 px-1.5 py-1 text-xs text-right rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono text-amber-600 dark:text-amber-400 font-semibold ml-auto"
+                              />
+                              {item.isPromo && item.discountRate ? (
+                                <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
+                                  <Zap size={8} /> -{item.discountRate}%
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+
+                          {/* PRIX NET PAYÉ */}
                           <td className="p-2 px-3 text-right">
                             <input
                               type="number"
@@ -730,7 +920,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                               required
                               value={item.pricePaid}
                               onChange={(e) => handleItemChange(idx, 'pricePaid', parseFloat(e.target.value) || 0)}
-                              className="w-20 px-2 py-1 text-xs text-right rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono font-bold ml-auto"
+                              className="w-16 px-1.5 py-1 text-xs text-right rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono font-bold text-emerald-600 dark:text-emerald-400 ml-auto"
                             />
                           </td>
 
@@ -743,6 +933,11 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                               <span className="text-[10px] text-muted-foreground font-medium">
                                 € / {item.unit || 'pièce'}
                               </span>
+                              {item.isPromo && item.initialUnitPrice && item.initialUnitPrice > item.unitPrice && (
+                                <span className="text-[9px] font-mono text-muted-foreground line-through" title="Prix base catalogue hors promo">
+                                  base: {formatCurrency(item.initialUnitPrice, { showSign: false })}
+                                </span>
+                              )}
                             </div>
                           </td>
 
@@ -755,7 +950,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                               required
                               value={item.quantity}
                               onChange={(e) => handleItemChange(idx, 'quantity', parseInt(e.target.value, 10) || 1)}
-                              className="w-12 px-1 py-1 text-xs text-center rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono mx-auto"
+                              className="w-10 px-1 py-1 text-xs text-center rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono mx-auto"
                             />
                           </td>
 

@@ -662,6 +662,13 @@ export interface StrictExtractedItem {
   prix_unitaire_calcule: number;
   unite_mesure: 'kg' | 'L' | 'piece';
   rayon_assigne: string;
+  // Détection des remises et promotions (Règle 5)
+  is_promo?: boolean;
+  remise?: number;
+  taux_remise_pct?: number;
+  motif_remise?: string;
+  prix_brut?: number;
+  prix_unitaire_base?: number;
   // Rétrocompatibilité
   nom_generique?: string;
   poids_ou_volume?: string;
@@ -683,6 +690,12 @@ export interface StoreOfferDetail {
   magasin_id?: string;
   receiptId?: string;
   rawName?: string;
+  is_promo?: boolean;
+  remise?: number;
+  taux_remise?: number;
+  motif_remise?: string;
+  prix_base_unitaire?: number;
+  prix_brut?: number;
 }
 
 /**
@@ -694,6 +707,9 @@ export interface PriceHistoryItem {
   date: string;
   magasin: string;
   prix_unitaire: number;
+  is_promo?: boolean;
+  remise?: number;
+  prix_base_unitaire?: number;
 }
 
 export interface GenericProductDocument {
@@ -831,6 +847,11 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
       await db.runTransaction(async (transaction) => {
         const productSnap = await transaction.get(productRef);
 
+        const isPromo = Boolean(rawItem.is_promo || (rawItem as any).isPromo || (rawItem.remise && rawItem.remise > 0) || ((rawItem as any).discountAmount && (rawItem as any).discountAmount > 0));
+        const remiseVal = Number(rawItem.remise ?? (rawItem as any).discountAmount) || 0;
+        const initialP = Number(rawItem.prix_brut ?? (rawItem as any).initialPrice) || Number(prixPaye.toFixed(2));
+        const baseUnitP = Number(rawItem.prix_unitaire_base ?? (rawItem as any).initialUnitPrice) || Number(prixUnitaire.toFixed(2));
+
         const offerDetail: StoreOfferDetail = {
           prix_unitaire: Number(prixUnitaire.toFixed(2)),
           unite: unitMeasure,
@@ -841,7 +862,13 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
           magasin_nom: storeDisplayName,
           magasin_id: storeId,
           receiptId,
-          rawName: receiptItemEnriched.rawName
+          rawName: receiptItemEnriched.rawName,
+          is_promo: isPromo,
+          remise: remiseVal > 0 ? Number(remiseVal.toFixed(2)) : undefined,
+          taux_remise: rawItem.taux_remise_pct ?? (rawItem as any).discountRate,
+          motif_remise: rawItem.motif_remise ?? (rawItem as any).discountType,
+          prix_base_unitaire: baseUnitP > 0 ? Number(baseUnitP.toFixed(2)) : undefined,
+          prix_brut: initialP > 0 ? Number(initialP.toFixed(2)) : undefined
         };
 
         if (productSnap.exists) {
@@ -871,12 +898,15 @@ export const processReceiptWithSuperKeys = functions.region('europe-west1')
           // RÈGLE 2 : Historique des prix standardisé { date, magasin, prix_unitaire }
           const existingPriceHistory = Array.isArray(prodData.historique_prix) ? prodData.historique_prix : [];
           const filteredPriceHistory = existingPriceHistory.filter(h => !(h.date === date && h.magasin === storeId));
-          const updatedPriceHistory: PriceHistoryItem[] = [
+          const updatedPriceHistory: any[] = [
             ...filteredPriceHistory,
             {
               date,
               magasin: storeId,
-              prix_unitaire: Number(prixUnitaire.toFixed(2))
+              prix_unitaire: Number(prixUnitaire.toFixed(2)),
+              is_promo: isPromo,
+              remise: remiseVal > 0 ? Number(remiseVal.toFixed(2)) : undefined,
+              prix_base_unitaire: baseUnitP > 0 ? Number(baseUnitP.toFixed(2)) : undefined
             }
           ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 

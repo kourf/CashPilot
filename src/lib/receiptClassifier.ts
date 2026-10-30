@@ -816,7 +816,13 @@ export function buildComparativeMatrix(
         receiptId: receipt.id,
         quantity,
         rawName: item.rawName || canonical,
-        unit
+        unit,
+        isPromo: item.isPromo,
+        discountAmount: item.discountAmount,
+        discountRate: item.discountRate,
+        discountType: item.discountType,
+        initialUnitPrice: item.initialUnitPrice,
+        initialPrice: item.initialPrice
       };
 
       acc.allPriceRecords.push(priceDetail);
@@ -1113,7 +1119,13 @@ export function buildComparativeMatrixFromProducts(
           receiptId: offer.receiptId || '',
           quantity: 1,
           rawName: offer.rawName || p.nom_generique,
-          unit: offer.unite || p.unite_mesure || 'piece'
+          unit: offer.unite || p.unite_mesure || 'piece',
+          isPromo: Boolean((offer as any).is_promo ?? (offer as any).isPromo ?? ((offer as any).remise && (offer as any).remise > 0)),
+          discountAmount: (offer as any).remise ?? (offer as any).discountAmount,
+          discountRate: (offer as any).taux_remise ?? (offer as any).discountRate,
+          discountType: (offer as any).motif_remise ?? (offer as any).discountType,
+          initialUnitPrice: (offer as any).prix_base_unitaire ?? (offer as any).initialUnitPrice,
+          initialPrice: (offer as any).prix_brut ?? (offer as any).initialPrice
         };
       });
     } else if (p.prix_actuel) {

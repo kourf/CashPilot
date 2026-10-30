@@ -114,7 +114,22 @@ Le champ "rayon_assigne" doit être choisi STRICTEMENT parmi la liste suivante :
 11. Papeterie & Bureau
 12. Fleurs & Cadeaux
 13. Sacs & Consignes
-14. Autres / Divers`;
+14. Autres / Divers
+
+================================================================================
+RÈGLE 5 : AUDIT CHIRURGICAL DES REMISES ET PROMOTIONS PAR ARTICLE
+================================================================================
+- Lorsqu'une remise immédiate figure sous un article ou sur la même ligne (ex: "REMISE IMMEDIATE -1.77", "PROMO -30% -3.57", "AVANTAGE CARTE IMMÉDIAT -1.50", "DATE COURTE -50%") :
+  * RATTACHE CETTE REMISE DIRECTEMENT À CET ARTICLE !
+  * "prix_brut" : Prix initial catalogue avant remise (ex: 5.90 €).
+  * "remise" : Montant positif de la réduction sur l'article (ex: 1.77 €). Si pas de promo : 0.
+  * "taux_remise_pct" : Pourcentage de la réduction (ex: 30).
+  * "prix_paye" : Prix net payé pour cet article (5.90 - 1.77 = 4.13 €).
+  * "prix_unitaire_base" : Prix unitaire de base hors promo au kg/L/unité calculé sur prix_brut.
+  * "prix_unitaire_calcule" : Prix unitaire net au kg/L/unité calculé sur prix_paye.
+  * "is_promo" : true si remise > 0, false sinon.
+  * "motif_remise" : Libellé de la promo (ex: "Remise immédiate", "Avantage carte", "Date courte").
+  * Interdiction formelle de créer un article séparé pour "REMISE IMMEDIATE" !`;
 
       schema = {
         type: Type.OBJECT,
@@ -134,9 +149,15 @@ Le champ "rayon_assigne" doit être choisi STRICTEMENT parmi la liste suivante :
                 nom_generique_nettoye: { type: Type.STRING, description: "Nom du besoin générique sans marque ni format (ex: Sauce Burger)" },
                 marque: { type: Type.STRING, description: "Marque constatée ou Générique" },
                 format_exact: { type: Type.STRING, description: "Format/contenance exacte lue (ex: 510g, 500g, 1L)" },
+                prix_brut: { type: Type.NUMBER, description: "Prix catalogue initial avant remise" },
+                remise: { type: Type.NUMBER, description: "Montant positif de la remise sur cet article (0 si pas de remise)" },
+                taux_remise_pct: { type: Type.NUMBER, description: "Taux de remise en % (ex: 30)" },
                 prix_paye: { type: Type.NUMBER, description: "Prix total payé pour cette ligne" },
-                prix_unitaire_calcule: { type: Type.NUMBER, description: "Prix au kilo (€/kg), au litre (€/L) ou à la pièce" },
+                prix_unitaire_base: { type: Type.NUMBER, description: "Prix unitaire catalogue hors promo (€/kg, €/L ou €/pièce)" },
+                prix_unitaire_calcule: { type: Type.NUMBER, description: "Prix au kilo (€/kg), au litre (€/L) ou à la pièce après promo" },
                 unite_mesure: { type: Type.STRING, description: "kg, L, ou piece" },
+                is_promo: { type: Type.BOOLEAN, description: "Vrai si l'article bénéficie d'une promotion ou remise" },
+                motif_remise: { type: Type.STRING, description: "Motif (ex: Remise immédiate, Date courte, etc.)" },
                 rayon_assigne: { type: Type.STRING, description: "Un des 14 rayons officiels verrouillés" }
               },
               required: ["nom_generique_nettoye", "marque", "format_exact", "prix_paye", "prix_unitaire_calcule", "unite_mesure", "rayon_assigne"]

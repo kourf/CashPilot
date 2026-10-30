@@ -509,6 +509,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         it.categoryKey = normAisle.key;
       }
 
+      const isItemPromo = Boolean(it.isPromo || (it.discountAmount && it.discountAmount > 0));
       const offerRecord = {
         prix_unitaire: it.unitPrice,
         unite: it.unit || 'piece',
@@ -518,7 +519,13 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         date: receiptData.date,
         magasin_nom: normalizedStore,
         magasin_id: storeId,
-        receiptId: docId
+        receiptId: docId,
+        is_promo: isItemPromo,
+        remise: it.discountAmount || 0,
+        taux_remise: it.discountRate || 0,
+        motif_remise: it.discountType || '',
+        prix_base_unitaire: it.initialUnitPrice || it.unitPrice,
+        prix_brut: it.initialPrice || it.pricePaid
       };
 
       const priceRecord = {
@@ -528,7 +535,10 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         prix_unitaire: it.unitPrice,
         prix_paye: it.pricePaid,
         quantite: it.quantity,
-        receiptId: docId
+        receiptId: docId,
+        is_promo: isItemPromo,
+        remise: it.discountAmount || 0,
+        prix_base_unitaire: it.initialUnitPrice || it.unitPrice
       };
 
       const existingProd = updatedProductsMap.get(cleBesoin);
@@ -546,7 +556,13 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           date: receiptData.date,
           magasin_id: storeId,
           magasin_nom: normalizedStore,
-          receiptId: docId
+          receiptId: docId,
+          is_promo: isItemPromo,
+          remise: it.discountAmount || 0,
+          taux_remise: it.discountRate || 0,
+          motif_remise: it.discountType || '',
+          prix_base_unitaire: it.initialUnitPrice || it.unitPrice,
+          prix_brut: it.initialPrice || it.pricePaid
         };
 
         const existingHist = Array.isArray((existingProd as any).historique_offres) 
@@ -555,7 +571,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const filteredHist = existingHist.filter((h: any) => !(h.receiptId === docId && (h.magasin === storeId || h.magasin_id === storeId)));
         const nextHist = [...filteredHist, { ...offerRecord, magasin: storeId }].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        // RÈGLE 2 : Historique standardisé { date, magasin, prix_unitaire }
+        // RÈGLE 2 : Historique standardisé { date, magasin, prix_unitaire, is_promo, remise, prix_base_unitaire }
         const existingHistPrix = Array.isArray((existingProd as any).historique_prix) ? (existingProd as any).historique_prix : [];
         const filteredHistPrix = existingHistPrix.filter((h: any) => !(h.date === receiptData.date && h.magasin === storeId));
         const nextHistPrix = [
@@ -563,7 +579,10 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           {
             date: receiptData.date,
             magasin: storeId,
-            prix_unitaire: it.unitPrice
+            prix_unitaire: it.unitPrice,
+            is_promo: isItemPromo,
+            remise: it.discountAmount || 0,
+            prix_base_unitaire: it.initialUnitPrice || it.unitPrice
           }
         ].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -616,11 +635,24 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               date: receiptData.date,
               magasin_id: storeId,
               magasin_nom: normalizedStore,
-              receiptId: docId
+              receiptId: docId,
+              is_promo: isItemPromo,
+              remise: it.discountAmount || 0,
+              taux_remise: it.discountRate || 0,
+              motif_remise: it.discountType || '',
+              prix_base_unitaire: it.initialUnitPrice || it.unitPrice,
+              prix_brut: it.initialPrice || it.pricePaid
             }
           },
           historique_offres: [{ ...offerRecord, magasin: storeId }],
-          historique_prix: [{ date: receiptData.date, magasin: storeId, prix_unitaire: it.unitPrice }],
+          historique_prix: [{
+            date: receiptData.date,
+            magasin: storeId,
+            prix_unitaire: it.unitPrice,
+            is_promo: isItemPromo,
+            remise: it.discountAmount || 0,
+            prix_base_unitaire: it.initialUnitPrice || it.unitPrice
+          }],
           meilleure_offre: {
             magasin_id: storeId,
             magasin_nom: normalizedStore,
@@ -827,7 +859,15 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       date: string,
       receiptId: string,
       quantity: number,
-      sourceDocId?: string
+      sourceDocId?: string,
+      promoData?: {
+        is_promo?: boolean;
+        remise?: number;
+        taux_remise?: number;
+        motif_remise?: string;
+        prix_base_unitaire?: number;
+        prix_brut?: number;
+      }
     ) => {
       if (!(unitPrice > 0) || Number.isNaN(unitPrice)) return;
       const canonical = normalizeProductNeed(rawName, brand);
@@ -876,6 +916,13 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const existingOffer = group.offresMagasins[stId];
       const safeDate = date || new Date().toISOString().slice(0, 10);
 
+      const isPromo = Boolean(promoData?.is_promo || (promoData?.remise && promoData.remise > 0));
+      const remise = promoData?.remise || 0;
+      const tauxRemise = promoData?.taux_remise || 0;
+      const motifRemise = promoData?.motif_remise || '';
+      const prixBaseUnitaire = promoData?.prix_base_unitaire || unitPrice;
+      const prixBrut = promoData?.prix_brut || pricePaid;
+
       if (
         !existingOffer ||
         safeDate > existingOffer.date ||
@@ -891,7 +938,13 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           magasin_nom: stName,
           magasin_id: stId,
           receiptId: receiptId || '',
-          rawName: rawName || canonical.nom_affichage
+          rawName: rawName || canonical.nom_affichage,
+          is_promo: isPromo,
+          remise,
+          taux_remise: tauxRemise,
+          motif_remise: motifRemise,
+          prix_base_unitaire: Number(prixBaseUnitaire.toFixed(2)),
+          prix_brut: Number(prixBrut.toFixed(2))
         };
 
         group.prixActuel[stId] = {
@@ -901,7 +954,13 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           date: safeDate,
           magasin_id: stId,
           magasin_nom: stName,
-          receiptId: receiptId || ''
+          receiptId: receiptId || '',
+          is_promo: isPromo,
+          remise,
+          taux_remise: tauxRemise,
+          motif_remise: motifRemise,
+          prix_base_unitaire: Number(prixBaseUnitaire.toFixed(2)),
+          prix_brut: Number(prixBrut.toFixed(2))
         };
       }
 
@@ -916,7 +975,10 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           prix_unitaire: Number(unitPrice.toFixed(2)),
           prix_paye: Number((pricePaid || unitPrice).toFixed(2)),
           quantite: quantity || 1,
-          receiptId: receiptId || ''
+          receiptId: receiptId || '',
+          is_promo: isPromo,
+          remise,
+          prix_base_unitaire: Number(prixBaseUnitaire.toFixed(2))
         });
         group.historiqueOffres.push({
           prix_unitaire: Number(unitPrice.toFixed(2)),
@@ -928,7 +990,13 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           magasin: stId,
           magasin_nom: stName,
           magasin_id: stId,
-          receiptId: receiptId || ''
+          receiptId: receiptId || '',
+          is_promo: isPromo,
+          remise,
+          taux_remise: tauxRemise,
+          motif_remise: motifRemise,
+          prix_base_unitaire: Number(prixBaseUnitaire.toFixed(2)),
+          prix_brut: Number(prixBrut.toFixed(2))
         });
       }
     };
@@ -948,6 +1016,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const pricePaid = Number(it.pricePaid ?? it.price) || 0;
         const comp = computeUnitPrice(pricePaid, it.weightOrVolume, it.quantity, it.weightOrVolumeValue, it.weightOrVolumeUnit);
         const unitPrice = Number(it.unitPrice) > 0 ? Number(it.unitPrice) : comp.unitPrice;
+        const isItemPromo = Boolean(it.isPromo || (it.discountAmount && it.discountAmount > 0));
         registerOffer(
           it.nomGenerique || it.normalizedName || it.rawName,
           it.brand || 'Générique',
@@ -960,7 +1029,16 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           it.weightOrVolume || '1 piece',
           r.date,
           r.id,
-          it.quantity || 1
+          it.quantity || 1,
+          undefined,
+          {
+            is_promo: isItemPromo,
+            remise: it.discountAmount || 0,
+            taux_remise: it.discountRate || 0,
+            motif_remise: it.discountType || '',
+            prix_base_unitaire: it.initialUnitPrice || unitPrice,
+            prix_brut: it.initialPrice || pricePaid
+          }
         );
       });
     });
@@ -999,7 +1077,15 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               off.date || '',
               off.receiptId || '',
               1,
-              docId
+              docId,
+              {
+                is_promo: Boolean(off.is_promo || (off.remise && off.remise > 0)),
+                remise: off.remise || 0,
+                taux_remise: off.taux_remise || 0,
+                motif_remise: off.motif_remise || '',
+                prix_base_unitaire: off.prix_base_unitaire || off.prix_unitaire,
+                prix_brut: off.prix_brut || off.prix_paye
+              }
             );
           }
         });
@@ -1020,7 +1106,15 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               pa.date || '',
               pa.receiptId || '',
               pa.quantite || 1,
-              docId
+              docId,
+              {
+                is_promo: Boolean(pa.is_promo || (pa.remise && pa.remise > 0)),
+                remise: pa.remise || 0,
+                taux_remise: pa.taux_remise || 0,
+                motif_remise: pa.motif_remise || '',
+                prix_base_unitaire: pa.prix_base_unitaire || pa.prix_unitaire,
+                prix_brut: pa.prix_brut || pa.prix_paye
+              }
             );
           }
         });

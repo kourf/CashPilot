@@ -1721,14 +1721,29 @@ RÈGLE 5 : ARRÊT D'URGENCE (MOYENS DE PAIEMENT & BAS DE TICKET)
 - Ne capture JAMAIS les lignes de règlement : CB, Carte Bancaire, CB EMV, Sans Contact, Especes, Rendu monnaie, T restau CONECS, Titres Restaurant, AMERICAN EXPRESS, AMEX, LCS, Cheque.
 
 ================================================================================
-RÈGLE 6 : DOUBLE BALAYAGE DES REMISES (DUAL SWEEP) & AUTO-CONTRÔLE
+RÈGLE 6 : AUDIT CHIRURGICAL DES REMISES ET PROMOTIONS PAR ARTICLE
 ================================================================================
-- Balayage 1 : Isole et comptabilise toutes les remises immédiates intercalées sous chaque article (ex: "Prix en baisse -0.06", "Remise immediate -0.43€", "Rabais fidélité -1.20").
-- Balayage 2 : Isole les bons d'achat globaux, remises cagnottées ou bons de réduction déduits en bas de ticket avant le paiement net.
-- Additionne silencieusement TOUTES ces remises et renvoie une unique variable numérique positive : "totalDiscount" (ainsi que son alias "totalDiscounts").
-- ÉQUATION D'AUDIT COMPTABLE :
-  Tu dois vérifier avant d'émettre le JSON :
-  (Somme de tous les pricePaid des items) - totalDiscount = totalAmount (Montant net payé en caisse).
+Dans la grande distribution (Lidl, E.Leclerc, Carrefour, Intermarché, Auchan, Super U), les promotions et rabais s'appliquent fréquemment sur des produits spécifiques :
+1. RATTACHEMENT STRICT DE LA REMISE AU PRODUIT CONCERNÉ :
+   Lorsqu'une ligne de réduction se trouve immédiatement sous un article ou sur la même ligne (ex: "REMISE IMMEDIATE -1.77", "PROMO -30% -3.57", "AVANTAGE CARTE IMMÉDIAT -1.50", "DATE COURTE -50%", "PRIX EN BAISSE -0.40", "RABAIS -0.85", "BON REDUCTION -1.00", "2EME A -50% -0.90", "REMISE 34% -1.15") :
+   - TU DOIS OBLIGATOIREMENT RATTACHER CETTE REMISE DIRECTEMENT À CET ARTICLE !
+   - "prix_brut" : Le prix initial affiché au catalogue avant remise (ex: 5.90 €).
+   - "remise" : Le montant positif de la remise déduite sur cet article (ex: 1.77 €). Si pas de promo : 0.
+   - "taux_remise_pct" : Le pourcentage de remise constaté ou calculé (ex: 30).
+   - "prix_paye" : Le prix net final réellement payé pour cette ligne d'article (5.90 - 1.77 = 4.13 €).
+   - "prix_unitaire_base" : Le prix unitaire de référence hors promo au kg/L/unité calculé sur "prix_brut".
+   - "prix_unitaire_calcule" : Le prix unitaire net payé au kg/L/unité calculé sur "prix_paye".
+   - "is_promo" : true si remise > 0, sinon false.
+   - "motif_remise" : Libellé de la promo (ex: "Remise immédiate", "Avantage carte", "Date courte -50%", "Promo lot").
+   - INTERDICTION ABSOLUE de créer un article séparé pour une ligne de remise ("REMISE IMMEDIATE") ! La remise appartient au produit situé juste au-dessus.
+
+2. REMISES GLOBALES DE BAS DE TICKET :
+   - Si un bon d'achat ou une remise s'applique au panier global tout en bas du ticket (ex: "BON D'ACHAT MAGASIN -5.00 €", "REMISE FIDÉLITÉ GLOBALE -2.00 €") et n'est pas lié à un article précis, place-le dans "remise_globale".
+
+3. ÉQUATION D'AUDIT COMPTABLE (AUTO-VÉRIFICATION) :
+   Tu dois vérifier avant d'émettre le JSON :
+   (Somme de tous les prix_brut des items) - totalDiscount = totalAmount (Montant net payé en caisse).
+   OU : (Somme de tous les prix_paye des items) - (remise_globale || 0) = totalAmount.
 
 ================================================================================
 RÈGLE 7 : EN-TÊTE DU TICKET, ADRESSE COMPLÈTE & DIFFÉRENCIATION DU MAGASIN PHYSIQUE
@@ -1835,23 +1850,35 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
   "totalAmount": 28.45,
   "items": [
     {
-      "nom_generique_nettoye": "Sauce burger",
+      "nom_generique_nettoye": "Saumon fumé",
       "marque": "Super U",
-      "format_exact": "500g",
-      "prix_paye": 2.29,
-      "prix_unitaire_calcule": 4.58,
+      "format_exact": "150g",
+      "prix_brut": 5.90,
+      "remise": 1.77,
+      "taux_remise_pct": 30,
+      "prix_paye": 4.13,
+      "prix_unitaire_base": 39.33,
+      "prix_unitaire_calcule": 27.53,
       "unite_mesure": "kg",
-      "rayon_assigne": "Épicerie salée & Épices",
-      "rawName": "SAUCE BURGER 500G U",
+      "is_promo": true,
+      "motif_remise": "Remise immédiate",
+      "rayon_assigne": "Boucherie, Volaille & Poissonnerie",
+      "rawName": "SAUMON FUME 4TR 150G U",
       "quantity": 1
     },
     {
       "nom_generique_nettoye": "Lait demi-écrémé",
       "marque": "generique",
       "format_exact": "1L",
+      "prix_brut": 0.98,
+      "remise": 0,
+      "taux_remise_pct": 0,
       "prix_paye": 0.98,
+      "prix_unitaire_base": 0.98,
       "prix_unitaire_calcule": 0.98,
       "unite_mesure": "L",
+      "is_promo": false,
+      "motif_remise": "",
       "rayon_assigne": "Produits frais & Crèmerie",
       "rawName": "LAIT DEMI ECREME 1L",
       "quantity": 1
@@ -2020,21 +2047,50 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
       const weightOrVolumeValue = typeof it.weightOrVolumeValue === 'number' ? it.weightOrVolumeValue : undefined;
       const weightOrVolumeUnit = typeof it.weightOrVolumeUnit === 'string' ? it.weightOrVolumeUnit : undefined;
 
+      const rawRemise = cleanNumericPrice(it.remise ?? it.discountAmount ?? it.discount);
+      let rawBrut = cleanNumericPrice(it.prix_brut ?? it.initialPrice ?? it.prix_initial);
       let pricePaid = cleanNumericPrice(it.prix_paye ?? it.pricePaid ?? it.price ?? it.paidPrice);
       const parsedUnitP = cleanNumericPrice(it.prix_unitaire_calcule ?? it.unitPrice);
+
+      // Réconciliation mathématique entre prix brut, remise et net payé
+      if (rawBrut > 0 && rawRemise > 0 && pricePaid <= 0) {
+        pricePaid = Math.max(0, rawBrut - rawRemise);
+      } else if (pricePaid > 0 && rawRemise > 0 && rawBrut <= 0) {
+        rawBrut = pricePaid + rawRemise;
+      } else if (rawBrut <= 0) {
+        rawBrut = pricePaid;
+      }
+
       if (pricePaid <= 0 && parsedUnitP > 0) {
         pricePaid = parsedUnitP * qty;
+        if (rawBrut <= 0) rawBrut = pricePaid;
       }
+
+      const isPromo = Boolean(it.is_promo || it.isPromo || rawRemise > 0.005);
+      const discountAmount = rawRemise > 0 ? Number(rawRemise.toFixed(2)) : 0;
+      const initialPrice = rawBrut > 0 ? Number(rawBrut.toFixed(2)) : Number(pricePaid.toFixed(2));
+      const discountRate = initialPrice > 0 && discountAmount > 0 
+        ? Math.round((discountAmount / initialPrice) * 100) 
+        : (Number(it.taux_remise_pct || it.discountRate) || 0);
+      const discountType = String(it.motif_remise || it.discountType || (isPromo ? 'Remise immédiate' : '')).trim();
 
       // Classification rigoureuse dans les 14 rayons verrouillés (Règle 4 & Famille Canonique)
       const aisle = normalizeAisle(canonical.rayon || rawAisle);
 
       // Règle 3 : Calcul standardisé du prix unitaire de référence (€/kg, €/L ou €/pièce)
-      const comp = computeUnitPrice(pricePaid, weightOrVolume, qty, weightOrVolumeValue, weightOrVolumeUnit);
+      // Prix unitaire net payé (avec remise)
+      const compNet = computeUnitPrice(pricePaid, weightOrVolume, qty, weightOrVolumeValue, weightOrVolumeUnit);
+      // Prix unitaire catalogue de base (hors remise)
+      const compBase = computeUnitPrice(initialPrice, weightOrVolume, qty, weightOrVolumeValue, weightOrVolumeUnit);
+
       let unitPrice = cleanNumericPrice(it.prix_unitaire_calcule ?? it.referenceUnitPrice ?? it.unitPrice);
-      const unit = String(it.unite_mesure || it.unit || comp.unit).toLowerCase().trim() || 'piece';
       if (unitPrice <= 0) {
-        unitPrice = comp.unitPrice;
+        unitPrice = compNet.unitPrice;
+      }
+
+      let initialUnitPrice = cleanNumericPrice(it.prix_unitaire_base ?? it.initialUnitPrice);
+      if (initialUnitPrice <= 0) {
+        initialUnitPrice = compBase.unitPrice;
       }
 
       // Super Clé de compatibilité
@@ -2045,11 +2101,18 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         normalizedName: norm,
         brand,
         pricePaid: Number(pricePaid.toFixed(2)),
+        initialPrice: Number(initialPrice.toFixed(2)),
+        discountAmount: Number(discountAmount.toFixed(2)),
+        discountRate,
+        isPromo,
+        discountType,
         quantity: qty,
         weightOrVolume,
         weightOrVolumeValue,
         weightOrVolumeUnit,
         unitPrice: Number(unitPrice.toFixed(2)),
+        initialUnitPrice: Number(initialUnitPrice.toFixed(2)),
+        netUnitPrice: Number(unitPrice.toFixed(2)),
         referenceUnitPrice: Number(unitPrice.toFixed(2)),
         category: aisle.label,
         categoryKey: aisle.key,
@@ -2063,7 +2126,12 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         nom_generique_nettoye: norm,
         poidsOuVolume: weightOrVolume,
         prixPaye: Number(pricePaid.toFixed(2)),
+        prixBrut: Number(initialPrice.toFixed(2)),
+        remise: Number(discountAmount.toFixed(2)),
+        tauxRemise: discountRate,
+        motifRemise: discountType,
         prixUnitaireCalcule: Number(unitPrice.toFixed(2)),
+        prixUnitaireBase: Number(initialUnitPrice.toFixed(2)),
         uniteMesure: unit,
         rayonAssigne: aisle.label
       });
@@ -2078,9 +2146,20 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
         existing.quantity += item.quantity;
         existing.pricePaid = Number((existing.pricePaid + item.pricePaid).toFixed(2));
         existing.price = existing.pricePaid;
-        const recomputed = computeUnitPrice(existing.pricePaid, existing.weightOrVolume, existing.quantity, existing.weightOrVolumeValue, existing.weightOrVolumeUnit);
-        existing.unitPrice = recomputed.unitPrice;
-        existing.referenceUnitPrice = recomputed.unitPrice;
+        const currentInit = existing.initialPrice || existing.pricePaid;
+        const incomingInit = item.initialPrice || item.pricePaid;
+        existing.initialPrice = Number((currentInit + incomingInit).toFixed(2));
+        existing.discountAmount = Number(((existing.discountAmount || 0) + (item.discountAmount || 0)).toFixed(2));
+        existing.isPromo = Boolean(existing.isPromo || item.isPromo || (existing.discountAmount && existing.discountAmount > 0));
+        existing.discountRate = existing.initialPrice > 0 && existing.discountAmount > 0
+          ? Math.round((existing.discountAmount / existing.initialPrice) * 100)
+          : 0;
+        const recomputedNet = computeUnitPrice(existing.pricePaid, existing.weightOrVolume, existing.quantity, existing.weightOrVolumeValue, existing.weightOrVolumeUnit);
+        const recomputedBase = computeUnitPrice(existing.initialPrice, existing.weightOrVolume, existing.quantity, existing.weightOrVolumeValue, existing.weightOrVolumeUnit);
+        existing.unitPrice = recomputedNet.unitPrice;
+        existing.netUnitPrice = recomputedNet.unitPrice;
+        existing.referenceUnitPrice = recomputedNet.unitPrice;
+        existing.initialUnitPrice = recomputedBase.unitPrice;
       } else {
         consolidatedMap.set(key, { ...item });
       }
@@ -2089,11 +2168,14 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
     const items = Array.from(consolidatedMap.values());
 
     const sumItems = items.reduce((acc, it) => acc + it.pricePaid, 0);
+    const sumGross = items.reduce((acc, it) => acc + (it.initialPrice || it.pricePaid), 0);
+    const sumItemDiscounts = items.reduce((acc, it) => acc + (it.discountAmount || 0), 0);
+
     const rawArticles = cleanNumericPrice(parsed.totalArticles ?? parsed.subtotal);
-    const totalArticles = rawArticles > 0 ? Number(rawArticles.toFixed(2)) : Number(sumItems.toFixed(2));
+    const totalArticles = rawArticles > 0 ? Number(rawArticles.toFixed(2)) : Number(sumGross.toFixed(2));
     const subtotal = totalArticles;
     const discountVal = cleanNumericPrice(parsed.totalDiscount ?? parsed.totalDiscounts ?? 0);
-    const totalDiscounts = discountVal > 0 ? Number(discountVal.toFixed(2)) : 0;
+    const totalDiscounts = Math.max(discountVal, Number(sumItemDiscounts.toFixed(2)));
     
     let totalAmount = cleanNumericPrice(parsed.totalAmount ?? parsed.total);
     if (!totalAmount || isNaN(totalAmount)) {
