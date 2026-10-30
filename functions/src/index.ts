@@ -1197,11 +1197,17 @@ RÈGLES COMPTABLES STRICTES ET PRIORITAIRES :
 
         const userPrompt = `Voici les transactions bancaires à analyser en lot (${batch.length} opérations) :\n${JSON.stringify(payload)}`;
 
+        const userProvidedModel = (data.model || '').trim();
+        const preferredModel = (userProvidedModel && userProvidedModel !== 'gemini-3.8-flash' && userProvidedModel !== 'gemini-3.5-flash') 
+          ? userProvidedModel 
+          : 'gemini-2.5-flash';
+
         const candidateModels = [
-          (data.model || 'gemini-3.8-flash').trim(),
-          'gemini-3.8-flash',
+          preferredModel,
+          'gemini-2.5-flash',
           'gemini-flash-latest',
-          'gemini-3.5-flash'
+          'gemini-2.0-flash',
+          'gemini-1.5-flash'
         ];
         const uniqueModels = Array.from(new Set(candidateModels));
 

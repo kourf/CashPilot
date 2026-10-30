@@ -1,8 +1,14 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIES, classifyTransaction, cleanMerchantDescription } from './bankParser.ts';
-import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from './receiptClassifier';
-import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey, generateGenericNeedKey, sanitizeGenericDisplayName, correctFrenchSpelling, normalizeProductNeed } from '../types/receipts';
+import { classifyItemAisle, normalizeAisle, computeUnitPrice, normalizeStoreName, reconcileStoreWithExisting } from './receiptClassifier.ts';
+import { type SupermarketAisle, type SupermarketAisleKey, generateSuperKey, generateGenericNeedKey, sanitizeGenericDisplayName, correctFrenchSpelling, normalizeProductNeed } from '../types/receipts.ts';
 import { resolvePhysicalStore, TARGET_PHYSICAL_STORES } from './storeRegistry.ts';
+import { 
+  optimizeImageForOCR, 
+  prepareOptimizedMediaForGemini, 
+  fileToBase64Pure,
+  formatFileSize 
+} from './imageOptimizer.ts';
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
   {
@@ -1181,16 +1187,7 @@ export const SUPERMARKET_BENCHMARKS = [
 ];
 
 export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const res = reader.result as string;
-      const base64 = res.split(',')[1] || '';
-      resolve(base64);
-    };
-    reader.onerror = (err) => reject(err);
-    reader.readAsDataURL(file);
-  });
+  return fileToBase64Pure(file);
 }
 
 /**
@@ -1270,19 +1267,11 @@ export async function analyzeReceiptMultimodal(
 
   const apiKey = getGeminiApiKey();
 
-  // Préparation des fragments en base64 pour l'appel multimodal
-  const imageParts = await Promise.all(
-    files.map(async (file) => {
-      const base64Data = await fileToBase64(file);
-      const mime = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-      return {
-        inlineData: {
-          data: base64Data,
-          mimeType: mime
-        }
-      };
-    })
-  );
+  // Préparation des fragments optimisés ultra-légers pour l'appel multimodal
+  const optimizedParts = await prepareOptimizedMediaForGemini(files);
+  const imageParts = optimizedParts.map(p => ({
+    inlineData: p.inlineData
+  }));
 
   const systemPrompt = `
 Tu es un auditeur financier et expert OCR d'élite pour l'application CashPilot, spécialisé dans l'audit et la numérisation des tickets de caisse de grande distribution (E.Leclerc, Carrefour, Lidl, Intermarché, Auchan, Aldi, Monoprix, Coop, Migros, etc.).
@@ -1672,7 +1661,8 @@ export interface ExtractedReceiptResult {
  */
 export async function extractReceiptItemsFromFiles(
   files: File[],
-  existingStores: string[] = []
+  existingStores: string[] = [],
+  onProgress?: (message: string) => void
 ): Promise<ExtractedReceiptResult> {
   if (!files || files.length === 0) {
     throw new Error("Aucun fichier fourni pour l'analyse du ticket.");
@@ -1680,19 +1670,19 @@ export async function extractReceiptItemsFromFiles(
 
   const apiKey = getGeminiApiKey();
 
-  // Préparation des images / PDF en base64
-  const imageParts = await Promise.all(
-    files.map(async (file) => {
-      const base64Data = await fileToBase64(file);
-      const mime = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-      return {
-        inlineData: {
-          data: base64Data,
-          mimeType: mime
-        }
-      };
-    })
-  );
+  // 1. Optimisation instantanée côté client (résout la lenteur extrême des PNG et photos lourdes)
+  if (onProgress) {
+    onProgress("Optimisation ultra-rapide des images pour Gemini Vision (compression PNG ➔ JPEG)...");
+  }
+  const optimizedMedia = await prepareOptimizedMediaForGemini(files, onProgress);
+  const imageParts = optimizedMedia.map(m => ({ inlineData: m.inlineData }));
+
+  // Métriques d'optimisation
+  const totalOriginal = optimizedMedia.reduce((acc, m) => acc + m.meta.originalSize, 0);
+  const totalOptimized = optimizedMedia.reduce((acc, m) => acc + m.meta.optimizedSize, 0);
+  const totalDuration = optimizedMedia.reduce((acc, m) => acc + m.meta.durationMs, 0);
+  const pctSaved = totalOriginal > 0 ? Math.round(((totalOriginal - totalOptimized) / totalOriginal) * 100) : 0;
+  console.log(`[Gemini Vision] ${files.length} fichier(s) optimisé(s) en ${totalDuration}ms : ${formatFileSize(totalOriginal)} ➔ ${formatFileSize(totalOptimized)} (-${pctSaved}% de payload réseau)`);
 
   const systemPrompt = `
 Tu es un auditeur financier assermenté et expert OCR de pointe pour CashPilot, spécialisé dans l'analyse de tickets de caisse de la grande distribution (Lidl, E.Leclerc, Carrefour, Intermarché, Auchan, Aldi, Monoprix, Super U, etc.).
@@ -1877,12 +1867,11 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
   }
 
   const preferredModel = getGeminiModelName();
-  // Ordre de priorité de la cascade : Gemini 3.8 Flash en tête, puis modèle préféré, puis les modèles de secours
+  // Ordre de priorité de la cascade : Modèles officiels ultra-rapides Google AI Studio (100% existants)
   const candidateModels = [
-    'gemini-3.8-flash',
     preferredModel,
-    'gemini-flash-latest',
     'gemini-2.5-flash',
+    'gemini-flash-latest',
     'gemini-2.0-flash',
     'gemini-1.5-flash'
   ];
@@ -1894,6 +1883,9 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
 
   for (const modelName of uniqueModels) {
     try {
+      if (onProgress) {
+        onProgress(`Analyse et extraction par ${modelName} (~1s)...`);
+      }
       const model = genAI.getGenerativeModel({
         model: modelName,
         generationConfig: {
@@ -2177,8 +2169,9 @@ export async function extractBankStatementDirectly(
     throw new Error("Clé API Google Gemini introuvable. Veuillez renseigner votre clé API dans les Paramètres.");
   }
 
-  const base64Data = await fileToBase64(file);
-  const mimeType = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+  const optimized = await optimizeImageForOCR(file);
+  const base64Data = optimized.base64;
+  const mimeType = optimized.mimeType;
 
   const prompt = `
 Tu es un expert comptable et auditeur bancaire d'élite pour l'application CashPilot.

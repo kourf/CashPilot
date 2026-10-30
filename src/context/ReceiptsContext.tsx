@@ -775,9 +775,11 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const extractReceipt = useCallback(async (files: File[]): Promise<ExtractedReceiptResult> => {
     try {
       setIsAnalyzing(true);
-      setAnalysisProgress("Extraction par Gemini Flash Vision...");
+      setAnalysisProgress("Optimisation des images pour Gemini Vision...");
       const knownStores = Array.from(new Set(receipts.map(r => normalizeStoreName(r.storeName)).filter(Boolean)));
-      const res = await extractReceiptItemsFromFiles(files, knownStores);
+      const res = await extractReceiptItemsFromFiles(files, knownStores, (progressMsg) => {
+        setAnalysisProgress(progressMsg);
+      });
       setPendingValidationReceipt(res);
       return res;
     } finally {
