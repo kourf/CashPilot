@@ -60,7 +60,6 @@ export default function Coach() {
     scopedTransactions,
     isLoading,
     loadingStep,
-    loadingSeconds,
     inputPrompt,
     setInputPrompt,
     setActiveConversationId,
@@ -848,16 +847,16 @@ export default function Coach() {
                 );
               })}
 
-              {/* Indicateur de chargement avec chronomètre persistant */}
+              {/* Indicateur de chargement épuré (sans affichage des secondes de réflexion) */}
               {isLoading && (
                 <div className="flex items-start gap-3.5 animate-in fade-in duration-300">
                   <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-cyan-500 to-primary text-white flex items-center justify-center shrink-0 shadow-md shadow-cyan-500/20 mt-1">
                     <Sparkles size={16} className="animate-spin" />
                   </div>
-                  <div className="space-y-2 py-2">
+                  <div className="space-y-1.5 py-2">
                     <div className="flex items-center gap-2 text-xs font-semibold text-cyan-400">
                       <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                      <span>{loadingStep} ({loadingSeconds.toFixed(1)}s)</span>
+                      <span>{loadingStep}</span>
                     </div>
                     <p className="text-[11px] text-muted-foreground">
                       Vous pouvez naviguer librement vers les autres onglets : l'analyse continue en arrière-plan.

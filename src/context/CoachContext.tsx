@@ -447,8 +447,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [inputPrompt, setInputPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState<string>('Analyse des données...');
-  const [loadingSeconds, setLoadingSeconds] = useState<number>(0);
-  const loadingTimerRef = useRef<any>(null);
+  const loadingSeconds = 0;
 
   const handleScopeChange = useCallback((newScope: string) => {
     setConversations(prev => prev.map(c => {
@@ -555,13 +554,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     syncConversationToFirestore(updatedWithUser);
 
     setIsLoading(true);
-    setLoadingSeconds(0);
     setLoadingStep("Exploration de votre base bancaire et tickets...");
-
-    if (loadingTimerRef.current) clearInterval(loadingTimerRef.current);
-    loadingTimerRef.current = setInterval(() => {
-      setLoadingSeconds(s => parseFloat((s + 0.1).toFixed(1)));
-    }, 100);
 
     const stepTimer1 = setTimeout(() => {
       setLoadingStep("Calcul des ratios, médianes et audit des articles...");
@@ -639,10 +632,6 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
-      if (loadingTimerRef.current) {
-        clearInterval(loadingTimerRef.current);
-        loadingTimerRef.current = null;
-      }
       setIsLoading(false);
     }
   }, [

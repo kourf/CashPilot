@@ -29,7 +29,6 @@ export default function Layout() {
   const importState = txContext?.importState;
   const appNotification = txContext?.appNotification;
   const isCoachLoading = coachContext?.isLoading;
-  const coachLoadingSeconds = coachContext?.loadingSeconds ?? 0;
 
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -228,9 +227,6 @@ export default function Layout() {
             <Sparkles size={8} className="absolute -top-1 -right-1 text-cyan-200 animate-bounce" />
           </div>
           <span>Coach IA réfléchit en arrière-plan...</span>
-          <span className="font-mono bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-bold">
-            {coachLoadingSeconds.toFixed(1)}s
-          </span>
           <span className="text-[10px] bg-white/15 px-1.5 py-0.5 rounded-md text-cyan-100 group-hover:bg-white/25">
             Ouvrir →
           </span>
