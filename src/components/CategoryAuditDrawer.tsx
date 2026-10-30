@@ -40,7 +40,9 @@ import {
   Check,
   Tv,
   Layers,
-  ArrowUpDown
+  ArrowUpDown,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -405,7 +407,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
       .filter(g => g.transactions.length > 0);
   }, [auditType, subscriptionSortMode, sortedSubscriptionTransactions, subscriptionMetadataMap, subscriptionEvolutions, allTransactions]);
 
-  // Carte détaillée et épurée pour chaque abonnement ou prélèvement récurrent
+  // Carte détaillée et épurée (Google Stitch UI/UX) pour chaque abonnement ou prélèvement récurrent
   const renderSubscriptionCard = (tx: any, idx: number) => {
     const rawAmt = Number(tx.amount !== undefined ? tx.amount : tx.rawAmount) || 0;
     const absAmt = Math.abs(rawAmt);
@@ -419,197 +421,203 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
                      meta.logicalGroup === 'housing' ? Home :
                      meta.logicalGroup === 'insurance' ? Shield :
                      meta.logicalGroup === 'telecom' ? Smartphone :
-                     meta.logicalGroup === 'digital' ? Tv : Calendar;
+                     meta.logicalGroup === 'digital' ? Tv : CalendarClock;
 
-    const iconColor = meta.isCreditCard ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' :
-                      meta.isBNPL ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
-                      meta.isBankFee ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
-                      meta.logicalGroup === 'housing' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
-                      meta.logicalGroup === 'insurance' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
-                      meta.logicalGroup === 'telecom' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' :
-                      meta.logicalGroup === 'digital' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
-                      'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+    // Palette douce et contrastée (Stitch Design DNA)
+    const iconStyle = meta.isCreditCard ? 'bg-indigo-500/10 text-indigo-400' :
+                      meta.isBNPL ? 'bg-amber-500/10 text-amber-500' :
+                      meta.isBankFee ? 'bg-rose-500/10 text-rose-400' :
+                      meta.logicalGroup === 'housing' ? 'bg-amber-500/10 text-amber-500' :
+                      meta.logicalGroup === 'insurance' ? 'bg-blue-500/10 text-blue-400' :
+                      meta.logicalGroup === 'telecom' ? 'bg-cyan-500/10 text-cyan-400' :
+                      meta.logicalGroup === 'digital' ? 'bg-purple-500/10 text-purple-400' :
+                      'bg-emerald-500/10 text-emerald-400';
+
+    const isExpanded = expandedNegotiateId === tx.id;
+    const isCopied = copiedAdviceId === tx.id;
 
     return (
       <div 
         key={tx.id || idx}
-        className="p-3.5 sm:p-4 rounded-2xl bg-card border border-border/70 hover:border-border transition-all flex flex-col gap-3 shadow-2xs"
+        className="group relative p-4 sm:p-5 rounded-2xl bg-card border border-border/60 hover:border-border/90 hover:shadow-xs transition-all flex flex-col gap-3.5"
       >
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        {/* --- LIGNE SUPÉRIEURE : ENTÊTE IDENTITÉ & MONTANT --- */}
+        <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0 flex-1">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${iconColor}`}>
+            {/* Icône de service élégante */}
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${iconStyle}`}>
               <CardIcon className="w-5 h-5" />
             </div>
 
+            {/* Identifiant commercial et tags */}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-extrabold text-sm text-foreground truncate" title={meta.cleanTitle}>
+                <span className="font-extrabold text-sm sm:text-base text-foreground tracking-tight truncate" title={meta.cleanTitle}>
                   {meta.cleanTitle}
                 </span>
 
                 {/* Badge spécifique carte à débit différé (Amex) */}
                 {meta.isCreditCard && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-                    <CreditCard className="w-3 h-3" /> Carte à débit différé (Amex)
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/25">
+                    <CreditCard className="w-3 h-3" /> Amex • Débit différé
                   </span>
                 )}
 
                 {/* Badge paiement fractionné */}
                 {meta.isBNPL && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/15 text-orange-400 border border-orange-500/25">
                     <Layers className="w-3 h-3" /> Paiement fractionné
                   </span>
                 )}
 
                 {/* Badge d'évolution de tarif */}
                 {evo && evo.status === 'INCREASED' && !meta.isCreditCard && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/30">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500/15 text-rose-400 border border-rose-500/30">
                     <TrendingUp className="w-3 h-3" />
-                    <span>+{formatCurrency(evo.difference || 0, { showSign: false })} ({evo.percentChange && evo.percentChange > 0 ? `+${evo.percentChange}%` : ''}) • Hausse détectée</span>
+                    <span>+{formatCurrency(evo.difference || 0, { showSign: false })} ({evo.percentChange && evo.percentChange > 0 ? `+${evo.percentChange}%` : ''}) • Hausse</span>
                   </span>
                 )}
                 {evo && evo.status === 'DECREASED' && !meta.isCreditCard && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                     <TrendingDown className="w-3 h-3" />
-                    <span>{formatCurrency(evo.difference || 0, { showSign: true })} • Baisse de prix</span>
+                    <span>{formatCurrency(evo.difference || 0, { showSign: true })} • Baisse</span>
                   </span>
                 )}
                 {evo && evo.status === 'STABLE' && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border/50">
-                    Tarif stable ({formatCurrency(evo.currentAmount, { showSign: false })})
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary/80 text-muted-foreground border border-border/40">
+                    Tarif stable
                   </span>
                 )}
                 {evo && (evo.status === 'NEW' || !evo.status) && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary/80 text-muted-foreground border border-border/50">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary/60 text-muted-foreground/80 border border-border/30">
                     1er relevé disponible
                   </span>
                 )}
-              </div>
 
-              {/* Explication explicite, épurée et transparente */}
-              <div className="mt-2 p-2.5 rounded-xl bg-secondary/30 dark:bg-white/[0.02] border border-border/60 space-y-1.5 text-xs">
-                <div className="flex items-start gap-1.5 text-[11px] font-medium text-foreground/90 leading-relaxed">
-                  <Info className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-                  <span>{meta.plainDescription}</span>
-                </div>
-
-                {meta.humbleDisclaimer && (
-                  <div className="text-[10px] font-medium text-muted-foreground bg-background/50 px-2.5 py-1 rounded-lg border border-border/40 italic">
-                    {meta.humbleDisclaimer}
-                  </div>
-                )}
-
-                {meta.isBNPL && meta.installmentDetails && (
-                  <div className="text-[10px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                    <CalendarClock className="w-3.5 h-3.5 shrink-0" />
-                    <span>{meta.installmentDetails.explanation}</span>
-                  </div>
-                )}
-
-                {meta.isCreditCard && (
-                  <div className="text-[10px] font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 shrink-0" />
-                    <span>Prélèvement de carte de crédit : variation normale liée à vos achats du mois écoulé.</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Libellé bancaire brut & Date de prélèvement */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-4 text-xs mt-2">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Libellé Brut du Relevé</span>
-                  <span className="text-[11px] text-foreground/80 font-mono truncate" title={tx.rawLabel || tx.description}>
-                    {tx.rawLabel || tx.description}
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Date de Prélèvement</span>
-                  <span className="text-[11px] text-blue-500 font-bold flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {tx.subscriptionDay ? `Le ${tx.subscriptionDay} du mois (${formatDateFR(tx.date)})` : formatDateFR(tx.date)}
-                  </span>
-                </div>
+                {/* Date d'échéance / Jour de prélèvement */}
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                  <Calendar className="w-3 h-3 text-primary/70" />
+                  {tx.subscriptionDay ? `Le ${tx.subscriptionDay} du mois` : formatDateFR(tx.date)}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Montant formaté */}
-          <div className="text-right shrink-0 sm:self-start pl-12 sm:pl-0 flex flex-col items-end">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">
-              {meta.isCreditCard ? 'Montant Prélevé' : 'Montant Mensuel'}
-            </span>
-            <span className="text-base sm:text-lg font-black font-mono text-foreground">
+          {/* Montant mensuel & cadence */}
+          <div className="text-right shrink-0 flex flex-col items-end pl-2">
+            <span className="text-base sm:text-lg font-black font-mono tracking-tight text-foreground">
               -{formatCurrency(absAmt, { showSign: false })}
+            </span>
+            <span className="text-[10px] font-medium text-muted-foreground">
+              {meta.isCreditCard ? 'débité ce mois' : '/ mois'}
             </span>
           </div>
         </div>
 
-        {/* Historique chronologique avec date et mois formaté rattaché au prix */}
-        {evo && evo.history && evo.history.length > 1 && (
-          <div className="flex flex-col gap-1.5 pt-2 border-t border-border/50">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-primary" /> Historique chronologique ({evo.history.length} mois analysés) :
-              </span>
-              <span className="text-[10px] text-muted-foreground font-medium">Mois (Date) : Prix</span>
+        {/* --- PANNEAU CONTEXTUEL ÉPURÉ & FLUIDE (SANS CADRES IMBRIQUÉS) --- */}
+        <div className="p-3 rounded-xl bg-secondary/35 dark:bg-white/[0.02] border border-border/40 space-y-2 text-xs">
+          {/* Définition claire et explicite */}
+          <div className="flex items-start gap-2 text-[11.5px] text-foreground/90 leading-relaxed font-medium">
+            <Info className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+            <span>{meta.plainDescription}</span>
+          </div>
+
+          {/* Disclaimer humble si libellé bancaire succinct */}
+          {meta.humbleDisclaimer && (
+            <p className="text-[10.5px] text-muted-foreground pl-5 italic leading-tight">
+              {meta.humbleDisclaimer}
+            </p>
+          )}
+
+          {/* Détails du paiement fractionné (BNPL : échéances restantes & fin estimée) */}
+          {meta.isBNPL && meta.installmentDetails && (
+            <div className="flex items-center gap-2 pl-5 text-[11px] font-semibold text-orange-400">
+              <CalendarClock className="w-3.5 h-3.5 shrink-0" />
+              <span>{meta.installmentDetails.explanation}</span>
             </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
+          )}
+
+          {/* Explication carte à débit différé (Amex) */}
+          {meta.isCreditCard && (
+            <div className="flex items-center gap-2 pl-5 text-[11px] font-semibold text-indigo-400">
+              <CreditCard className="w-3.5 h-3.5 shrink-0" />
+              <span>Prélèvement carte de crédit : montant variable reflétant normalement vos achats du mois écoulé.</span>
+            </div>
+          )}
+        </div>
+
+        {/* --- HISTORIQUE CHRONOLOGIQUE FLUIDE (TIMELINE HORIZONTALE ÉPURÉE) --- */}
+        {evo && evo.history && evo.history.length > 1 && (
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground font-semibold">
+              <span className="flex items-center gap-1.5 uppercase tracking-wider">
+                <Calendar className="w-3 h-3 text-primary" /> Historique ({evo.history.length} mois analysés) :
+              </span>
+              <span>Chronologie des prix</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
               {evo.history.map((pt, hIdx) => {
                 const isLatest = hIdx === evo.history.length - 1;
+                const isIncreased = isLatest && evo.status === 'INCREASED' && !meta.isCreditCard;
+                const isDecreased = isLatest && evo.status === 'DECREASED' && !meta.isCreditCard;
+
                 return (
-                  <React.Fragment key={pt.date + hIdx}>
-                    <div className={`px-2.5 py-1 rounded-xl text-[11px] font-medium border flex items-center gap-1.5 shadow-2xs ${
-                      isLatest && evo.status === 'INCREASED' && !meta.isCreditCard
-                        ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                        : (isLatest && evo.status === 'DECREASED' && !meta.isCreditCard
-                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                            : 'bg-secondary/60 text-foreground border-border/60')
+                  <div key={pt.date + hIdx} className="flex items-center gap-1.5">
+                    <div className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5 ${
+                      isIncreased
+                        ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold'
+                        : isDecreased
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold'
+                          : 'bg-secondary/60 text-foreground/80 border border-border/40 font-medium'
                     }`}>
-                      <span className="font-bold text-[10px] uppercase text-muted-foreground">
+                      <span className="font-sans font-bold text-[10px] uppercase text-muted-foreground">
                         {pt.monthLabel || pt.monthKey}
                       </span>
-                      <span className="text-[10px] text-muted-foreground font-mono">
+                      <span className="text-[10px] text-muted-foreground">
                         ({pt.formattedDate || pt.date})
                       </span>
-                      <span className="font-mono font-black text-xs text-foreground">
+                      <span className="font-black text-xs">
                         : {formatCurrency(pt.amount, { showSign: false })}
                       </span>
                     </div>
                     {hIdx < evo.history.length - 1 && (
-                      <span className="text-muted-foreground font-bold text-xs">➔</span>
+                      <span className="text-muted-foreground/40 text-xs font-bold">→</span>
                     )}
-                  </React.Fragment>
+                  </div>
                 );
               })}
             </div>
           </div>
         )}
 
-        {/* Aide à la négociation / résiliation en cas de hausse réelle (jamais sur Amex) */}
+        {/* --- ACCORDÉON NÉGOCIATION / RÉSILIATION (EN CAS DE HAUSSE RÉELLE) --- */}
         {evo && evo.status === 'INCREASED' && !meta.isCreditCard && (
-          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/25 flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5 text-rose-300 font-bold text-xs">
+          <div className="mt-0.5">
+            <button
+              type="button"
+              onClick={() => setExpandedNegotiateId(isExpanded ? null : tx.id)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 text-rose-300 text-xs font-bold transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                <span>Hausse de tarif constatée (passé de {formatCurrency(evo.previousAmount || 0, { showSign: false })} à {formatCurrency(evo.currentAmount, { showSign: false })})</span>
+                <span>
+                  Hausse de +{formatCurrency(evo.difference || 0, { showSign: false })} constatée (de {formatCurrency(evo.previousAmount || 0, { showSign: false })} à {formatCurrency(evo.currentAmount, { showSign: false })})
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setExpandedNegotiateId(expandedNegotiateId === tx.id ? null : tx.id)}
-                className="text-[10px] font-bold px-2 py-1 rounded bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 transition-colors cursor-pointer"
-              >
-                {expandedNegotiateId === tx.id ? 'Masquer l\'argumentaire' : 'Conseil négocier / résilier'}
-              </button>
-            </div>
+              <div className="flex items-center gap-1 text-[11px] text-rose-400 font-semibold">
+                <span>{isExpanded ? 'Masquer' : 'Conseil négocier / résilier'}</span>
+                {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </div>
+            </button>
 
-            {expandedNegotiateId === tx.id && (
-              <div className="mt-1 p-2.5 rounded-lg bg-black/30 border border-rose-500/20 space-y-2">
-                <p className="text-[11px] text-rose-200/90 leading-relaxed">
+            {isExpanded && (
+              <div className="mt-2 p-3.5 rounded-xl bg-rose-950/20 border border-rose-500/20 space-y-2.5 animate-in fade-in duration-200">
+                <p className="text-[11.5px] text-rose-200/90 leading-relaxed">
                   {evo.negotiationAdvice}
                 </p>
-                <div className="pt-2 border-t border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="pt-2 border-t border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <span className="text-[10px] font-medium text-muted-foreground">
-                    Message type pour le service client :
+                    Modèle de réclamation prêt à envoyer :
                   </span>
                   <button
                     type="button"
@@ -619,16 +627,27 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
                       setCopiedAdviceId(tx.id);
                       setTimeout(() => setCopiedAdviceId(null), 2500);
                     }}
-                    className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
+                    className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
                   >
-                    {copiedAdviceId === tx.id ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3 text-white" />}
-                    <span>{copiedAdviceId === tx.id ? 'Copié dans le presse-papier !' : 'Copier le message'}</span>
+                    {isCopied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5 text-white" />}
+                    <span>{isCopied ? 'Copié dans le presse-papier !' : 'Copier le message type'}</span>
                   </button>
                 </div>
               </div>
             )}
           </div>
         )}
+
+        {/* --- PIED DE CARTE TECHNIQUE & TRAÇABILITÉ BANCAIRE --- */}
+        <div className="pt-2 border-t border-border/40 flex items-center justify-between text-[10.5px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 min-w-0 max-w-[80%]" title={tx.rawLabel || tx.description}>
+            <span className="uppercase text-[9px] font-bold tracking-wider text-muted-foreground/70 shrink-0">Libellé brut :</span>
+            <span className="font-mono text-foreground/70 truncate">{tx.rawLabel || tx.description}</span>
+          </div>
+          <div className="text-[10px] font-medium text-muted-foreground shrink-0">
+            {formatDateFR(tx.date)}
+          </div>
+        </div>
       </div>
     );
   };
@@ -1265,15 +1284,15 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
             </div>
           )}
 
-          {/* CAS 4 : Cartes KPI (Revenus, Dépenses Réelles, Épargne, Essentiel, Confort, Abonnements) */}
-          {(auditType === 'kpi-income' || auditType === 'kpi-expenses' || auditType === 'kpi-savings' || auditType === 'kpi-essential' || auditType === 'kpi-comfort' || auditType === 'subscriptions') && (
+          {/* CAS 4 : Cartes KPI Standards (Revenus, Dépenses Réelles, Épargne, Essentiel, Confort) */}
+          {(auditType === 'kpi-income' || auditType === 'kpi-expenses' || auditType === 'kpi-savings' || auditType === 'kpi-essential' || auditType === 'kpi-comfort') && (
             <div className="grid grid-cols-2 gap-2.5">
               <div className="p-3 rounded-xl bg-card border border-border/80 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-muted-foreground block">
-                  {auditType === 'subscriptions' ? 'Total Mensuel' : 'Total Concilié'}
+                  Total Concilié
                 </span>
                 <span className={`text-lg sm:text-xl font-black font-mono ${
-                  auditType === 'kpi-income' ? 'text-emerald-400' : (auditType === 'kpi-expenses' ? 'text-rose-400' : (auditType === 'kpi-savings' ? 'text-purple-400' : (auditType === 'kpi-essential' ? 'text-emerald-400' : (auditType === 'subscriptions' ? 'text-blue-400' : 'text-amber-500'))))
+                  auditType === 'kpi-income' ? 'text-emerald-400' : (auditType === 'kpi-expenses' ? 'text-rose-400' : (auditType === 'kpi-savings' ? 'text-purple-400' : (auditType === 'kpi-essential' ? 'text-emerald-400' : 'text-amber-500')))
                 }`}>
                   {formatCurrency(customTotalAmount !== undefined ? customTotalAmount : currentFilteredSum, { showSign: auditType === 'kpi-income' })}
                 </span>
@@ -1284,7 +1303,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
               <div className="p-3 rounded-xl bg-secondary/40 border border-border/60">
                 <span className="text-[10px] uppercase font-bold text-muted-foreground block">
-                  {auditType === 'subscriptions' ? "Nombre d'abonnements" : "Nombre d'opérations"}
+                  Nombre d'opérations
                 </span>
                 <span className="text-lg sm:text-xl font-black font-mono text-foreground">
                   {rawTransactions.length}
@@ -1296,75 +1315,106 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
             </div>
           )}
 
-          {/* Alerte & Suivi d'évolution des prix d'abonnements */}
+          {/* CAS 5 : Hero Deck Unifié pour Abonnements & Prélèvements (Google Stitch DNA) */}
           {auditType === 'subscriptions' && (
-            <div className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
-              subscriptionStats.increasesCount > 0 
-                ? 'bg-rose-500/10 border-rose-500/25 text-rose-300' 
-                : subscriptionStats.decreasesCount > 0
-                  ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
-                  : subscriptionStats.hasMultiMonthData
-                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
-                    : 'bg-blue-500/10 border-blue-500/25 text-blue-300'
-            }`}>
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                  subscriptionStats.increasesCount > 0 
-                    ? 'bg-rose-500/20 text-rose-400' 
-                    : subscriptionStats.decreasesCount > 0
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : subscriptionStats.hasMultiMonthData
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : 'bg-blue-500/20 text-blue-400'
-                }`}>
-                  {subscriptionStats.increasesCount > 0 ? (
-                    <AlertTriangle className="w-4 h-4" />
-                  ) : subscriptionStats.decreasesCount > 0 ? (
-                    <TrendingDown className="w-4 h-4" />
-                  ) : subscriptionStats.hasMultiMonthData ? (
-                    <CheckCircle2 className="w-4 h-4" />
-                  ) : (
-                    <Calendar className="w-4 h-4" />
-                  )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* Carte 1 : Budget Mensuel Récurrent */}
+              <div className="p-3.5 rounded-2xl bg-card border border-border/70 shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                    Total Mensuel
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
                 </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-foreground">
-                    {subscriptionStats.increasesCount > 0
-                      ? `${subscriptionStats.increasesCount} hausse${subscriptionStats.increasesCount > 1 ? 's' : ''} de tarif détectée${subscriptionStats.increasesCount > 1 ? 's' : ''}`
-                      : subscriptionStats.decreasesCount > 0
-                        ? `${subscriptionStats.decreasesCount} baisse${subscriptionStats.decreasesCount > 1 ? 's' : ''} de prix constatée${subscriptionStats.decreasesCount > 1 ? 's' : ''}`
-                        : subscriptionStats.hasMultiMonthData
-                          ? 'Tarifs stables sur l\'ensemble de vos relevés analysés'
-                          : 'Analyse basée sur un seul mois de relevé bancaire'}
+                <div className="mt-2">
+                  <div className="text-xl sm:text-2xl font-black font-mono text-foreground tracking-tight">
+                    {formatCurrency(customTotalAmount !== undefined ? customTotalAmount : currentFilteredSum, { showSign: false })}
                   </div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
-                    {subscriptionStats.increasesCount > 0
-                      ? `Surcoût : +${formatCurrency(subscriptionStats.totalIncreaseImpact, { showSign: false })}/mois (+${formatCurrency(subscriptionStats.totalIncreaseImpact * 12, { showSign: false })}/an) • Idéal pour négocier ou résilier`
-                      : subscriptionStats.decreasesCount > 0
-                        ? `Économie : -${formatCurrency(subscriptionStats.totalDecreaseSavings, { showSign: false })}/mois • Vous bénéficiez de réductions actives`
-                        : subscriptionStats.hasMultiMonthData
-                          ? `Aucune hausse constatée sur vos ${subscriptionStats.stableCount} abonnements comparés sur plusieurs mois.`
-                          : 'Importez d\'autres mois de relevés bancaires pour comparer automatiquement les hausses et baisses de prix.'}
+                  <div className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                    ~{formatCurrency((customTotalAmount !== undefined ? customTotalAmount : currentFilteredSum) * 12, { showSign: false })} / an projeté
                   </div>
                 </div>
               </div>
-              {subscriptionStats.increasesCount > 0 ? (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 uppercase tracking-wider shrink-0 hidden sm:inline-block">
-                  Opportunité Négociation
-                </span>
-              ) : subscriptionStats.decreasesCount > 0 ? (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider shrink-0 hidden sm:inline-block">
-                  Économies Actives
-                </span>
-              ) : subscriptionStats.hasMultiMonthData ? (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider shrink-0 hidden sm:inline-block">
-                  Tarifs Maîtrisés
-                </span>
-              ) : (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-wider shrink-0 hidden sm:inline-block">
-                  1 Relevé Disponible
-                </span>
-              )}
+
+              {/* Carte 2 : Volume d'Engagements */}
+              <div className="p-3.5 rounded-2xl bg-card border border-border/70 shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                    Contrats & Prélèvements
+                  </span>
+                  <Layers className="w-3.5 h-3.5 text-muted-foreground" />
+                </div>
+                <div className="mt-2">
+                  <div className="text-xl sm:text-2xl font-black font-mono text-foreground tracking-tight">
+                    {rawTransactions.length}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground font-medium mt-0.5 truncate">
+                    {subscriptionGroupedList ? `${subscriptionGroupedList.length} catégories détectées` : 'Abonnements actifs'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Carte 3 : Observatoire Tarifaire & Opportunités */}
+              <div 
+                onClick={() => {
+                  if (subscriptionStats.increasesCount > 0) {
+                    setSubscriptionSortMode(subscriptionSortMode === 'alerts' ? 'logical' : 'alerts');
+                  }
+                }}
+                className={`p-3.5 rounded-2xl border shadow-2xs flex flex-col justify-between transition-all ${
+                  subscriptionStats.increasesCount > 0
+                    ? 'bg-rose-500/10 border-rose-500/25 text-rose-300 cursor-pointer hover:bg-rose-500/15'
+                    : subscriptionStats.decreasesCount > 0
+                      ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                      : subscriptionStats.hasMultiMonthData
+                        ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                        : 'bg-blue-500/10 border-blue-500/20 text-blue-300'
+                }`}
+                title={subscriptionStats.increasesCount > 0 ? "Cliquer pour isoler les hausses de tarifs" : undefined}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">
+                    Santé Tarifaire
+                  </span>
+                  {subscriptionStats.increasesCount > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-rose-400 bg-rose-500/20 px-2 py-0.5 rounded-full border border-rose-500/30">
+                      <AlertTriangle className="w-3 h-3" /> Négociation
+                    </span>
+                  ) : subscriptionStats.decreasesCount > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                      <TrendingDown className="w-3 h-3" /> Économies
+                    </span>
+                  ) : subscriptionStats.hasMultiMonthData ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                      <CheckCircle2 className="w-3 h-3" /> Stable
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30">
+                      1 Relevé
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2">
+                  <div className="text-sm sm:text-base font-bold truncate">
+                    {subscriptionStats.increasesCount > 0
+                      ? `${subscriptionStats.increasesCount} hausse${subscriptionStats.increasesCount > 1 ? 's' : ''} (+${formatCurrency(subscriptionStats.totalIncreaseImpact, { showSign: false })}/m)`
+                      : subscriptionStats.decreasesCount > 0
+                        ? `${subscriptionStats.decreasesCount} baisse${subscriptionStats.decreasesCount > 1 ? 's' : ''} (-${formatCurrency(subscriptionStats.totalDecreaseSavings, { showSign: false })}/m)`
+                        : subscriptionStats.hasMultiMonthData
+                          ? '100% tarifs stables'
+                          : '1 relevé analysé'}
+                  </div>
+                  <div className="text-[10.5px] opacity-80 font-medium mt-0.5 truncate">
+                    {subscriptionStats.increasesCount > 0
+                      ? (subscriptionSortMode === 'alerts' ? 'Filtre hausses actif (cliquer pour réinitialiser)' : 'Cliquer pour voir les hausses en tête')
+                      : subscriptionStats.decreasesCount > 0
+                        ? 'Réductions actives sur vos contrats'
+                        : subscriptionStats.hasMultiMonthData
+                          ? `${subscriptionStats.stableCount} contrats comparés multi-mois`
+                          : 'Importez d\'autres mois pour comparer'}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1377,8 +1427,8 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher par libellé, mot-clé ou montant..."
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground placeholder:text-muted-foreground"
+              placeholder={auditType === 'subscriptions' ? "Rechercher un abonnement (Netflix, EDF, Orange, 10.99...)" : "Rechercher par libellé, mot-clé ou montant..."}
+              className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground placeholder:text-muted-foreground"
             />
             {searchQuery && (
               <button 
@@ -1426,46 +1476,46 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
           )}
 
           {auditType === 'subscriptions' && (
-            <div className="flex items-center gap-1 bg-secondary/40 p-1 rounded-xl self-start sm:self-auto overflow-x-auto">
+            <div className="flex items-center gap-1 bg-secondary/50 p-1 rounded-xl self-start sm:self-auto overflow-x-auto border border-border/40">
               <button
                 onClick={() => setSubscriptionSortMode('logical')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-3 py-1.5 text-xs rounded-lg font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                   subscriptionSortMode === 'logical' 
-                    ? 'bg-card text-foreground shadow-sm font-bold' 
+                    ? 'bg-card text-foreground shadow-xs font-bold' 
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
                 title="Regrouper par nature de contrat (Logement, Assurances, Télécoms, Streaming...)"
               >
-                <Layers className="w-3.5 h-3.5" /> Ordre Logique
+                <Layers className="w-3.5 h-3.5" /> Par Catégorie
               </button>
               <button
                 onClick={() => setSubscriptionSortMode('day')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-3 py-1.5 text-xs rounded-lg font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                   subscriptionSortMode === 'day' 
-                    ? 'bg-card text-foreground shadow-sm font-bold' 
+                    ? 'bg-card text-foreground shadow-xs font-bold' 
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
                 title="Trier selon le calendrier des débits (1er au 31 du mois)"
               >
-                <Calendar className="w-3.5 h-3.5" /> Échéance
+                <Calendar className="w-3.5 h-3.5" /> Par Échéance
               </button>
               <button
                 onClick={() => setSubscriptionSortMode('amount')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-3 py-1.5 text-xs rounded-lg font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                   subscriptionSortMode === 'amount' 
-                    ? 'bg-card text-foreground shadow-sm font-bold' 
+                    ? 'bg-card text-foreground shadow-xs font-bold' 
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
                 title="Trier du montant le plus élevé au plus faible"
               >
-                <ArrowUpDown className="w-3.5 h-3.5" /> Montant
+                <ArrowUpDown className="w-3.5 h-3.5" /> Par Montant
               </button>
               {subscriptionStats.increasesCount > 0 && (
                 <button
                   onClick={() => setSubscriptionSortMode('alerts')}
-                  className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                  className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                     subscriptionSortMode === 'alerts' 
-                      ? 'bg-rose-500 text-white shadow-sm' 
+                      ? 'bg-rose-500 text-white shadow-xs' 
                       : 'text-rose-400 hover:text-rose-300'
                   }`}
                   title="Afficher les hausses de tarifs en priorité"
@@ -1493,25 +1543,28 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
                 {subscriptionGroupedList.map(group => {
                   const GroupIcon = group.icon;
                   return (
-                    <div key={group.id} className="space-y-2.5">
-                      <div className="flex items-center justify-between px-1 pb-1.5 border-b border-border/40">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-7 h-7 rounded-xl flex items-center justify-center border shadow-2xs ${group.color}`}>
+                    <div key={group.id} className="space-y-3">
+                      <div className="flex items-center justify-between px-1 pb-2 border-b border-border/40">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center border shadow-2xs ${group.color}`}>
                             <GroupIcon className="w-3.5 h-3.5" />
                           </div>
                           <h3 className="text-xs font-black uppercase tracking-wider text-foreground">
                             {group.label}
                           </h3>
-                          <span className="text-[10px] font-bold text-muted-foreground bg-secondary/80 px-2 py-0.5 rounded-full border border-border/50">
+                          <span className="text-[10px] font-bold text-muted-foreground bg-secondary/80 px-2 py-0.5 rounded-full border border-border/40">
                             {group.transactions.length}
                           </span>
                         </div>
-                        <span className="text-xs font-black font-mono text-foreground">
-                          {formatCurrency(group.total, { showSign: false })}/mois
-                        </span>
+                        <div className="text-right">
+                          <span className="text-xs font-black font-mono text-foreground">
+                            {formatCurrency(group.total, { showSign: false })}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground font-medium ml-1">/ mois</span>
+                        </div>
                       </div>
 
-                      <div className="space-y-2.5">
+                      <div className="space-y-3">
                         {group.transactions.map((tx, idx) => renderSubscriptionCard(tx, idx))}
                       </div>
                     </div>
@@ -1519,7 +1572,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
                 })}
               </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {sortedSubscriptionTransactions.map((tx, idx) => renderSubscriptionCard(tx, idx))}
               </div>
             )
