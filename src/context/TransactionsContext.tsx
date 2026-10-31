@@ -3,6 +3,7 @@ import { db } from '../lib/firebase';
 import { collection, query, onSnapshot, orderBy, doc, setDoc } from 'firebase/firestore';
 import { getAvailableMonths, type Transaction } from '../lib/kpiUtils';
 import { getActiveAccountId } from '../lib/userUtils';
+import { useAuth } from './AuthContext';
 
 export interface ActiveImportState {
   isImporting: boolean;
@@ -46,6 +47,9 @@ const BALANCES_KEY = 'cashpilot_monthly_balances';
 const TransactionsContext = createContext<TransactionsContextType | undefined>(undefined);
 
 export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const activeUid = user ? getActiveAccountId() : null;
+
   // 1. Initialisation optimiste immédiate depuis le localStorage pour un chargement instantané (0 ms)
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
@@ -195,9 +199,14 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // 2. Écouteur Firestore persistant pour la configuration globale (Devise, Soldes, Sync PC & Mobile en direct)
   useEffect(() => {
+    if (!activeUid) {
+      setIsRealtimeSynced(false);
+      return;
+    }
+
     let unsubConfig: (() => void) | undefined;
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid;
       const configDocRef = doc(db, `users/${accountId}/settings/app_config`);
 
       unsubConfig = onSnapshot(configDocRef, (snap) => {
@@ -218,6 +227,7 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           setIsRealtimeSynced(true);
         } else {
           setDoc(configDocRef, {
+            userId: accountId,
             currency: 'EUR',
             monthlyBalances: {},
             updatedAt: new Date().toISOString()
@@ -238,7 +248,7 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return () => {
       if (unsubConfig) unsubConfig();
     };
-  }, []);
+  }, [activeUid]);
 
   const setCurrency = async (newCurr: 'EUR' | 'CHF') => {
     setCurrencyState(newCurr);
@@ -247,9 +257,11 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     } catch (e) {}
 
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid || getActiveAccountId();
+      if (!accountId || accountId === 'unauthenticated') return;
       const configDocRef = doc(db, `users/${accountId}/settings/app_config`);
       await setDoc(configDocRef, {
+        userId: accountId,
         currency: newCurr,
         updatedAt: new Date().toISOString()
       }, { merge: true });
@@ -265,9 +277,11 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     } catch (e) {}
 
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid || getActiveAccountId();
+      if (!accountId || accountId === 'unauthenticated') return;
       const configDocRef = doc(db, `users/${accountId}/settings/app_config`);
       await setDoc(configDocRef, {
+        userId: accountId,
         monthlyBalances: balances,
         updatedAt: new Date().toISOString()
       }, { merge: true });
@@ -278,17 +292,22 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // 3. Écouteur Firestore persistant unique pour les transactions (au niveau racine de l'application)
   useEffect(() => {
+    if (!activeUid) {
+      setTransactions([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     let unsubscribe: (() => void) | undefined;
+    setLoading(true);
     
     const timeoutId = setTimeout(() => {
-      if (loading && transactions.length === 0) {
-        setLoading(false);
-        setError("Le chargement prend plus de temps que prévu.");
-      }
+      setLoading(false);
     }, 8000);
 
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid;
 
       const q = query(
         collection(db, `users/${accountId}/transactions`),
@@ -312,17 +331,11 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       }, (err) => {
         console.error("Erreur Firestore sync transactions:", err);
-        if (transactions.length === 0) {
-          setError("Impossible de synchroniser vos données. Vérifiez votre connexion.");
-        }
         setLoading(false);
         clearTimeout(timeoutId);
       });
     } catch (err) {
       console.error("Erreur d'initialisation de l'écouteur Firestore:", err);
-      if (transactions.length === 0) {
-        setError("Une erreur inattendue est survenue.");
-      }
       setLoading(false);
       clearTimeout(timeoutId);
     }
@@ -333,7 +346,7 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         unsubscribe();
       }
     };
-  }, []);
+  }, [activeUid]);
 
   return (
     <TransactionsContext.Provider

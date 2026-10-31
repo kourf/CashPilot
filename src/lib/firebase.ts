@@ -8,7 +8,18 @@ import {
 } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
-import { getAuth, signInAnonymously, onAuthStateChanged, type User } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  sendPasswordResetEmail,
+  onAuthStateChanged, 
+  type User 
+} from 'firebase/auth';
 
 // Les variables d'environnement Vite doivent commencer par VITE_
 const firebaseConfig = {
@@ -38,38 +49,31 @@ try {
 const storage = getStorage(app);
 const functions = getFunctions(app, 'europe-west1');
 
-// Authentification Firebase gratuite (Anonymous Auth / UID utilisateur isolé)
-let auth: ReturnType<typeof getAuth> | null = null;
+// Authentification Firebase gratuite (Email/Mot de passe & Google Auth - 100% Spark Plan gratuit)
+let auth: ReturnType<typeof getAuth>;
 try {
-  if (typeof window !== 'undefined') {
-    auth = getAuth(app);
-  }
+  auth = getAuth(app);
 } catch (e) {
   console.warn("Firebase Auth init warning:", e);
+  auth = null as any;
 }
 
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
+
 /**
- * Garantit qu'une session utilisateur authentifiée (anonyme ou connectée) est active
- * sans bloquer le rendu initial et à coût 0 € (plan Spark gratuit).
+ * Vérifie si un utilisateur est actuellement authentifié (sans connexion anonyme forcée).
  */
 export async function ensureAuthenticatedUser(): Promise<User | null> {
   if (!auth || typeof window === 'undefined') return null;
   if (auth.currentUser) return auth.currentUser;
 
   return new Promise((resolve) => {
-    const unsub = onAuthStateChanged(auth!, async (user) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
       unsub();
-      if (user) {
-        resolve(user);
-      } else {
-        try {
-          const cred = await signInAnonymously(auth!);
-          resolve(cred.user);
-        } catch (err) {
-          console.warn("Anonymous auth fallback (mode espace partagé actif):", err);
-          resolve(null);
-        }
-      }
+      resolve(user || null);
     });
   });
 }
@@ -81,4 +85,18 @@ if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_USE_FIREBASE_EMU
   connectFunctionsEmulator(functions, 'localhost', 5001);
 }
 
-export { app, db, storage, functions, auth };
+export { 
+  app, 
+  db, 
+  storage, 
+  functions, 
+  auth,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  sendPasswordResetEmail,
+  onAuthStateChanged,
+  type User
+};

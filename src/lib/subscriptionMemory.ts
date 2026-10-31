@@ -48,23 +48,13 @@ export async function getSubscriptionMapping(
     // ignore
   }
 
-  // 2. Recherche dans Firestore (Scoped Utilisateur & Global)
+  // 2. Recherche dans Firestore (Scoped strictement par Utilisateur UID)
   try {
+    if (!accountId || accountId === 'unauthenticated') return null;
     const userDocRef = doc(db, `users/${accountId}/subscription_mappings`, key);
     const snap = await getDoc(userDocRef);
     if (snap.exists()) {
       const data = snap.data() as SubscriptionMapping;
-      if (data?.resolvedName) {
-        updateLocalCache(key, data);
-        return data.resolvedName;
-      }
-    }
-
-    // Fallback collection partagée
-    const globalDocRef = doc(db, 'subscription_mappings', key);
-    const globalSnap = await getDoc(globalDocRef);
-    if (globalSnap.exists()) {
-      const data = globalSnap.data() as SubscriptionMapping;
       if (data?.resolvedName) {
         updateLocalCache(key, data);
         return data.resolvedName;
@@ -98,13 +88,11 @@ export async function saveSubscriptionMapping(
   // Mise à jour cache local
   updateLocalCache(key, mapping);
 
-  // Sauvegarde Firestore
+  // Sauvegarde Firestore isolée sous l'UID de l'utilisateur
   try {
+    if (!accountId || accountId === 'unauthenticated') return;
     const userDocRef = doc(db, `users/${accountId}/subscription_mappings`, key);
-    await setDoc(userDocRef, mapping, { merge: true });
-
-    const globalDocRef = doc(db, 'subscription_mappings', key);
-    await setDoc(globalDocRef, mapping, { merge: true });
+    await setDoc(userDocRef, { ...mapping, userId: accountId }, { merge: true });
   } catch (err) {
     console.warn('Erreur sauvegarde Firestore mapping abonnement:', err);
   }
@@ -130,8 +118,8 @@ export async function deleteSubscriptionMapping(
   } catch {}
 
   try {
+    if (!accountId || accountId === 'unauthenticated') return;
     await deleteDoc(doc(db, `users/${accountId}/subscription_mappings`, key));
-    await deleteDoc(doc(db, 'subscription_mappings', key));
   } catch (err) {
     console.warn('Erreur suppression Firestore mapping:', err);
   }

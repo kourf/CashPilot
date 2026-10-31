@@ -17,12 +17,16 @@ import {
   Archive,
   Sparkles,
   Check,
-  X
+  X,
+  ShieldCheck,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { useTransactions } from '../../context/TransactionsContext';
 import { useCoach } from '../../context/CoachContext';
+import { useAuth } from '../../context/AuthContext';
 import { db } from '../../lib/firebase';
 import { writeBatch, collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { getActiveAccountId } from '../../lib/userUtils';
@@ -58,6 +62,7 @@ function formatMonthLabel(periodStr: string): string {
 }
 
 export const Settings: React.FC = () => {
+  const { userProfile, logout } = useAuth();
   const { transactions: contextTxs, setTransactions: setContextTransactions } = useTransactions();
   const {
     customRules,
@@ -409,15 +414,48 @@ export const Settings: React.FC = () => {
   return (
     <div className="space-y-8 animate-fadeIn pb-16 max-w-5xl mx-auto p-4 md:p-6">
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span className="text-xs uppercase tracking-wider font-semibold text-cyan-400">CONFIGURATION, RÈGLES & CORBEILLE</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span className="text-xs uppercase tracking-wider font-semibold text-cyan-400">CONFIGURATION, RÈGLES & CORBEILLE</span>
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground mt-1">Paramètres & Système</h1>
+          <p className="text-muted-foreground text-sm">
+            Gestion de votre compte isolé, de vos règles d'abonnements personnalisées, corbeille de restauration et préférences.
+          </p>
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground mt-1">Paramètres & Système</h1>
-        <p className="text-muted-foreground text-sm">
-          Gestion de vos règles d'abonnements personnalisées, corbeille de restauration (Soft Delete), relevés bancaires et préférences.
-        </p>
+
+        {userProfile && (
+          <div className="p-3.5 rounded-2xl bg-card border border-border/60 flex items-center justify-between gap-4 shadow-xs">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary border border-primary/30 flex items-center justify-center shrink-0">
+                <UserIcon className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-foreground truncate">
+                    {userProfile.displayName || 'Mon Espace'}
+                  </span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                </div>
+                <p className="text-[11px] text-muted-foreground truncate">{userProfile.email}</p>
+                <p className="text-[10px] font-mono text-muted-foreground/80 truncate">
+                  Espace actif : <strong className="text-cyan-400">{userProfile.activeWorkspace || userProfile.uid.slice(0, 12) + '…'}</strong>
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => logout()}
+              className="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/25 flex items-center gap-1.5 shrink-0"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Déconnexion</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {statusMessage && (

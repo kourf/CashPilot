@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useRef,
 import { db, ensureAuthenticatedUser } from '../lib/firebase';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch } from 'firebase/firestore';
 import { getActiveAccountId } from '../lib/userUtils';
+import { useAuth } from './AuthContext';
 import { useTransactions } from './TransactionsContext';
 import { useReceipts } from './ReceiptsContext';
 import {
@@ -81,6 +82,8 @@ const STORAGE_BUDGETS = 'cashpilot_cost_of_living_v2';
 const CoachContext = createContext<CoachContextType | undefined>(undefined);
 
 export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const activeUid = user ? getActiveAccountId() : null;
   const {
     transactions = [],
     setTransactions,
@@ -226,9 +229,10 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Écouteur temps réel Firestore pour `coach_conversations` (Synchronisation PC <-> Téléphone)
   useEffect(() => {
+    if (!activeUid) return;
     let unsub: (() => void) | undefined;
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid;
       const colRef = collection(db, `users/${accountId}/coach_conversations`);
       unsub = onSnapshot(colRef, (snap) => {
         if (!snap.empty) {
@@ -287,7 +291,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => {
       if (unsub) unsub();
     };
-  }, [activeConversationId, syncConversationToFirestore]);
+  }, [activeUid, activeConversationId, syncConversationToFirestore]);
 
   // Sauvegarde automatique dans localStorage + synchronisation Firestore
   useEffect(() => {
@@ -316,9 +320,13 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Écouteur temps réel Firestore pour `custom_rules`
   useEffect(() => {
+    if (!activeUid) {
+      setCustomRules([]);
+      return;
+    }
     let unsub: (() => void) | undefined;
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid;
       const colRef = collection(db, `users/${accountId}/custom_rules`);
       unsub = onSnapshot(colRef, (snap) => {
         const rules: CustomUserRule[] = snap.docs
@@ -339,7 +347,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => {
       if (unsub) unsub();
     };
-  }, []);
+  }, [activeUid]);
 
   // 3. Corbeille / Éléments Archivés (Soft Delete)
   const [archivedItems, setArchivedItems] = useState<ArchivedItemRecord[]>(() => {
@@ -354,9 +362,13 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   useEffect(() => {
+    if (!activeUid) {
+      setArchivedItems([]);
+      return;
+    }
     let unsub: (() => void) | undefined;
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid;
       const colRef = collection(db, `users/${accountId}/archived_items`);
       unsub = onSnapshot(colRef, (snap) => {
         const items: ArchivedItemRecord[] = snap.docs
@@ -376,7 +388,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => {
       if (unsub) unsub();
     };
-  }, []);
+  }, [activeUid]);
 
   // 4. Budgets "Budget & Coût de la vie" synchronisés en temps réel
   const [costOfLivingBudgets, setCostOfLivingBudgets] = useState<CostOfLivingExpenseItem[]>(() => {
@@ -384,9 +396,10 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   useEffect(() => {
+    if (!activeUid) return;
     let unsub: (() => void) | undefined;
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid;
       const docRef = doc(db, `users/${accountId}/settings/cost_of_living`);
       unsub = onSnapshot(docRef, (snap) => {
         if (snap.exists()) {
@@ -411,7 +424,7 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (unsub) unsub();
       window.removeEventListener('cashpilot_cost_of_living_updated', handleLocalBudgetUpdate);
     };
-  }, []);
+  }, [activeUid]);
 
   const updateCostOfLivingBudgets = useCallback(async (items: CostOfLivingExpenseItem[]) => {
     setCostOfLivingBudgets(items);

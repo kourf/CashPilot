@@ -1,10 +1,17 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const realRoot = fs.realpathSync(process.cwd());
 
 // https://vite.dev/config/
 export default defineConfig({
+  root: realRoot,
   plugins: [react()],
   build: {
+    outDir: path.resolve(realRoot, 'dist'),
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks: (id) => {

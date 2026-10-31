@@ -18,9 +18,10 @@ import {
   Sparkles
 } from 'lucide-react';
 import { db, functions } from '../lib/firebase';
-import { collection, onSnapshot, query, orderBy, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, getDocs } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { formatCurrency, formatDateFR } from '../lib/bankUtils';
+import { getActiveAccountId } from '../lib/userUtils';
 import { cn } from '../lib/utils';
 import {
   type FriseChronologiqueSegment,
@@ -37,40 +38,50 @@ interface FriseChronologiqueViewProps {
 }
 
 export const FriseChronologiqueView: React.FC<FriseChronologiqueViewProps> = ({
-  compteId = 'compte_principal',
+  compteId,
   currency = 'EUR',
   onRefreshRequested
 }) => {
+  const defaultAccountId = compteId || getActiveAccountId() || 'compte_principal';
   const [segments, setSegments] = useState<FriseChronologiqueSegment[]>([]);
   const [compte, setCompte] = useState<CompteBancaire | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isRecalculating, setIsRecalculating] = useState<boolean>(false);
   const [availableAccounts, setAvailableAccounts] = useState<CompteBancaire[]>([]);
-  const [selectedCompteId, setSelectedCompteId] = useState<string>(compteId);
+  const [selectedCompteId, setSelectedCompteId] = useState<string>(defaultAccountId);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
 
-  // 1. Chargement de la liste des comptes bancaires
+  // 1. Chargement du compte bancaire de l'utilisateur connecté (isolation stricte par UID)
   useEffect(() => {
-    const unsubAccounts = onSnapshot(collection(db, 'ComptesBancaires'), (snap) => {
-      const accounts: CompteBancaire[] = snap.docs.map(d => ({
-        id: d.id,
-        nom: d.data().nom || 'Compte Bancaire',
-        numero: d.data().numero || '',
-        devise: d.data().devise || 'EUR',
-        actif: d.data().actif !== false,
-        soldeActuel: d.data().soldeActuel,
-        typeSoldeActuel: d.data().typeSoldeActuel,
-        derniereMaj: d.data().derniereMaj
-      }));
-      setAvailableAccounts(accounts);
+    const uid = getActiveAccountId();
+    if (!uid || uid === 'unauthenticated') return;
 
-      if (accounts.length > 0 && !accounts.some(a => a.id === selectedCompteId)) {
-        setSelectedCompteId(accounts[0].id);
+    const userCompteRef = doc(db, 'ComptesBancaires', uid);
+    const unsubAccount = onSnapshot(userCompteRef, (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        const acc: CompteBancaire = {
+          id: snap.id,
+          nom: d.nom || 'Compte Principal',
+          numero: d.numero || '',
+          devise: d.devise || 'EUR',
+          actif: d.actif !== false,
+          soldeActuel: d.soldeActuel,
+          typeSoldeActuel: d.typeSoldeActuel,
+          derniereMaj: d.derniereMaj
+        };
+        setAvailableAccounts([acc]);
+        setSelectedCompteId(uid);
+      } else {
+        setAvailableAccounts([]);
+        setSelectedCompteId(uid);
       }
+    }, () => {
+      // Silencieux si le document ComptesBancaires/{uid} n'est pas encore initialisé
     });
 
-    return () => unsubAccounts();
-  }, [selectedCompteId]);
+    return () => unsubAccount();
+  }, []);
 
   // 2. Écouteur en temps réel de la frise chronologique pour le compte sélectionné
   useEffect(() => {

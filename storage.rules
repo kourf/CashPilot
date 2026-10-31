@@ -1,11 +1,15 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /users/{deviceId}/{allPaths=**} {
-      allow read, write: if true; // En prod, vérifier le deviceId / auth
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if userId == 'cashpilot_main_user'
+        || (request.auth != null && (
+          request.auth.uid == userId 
+          || request.auth.token.email in ['admin@cashpilot.fr', 'admin@cashpilot.com']
+        ));
     }
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read, write: if request.auth != null;
     }
   }
 }

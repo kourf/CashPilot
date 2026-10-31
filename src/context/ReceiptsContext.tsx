@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { getActiveAccountId } from '../lib/userUtils';
+import { useAuth } from './AuthContext';
 import { 
   type Receipt, 
   type ReceiptItem,
@@ -58,6 +59,9 @@ const CACHE_KEY_ACTIVE_TAB = 'cashpilot_receipts_active_tab';
 const ReceiptsContext = createContext<ReceiptsContextType | undefined>(undefined);
 
 export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const activeUid = user ? getActiveAccountId() : null;
+
   // 1. Initialisation optimiste immédiate depuis le localStorage (0 ms de latence)
   const [receipts, setReceipts] = useState<Receipt[]>(() => {
     try {
@@ -140,10 +144,17 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // 2. Écouteur Firestore en direct pour la collection 'receipts' (PC & Smartphone synchronisés)
   useEffect(() => {
+    if (!activeUid) {
+      setReceipts([]);
+      setLoading(false);
+      setIsRealtimeSynced(false);
+      return;
+    }
+
     let unsubReceipts: (() => void) | undefined;
 
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid;
       const receiptsColRef = collection(db, `users/${accountId}/receipts`);
 
       unsubReceipts = onSnapshot(receiptsColRef, (snapshot) => {
@@ -274,13 +285,18 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => {
       if (unsubReceipts) unsubReceipts();
     };
-  }, []);
+  }, [activeUid]);
 
   // 2.5 Écouteur Firestore pour la collection standardisée des produits (Règle 6 : 100% Gratuit)
   useEffect(() => {
+    if (!activeUid) {
+      setProducts([]);
+      return;
+    }
+
     let unsubProducts: (() => void) | undefined;
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid;
       const productsColRef = collection(db, `users/${accountId}/products`);
 
       unsubProducts = onSnapshot(productsColRef, (snapshot) => {
@@ -303,13 +319,18 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => {
       if (unsubProducts) unsubProducts();
     };
-  }, []);
+  }, [activeUid]);
 
   // 3. Écouteur Firestore pour les exclusions de la matrice (produits supprimés du comparatif)
   useEffect(() => {
+    if (!activeUid) {
+      setHiddenProductNames([]);
+      return;
+    }
+
     let unsubExclusions: (() => void) | undefined;
     try {
-      const accountId = getActiveAccountId();
+      const accountId = activeUid;
       const docRef = doc(db, `users/${accountId}/settings/receipt_matrix_exclusions`);
 
       unsubExclusions = onSnapshot(docRef, (snap) => {
@@ -332,7 +353,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => {
       if (unsubExclusions) unsubExclusions();
     };
-  }, []);
+  }, [activeUid]);
 
   // 4. Calcul de la matrice comparative Magasins vs Produits en mémoire (Couches 1, 2 & 3)
   // Unifie la collection `products` et les articles réels de `receipts` pour garantir 0 perte de prix et 0 ligne fantôme

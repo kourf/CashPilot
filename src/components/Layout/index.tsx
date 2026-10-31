@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Landmark, 
@@ -7,12 +7,14 @@ import {
   Settings,
   Sparkles,
   ShieldCheck,
-  Loader2
+  Loader2,
+  LogOut
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ThemeToggle } from '../ThemeToggle';
 import { useTransactions } from '../../context/TransactionsContext';
 import { useCoach } from '../../context/CoachContext';
+import { useAuth } from '../../context/AuthContext';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Accueil', path: '/' },
@@ -24,11 +26,22 @@ const navItems = [
 
 export default function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { userProfile, logout } = useAuth();
   const txContext = useTransactions();
   const coachContext = useCoach();
   const importState = txContext?.importState;
   const appNotification = txContext?.appNotification;
   const isCoachLoading = coachContext?.isLoading;
+
+  const userInitials = (userProfile?.displayName || userProfile?.email || 'CP')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/bienvenue', { replace: true });
+  };
 
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -119,10 +132,50 @@ export default function Layout() {
         <div className="space-y-3 pt-4 border-t border-border/60 dark:border-white/[0.05]">
           <ThemeToggle variant="expanded" />
 
+          {userProfile && (
+            <div className="px-3 py-2.5 rounded-xl bg-secondary/50 dark:bg-white/[0.03] border border-border/60 dark:border-white/[0.06] flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {userProfile.photoURL ? (
+                  <img
+                    src={userProfile.photoURL}
+                    alt={userProfile.displayName || 'Profil'}
+                    className="w-7 h-7 rounded-full object-cover border border-primary/30 shrink-0"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary/20 to-cyan-500/20 border border-primary/30 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
+                    {userInitials}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-bold text-foreground truncate">
+                      {userProfile.displayName || 'Utilisateur'}
+                    </p>
+                    {userProfile.isAdmin && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/25">
+                        Admin
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {userProfile.activeWorkspace ? `Espace : ${userProfile.activeWorkspace}` : userProfile.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                title="Se déconnecter"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
+          )}
+
           <div className="px-3 py-2 rounded-xl bg-secondary/40 dark:bg-white/[0.02] border border-border/50 dark:border-white/[0.04] flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] font-medium text-muted-foreground">Mode Chiffré</span>
+              <span className="text-[11px] font-medium text-muted-foreground">UID Isolé & Chiffré</span>
             </div>
             <ShieldCheck size={14} className="text-emerald-500" />
           </div>
@@ -146,10 +199,28 @@ export default function Layout() {
           <div className="flex items-center gap-2.5">
             <ThemeToggle variant="compact" />
 
-            <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-border/70 dark:border-white/[0.08]">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary/20 to-cyan-500/20 border border-primary/30 flex items-center justify-center text-xs font-bold text-primary">
-                CP
-              </div>
+            <div className="flex items-center gap-2 pl-3 border-l border-border/70 dark:border-white/[0.08]">
+              {userProfile?.photoURL ? (
+                <img
+                  src={userProfile.photoURL}
+                  alt={userProfile.displayName || 'Profil'}
+                  className="w-8 h-8 rounded-full object-cover border border-primary/30"
+                />
+              ) : (
+                <div
+                  title={userProfile?.email || 'Compte connecté'}
+                  className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary/20 to-cyan-500/20 border border-primary/30 flex items-center justify-center text-xs font-bold text-primary"
+                >
+                  {userInitials}
+                </div>
+              )}
+              <button
+                onClick={handleLogout}
+                title="Se déconnecter"
+                className="p-2 rounded-xl text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              >
+                <LogOut size={16} />
+              </button>
             </div>
           </div>
         </header>

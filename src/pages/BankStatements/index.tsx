@@ -35,13 +35,27 @@ import {
   CheckCircle2,
   Zap,
   Activity,
-  ShieldCheck
+  ShieldCheck,
+  Compass,
+  UploadCloud,
+  GitCommit,
+  Bot,
+  Receipt,
+  Wifi,
+  Cloud,
+  ShoppingCart,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
+import { cn } from '../../lib/utils';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { BankFlowCharts } from '../../components/BankFlowCharts';
 import { MobileCharts } from './components/MobileCharts';
+import { LiquidDonutSection } from './components/LiquidDonutSection';
+import { AppleKpiCards } from './components/AppleKpiCards';
+import { ReconciliationCard } from './components/ReconciliationCard';
 import { BankAuditReportDrawer } from './components/BankAuditReportDrawer';
 import { CategoryAuditDrawer } from '../../components/CategoryAuditDrawer';
 import { isPeerTransferTransaction } from '../../lib/categorizationRules';
@@ -168,10 +182,12 @@ export const BankStatements: React.FC = () => {
   // Local state for interactive features
   const [searchTerm, setSearchTerm] = useState('');
   const [isToolsSheetOpen, setIsToolsSheetOpen] = useState(false);
-  const [activeViewMode, setActiveViewMode] = useState<'transactions' | 'timeline'>('transactions');
+  const [activeViewMode, setActiveViewMode] = useState<'transactions' | 'timeline' | 'reconciliation'>('transactions');
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
   const [selectedAccount, setSelectedAccount] = useState<string>('ALL');
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 15;
   
   // Modals & Panels
   const [isUploading, setIsUploading] = useState(false);
@@ -829,6 +845,17 @@ export const BankStatements: React.FC = () => {
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [monthScopedTransactions, selectedAccount, searchTerm, selectedFilter, transferFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
+  const paginatedTransactions = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredTransactions.slice(start, start + PAGE_SIZE);
+  }, [filteredTransactions, currentPage, PAGE_SIZE]);
+
+  // Réinitialiser la pagination lors d'un changement de filtre
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedFilter, selectedMonth, selectedAccount]);
 
   // Auto-hide notification
   useEffect(() => {
@@ -2091,8 +2118,8 @@ export const BankStatements: React.FC = () => {
           await setDoc(releveRef, relevePayload, { merge: true });
 
           try {
-            const nosqlReleveRef = doc(db, 'ComptesBancaires/compte_principal/RelevesImportes', releveRef.id);
-            await setDoc(nosqlReleveRef, relevePayload, { merge: true });
+            const nosqlReleveRef = doc(db, `ComptesBancaires/${accountId}/RelevesImportes`, releveRef.id);
+            await setDoc(nosqlReleveRef, { ...relevePayload, userId: accountId, compteId: accountId }, { merge: true });
           } catch {
             // Ignorer si les règles d'écriture ComptesBancaires sont restreintes
           }
@@ -2190,85 +2217,188 @@ export const BankStatements: React.FC = () => {
     return { categories };
   }, [monthScopedTransactions, selectedAccount]);
 
+  const getCategoryIcon = (category?: string, flowType?: string) => {
+    if (flowType === 'INCOME') return <ArrowDownLeft size={16} className="text-emerald-400" />;
+    const cat = (category || '').toLowerCase();
+    if (cat.includes('course') || cat.includes('aliment') || cat.includes('supermarché')) {
+      return <ShoppingCart size={16} className="text-blue-400" />;
+    }
+    if (cat.includes('logement') || cat.includes('loyer') || cat.includes('maison')) {
+      return <Landmark size={16} className="text-indigo-400" />;
+    }
+    if (cat.includes('resto') || cat.includes('bar') || cat.includes('café') || cat.includes('fast')) {
+      return <Sparkles size={16} className="text-amber-400" />;
+    }
+    if (cat.includes('transport') || cat.includes('auto') || cat.includes('carburant') || cat.includes('essence') || cat.includes('train')) {
+      return <Zap size={16} className="text-cyan-400" />;
+    }
+    if (cat.includes('abonn') || cat.includes('streaming') || cat.includes('internet') || cat.includes('téléphone')) {
+      return <Wifi size={16} className="text-purple-400" />;
+    }
+    if (cat.includes('santé') || cat.includes('pharmacie') || cat.includes('médecin')) {
+      return <Activity size={16} className="text-rose-400" />;
+    }
+    if (cat.includes('loisir') || cat.includes('culture') || cat.includes('voyage')) {
+      return <Compass size={16} className="text-teal-400" />;
+    }
+    return <Tag size={16} className="text-blue-400" />;
+  };
+
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans pb-20 relative">
-      {/* 1. En-tête et Filtre Global Épuré */}
-      <header className="flex justify-between items-center p-4 bg-white dark:bg-gray-800 shadow-sm z-10 sticky top-0">
-        <div className="flex items-center space-x-2">
-          {/* Sélecteur de mois à fort contraste CSS (accessible et lisible sur PC et mobile) */}
-          <div className="relative flex items-center">
-            <select 
-              value={selectedMonth} 
-              onChange={e => setSelectedMonth(e.target.value)}
-              className="appearance-none bg-gray-100 hover:bg-gray-200/80 dark:bg-gray-700 dark:hover:bg-gray-650 text-gray-900 dark:text-gray-100 font-bold text-base sm:text-lg pl-3.5 pr-8 py-2 rounded-2xl border border-gray-200 dark:border-gray-600 shadow-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-colors"
-            >
-              <option value="all" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 py-1 font-semibold">
-                Tous les mois
-              </option>
-              {availableMonths.map(m => (
-                <option 
-                  key={m} 
-                  value={m}
-                  className="bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 py-1 font-semibold"
-                >
-                  {formatMonthLabel(m)}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500 dark:text-gray-400" />
+    <div className="flex flex-col h-full bg-background text-foreground font-sans relative overflow-x-hidden selection:bg-blue-500 selection:text-white">
+      {/* Ambient Background Lights (Apple VisionOS Liquid Glow) */}
+      <div className="glow-sphere-1 pointer-events-none" />
+      <div className="glow-sphere-2 pointer-events-none" />
+      <div className="glow-sphere-3 pointer-events-none" />
+
+      {/* 1. BARRE D'OUTILS APPLE AÉRÉE (ERGONOMIQUE & FLUIDE) */}
+      <header className="sticky top-2 z-30 px-2 sm:px-4 max-w-[1520px] mx-auto w-full my-3">
+        <nav className="liquid-glass rounded-3xl px-4 sm:px-6 py-3 flex flex-wrap lg:flex-nowrap items-center justify-between gap-4 shadow-xl">
+          {/* Gauche : Contexte, Statut & Identité */}
+          <div className="flex items-center space-x-3 sm:space-x-4">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 p-[1.5px] shadow-md shadow-blue-500/25 flex items-center justify-center shrink-0">
+                <div className="w-full h-full bg-card/90 dark:bg-[#0d1024]/90 backdrop-blur-md rounded-[14px] flex items-center justify-center text-primary dark:text-cyan-300">
+                  <Compass size={20} className="stroke-[2.2]" />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center space-x-1.5">
+                  <span className="font-bold text-base sm:text-lg tracking-tight text-foreground">CashPilot</span>
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-cyan-300 border border-blue-400/30">PRO</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground font-medium">Relevés bancaires & Flux</p>
+              </div>
+            </div>
+
+            {/* Badge Synchro Firestore Live */}
+            <div className="hidden xl:flex items-center space-x-2 px-3 py-1 rounded-full bg-secondary/60 dark:bg-white/[0.04] border border-border/70 dark:border-white/[0.08] text-xs text-muted-foreground">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-300 font-medium font-mono">
+                Firestore en direct ({filteredTransactions.length} tx)
+              </span>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center space-x-2">
-           <button 
+
+          {/* Centre : Sélecteur Segmenté Apple (3 Vues Fluides 0ms) */}
+          <div className="flex items-center p-1 rounded-2xl liquid-glass-subtle space-x-1 order-3 lg:order-2 w-full lg:w-auto justify-center">
+            <button
+              type="button"
+              onClick={() => setActiveViewMode('transactions')}
+              className={cn(
+                "px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer",
+                activeViewMode === 'transactions'
+                  ? "liquid-pill-active shadow-sm"
+                  : "liquid-pill text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Layers size={14} />
+              <span>Opérations & Analyses</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveViewMode('timeline')}
+              className={cn(
+                "px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer",
+                activeViewMode === 'timeline'
+                  ? "liquid-pill-active shadow-sm"
+                  : "liquid-pill text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Clock size={14} />
+              <span>Frise Chronologique</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveViewMode('reconciliation')}
+              className={cn(
+                "px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer",
+                activeViewMode === 'reconciliation'
+                  ? "liquid-pill-active shadow-sm"
+                  : "liquid-pill text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <ShieldCheck size={14} />
+              <span>Rapprochement</span>
+            </button>
+          </div>
+
+          {/* Droite : Sélecteur Mois, Devise, Outils & Import */}
+          <div className="flex items-center space-x-2.5 sm:space-x-3 order-2 lg:order-3 self-end lg:self-auto">
+            {/* Dropdown sélecteur de mois stylé en liquid-pill */}
+            <div className="relative">
+              <select
+                value={selectedMonth}
+                onChange={e => setSelectedMonth(e.target.value)}
+                className="liquid-pill appearance-none pl-8 pr-7 py-1.5 rounded-2xl text-xs font-bold text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
+              >
+                <option value="all">Tous les mois</option>
+                {availableMonths.map(m => (
+                  <option key={m} value={m} className="bg-card text-foreground py-1 font-semibold">
+                    {formatMonthLabel(m)}
+                  </option>
+                ))}
+              </select>
+              <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-primary pointer-events-none" />
+              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            </div>
+
+            {/* Sélecteur de Devise */}
+            <button
+              type="button"
+              onClick={() => setCurrency(currency === 'EUR' ? 'CHF' : 'EUR')}
+              title="Changer de devise"
+              className="liquid-pill px-2.5 py-1.5 rounded-2xl text-[11px] font-bold text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              {currency}
+            </button>
+
+            {/* Accès rapide aux 8 Modules */}
+            <button
+              type="button"
+              onClick={() => setIsToolsSheetOpen(true)}
+              className="liquid-pill px-3 py-1.5 rounded-2xl hidden sm:flex items-center space-x-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
+              title="Centre d'analyses & outils"
+            >
+              <Sliders size={13} className="text-amber-500" />
+              <span className="hidden xl:inline">Outils (8)</span>
+            </button>
+
+            {/* Bouton Principal Importer RB */}
+            <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="h-10 w-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg hover:bg-blue-700 transition active:scale-95 flex-shrink-0 cursor-pointer"
-              title="Importer un relevé bancaire (CSV ou PDF)"
-           >
-             <Plus size={18} strokeWidth={2.5}/>
-             <span className="sr-only">RB</span>
-           </button>
-        </div>
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          className="hidden" 
-          accept=".csv,.txt,.tsv,.pdf,application/pdf,text/csv,text/plain"
-          onChange={(e) => { if (e.target.files && e.target.files.length > 0) handleFileUpload(e.target.files[0]) }} 
-        />
+              className="liquid-pill bg-gradient-to-r from-blue-600/30 to-indigo-600/30 hover:border-blue-400/50 px-3.5 py-1.5 rounded-2xl flex items-center space-x-2 text-xs font-bold text-blue-600 dark:text-cyan-200 cursor-pointer shadow-md shadow-blue-500/10 active:scale-95 transition-all"
+            >
+              <UploadCloud size={14} className="text-blue-500 dark:text-cyan-300" />
+              <span className="font-semibold">Importer RB</span>
+            </button>
+          </div>
+        </nav>
       </header>
-      {/* SÉLECTEUR DE VUE : OPÉRATIONS vs FRISE CHRONOLOGIQUE */}
-      <div className="flex items-center space-x-2 border-b border-gray-100 dark:border-gray-800 px-4 pt-2.5 pb-2.5 bg-white dark:bg-gray-900 sticky top-0 z-20 shadow-xs">
-        <button
-          onClick={() => setActiveViewMode('transactions')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-            activeViewMode === 'transactions'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700/60'
-          }`}
-        >
-          <FileSpreadsheet size={14} />
-          <span>Opérations & Analyses</span>
-        </button>
 
-        <button
-          onClick={() => setActiveViewMode('timeline')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-            activeViewMode === 'timeline'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700/60'
-          }`}
-        >
-          <Clock size={14} />
-          <span>Frise Chronologique</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            Rapprochement
-          </span>
-        </button>
-      </div>
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        accept=".csv,.txt,.tsv,.pdf,application/pdf,text/csv,text/plain"
+        onChange={(e) => { if (e.target.files && e.target.files.length > 0) handleFileUpload(e.target.files[0]) }} 
+      />
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto px-2 sm:px-4 max-w-[1520px] mx-auto w-full space-y-6 pb-24">
         {activeViewMode === 'timeline' ? (
           <FriseChronologiqueView compteId="compte_principal" currency={currency} />
+        ) : activeViewMode === 'reconciliation' ? (
+          <ReconciliationCard
+            metrics={metrics}
+            initialBalance={currentMonthBalances.initial}
+            closingBalance={currentMonthBalances.closing}
+            currency={currency}
+            onGoToTimeline={() => setActiveViewMode('timeline')}
+            onOpenBalanceEditor={() => setIsAddModalOpen(true)}
+          />
         ) : (
           <>
         {/* Indicateur de chargement visuel avec chronomètre en direct lors de l'analyse IA */}
@@ -2347,227 +2477,375 @@ export const BankStatements: React.FC = () => {
           </div>
         )}
 
-        {/* 2. Bloc 1 : Les KPI (Cartes cliquables) */}
-        <div className="flex space-x-3 overflow-x-auto pb-2 snap-x hide-scrollbar">
-           {/* Revenus */}
-           <div 
-             onClick={() => setSelectedFilter(selectedFilter === 'INCOME' ? 'ALL' : 'INCOME')}
-             className={`snap-start min-w-[120px] flex-1 p-3 rounded-3xl border transition-all cursor-pointer ${selectedFilter === 'INCOME' ? 'border-green-500 bg-green-50 dark:bg-green-900/20 shadow-md scale-[1.02]' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800'}`}
-           >
-             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center"><ArrowDownLeft size={12} className="mr-1 text-green-500"/> Revenus</div>
-             <div className="font-bold text-lg text-green-600 dark:text-green-400">{formatBankAmount(metrics.income, currency)}</div>
-           </div>
-           
-           {/* Dépenses */}
-           <div 
-             onClick={() => setSelectedFilter(selectedFilter === 'EXPENSE' ? 'ALL' : 'EXPENSE')}
-             className={`snap-start min-w-[120px] flex-1 p-3 rounded-3xl border transition-all cursor-pointer ${selectedFilter === 'EXPENSE' ? 'border-red-500 bg-red-50 dark:bg-red-900/20 shadow-md scale-[1.02]' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800'}`}
-           >
-             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center"><ArrowUpRight size={12} className="mr-1 text-red-500"/> Dépenses</div>
-             <div className="font-bold text-lg text-red-600 dark:text-red-400">{formatBankAmount(metrics.realExpenses, currency)}</div>
-           </div>
+        {/* 1. VISIONOS CONTROL CENTER KPIS */}
+        <AppleKpiCards
+          metrics={metrics}
+          statementStatus={statementStatus}
+          currency={currency}
+          selectedFilter={selectedFilter}
+          onSelectFilter={setSelectedFilter}
+        />
 
-           {/* Solde Vérifié (PDF) OU Flux Net (CSV) - Respect strict de la réalité du relevé */}
-           <div 
-             onClick={() => setSelectedFilter('ALL')}
-             className={`snap-start min-w-[120px] flex-1 p-3 rounded-3xl border transition-all cursor-pointer ${selectedFilter === 'ALL' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md scale-[1.02]' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800'}`}
-             title={statementStatus.explanation}
-           >
-             {statementStatus.hasVerifiedBalance ? (
-               <>
-                 <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center">
-                   <ShieldCheck size={12} className="mr-1 text-emerald-500"/> {statementStatus.kpiTitle}
-                 </div>
-                 <div className="font-bold text-lg text-emerald-600 dark:text-emerald-400">
-                   {statementStatus.formattedAmount}
-                 </div>
-                 <div className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 font-medium truncate mt-0.5">
-                   {statementStatus.kpiSubtitle}
-                 </div>
-               </>
-             ) : (
-               <>
-                 <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1 flex items-center">
-                   <Activity size={12} className="mr-1 text-blue-500"/> {statementStatus.kpiTitle}
-                 </div>
-                 <div className={`font-bold text-lg ${statementStatus.isPositive ? 'text-emerald-600 dark:text-emerald-400' : statementStatus.isNegative ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                   {statementStatus.formattedAmount}
-                 </div>
-                 <div className="flex items-center gap-1 mt-0.5">
-                   <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium truncate">{statementStatus.kpiSubtitle}</span>
-                   {statementStatus.kpiBadge && (
-                     <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold shrink-0">
-                       {statementStatus.kpiBadge}
-                     </span>
-                   )}
-                 </div>
-               </>
-             )}
-           </div>
-        </div>
+        {/* 2. VISIONOS CENTER STAGE DONUT & CATEGORIES BREAKDOWN */}
+        <LiquidDonutSection
+          metrics={metrics}
+          categoryStats={categoryStats}
+          currency={currency}
+          selectedCategory={searchTerm}
+          onSelectCategory={(cat) => {
+            setSearchTerm(searchTerm === cat ? '' : cat);
+            setTimeout(() => {
+              document.getElementById('tx-ledger')?.scrollIntoView({ behavior: 'smooth' });
+            }, 80);
+          }}
+          onOpenAdvisor={() => {
+            setIsToolsSheetOpen(true);
+          }}
+        />
 
-        {/* Actions Rapides Épurées */}
-        <div className="flex space-x-2.5 overflow-x-auto pb-4 hide-scrollbar">
-          <button 
-            onClick={() => fileInputRef.current?.click()} 
-            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 cursor-pointer"
-          >
-             <Upload size={16} className="text-blue-500" />
-             <span className="text-xs font-semibold">Importer RB</span>
-          </button>
+        {/* 3. COACH IA GEMINI 2.5 PRO - RECOMMANDATIONS INTELLIGENTES */}
+        <section className="liquid-glass rounded-3xl p-5 sm:p-6 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none group-hover:bg-blue-500/15 transition-all duration-700" />
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="space-y-2 max-w-2xl">
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-500 dark:text-blue-400 text-xs font-semibold">
+                <Sparkles size={13} className="text-amber-400 animate-pulse" />
+                <span>Coach IA Gemini 2.5 Flash Ultra</span>
+              </div>
+              <h3 className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
+                Optimisation Budgétaire & Arbitrage Prédictif
+              </h3>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                {metrics.realExpenses > metrics.income && metrics.income > 0 ? (
+                  <>Attention : Vos dépenses réelles dépassent vos revenus de <strong className="text-rose-500">{formatBankAmount(metrics.realExpenses - metrics.income, currency)}</strong>. Activez les 8 modules d'analyse pour isoler les postes d'économies immédiats.</>
+                ) : metrics.income > 0 ? (
+                  <>Reste à vivre certifié disponible de <strong className="text-emerald-500">{formatBankAmount(statementStatus.hasVerifiedBalance ? statementStatus.displayAmount : (metrics.income - metrics.realExpenses), currency)}</strong>. Votre taux d'épargne théorique est de <span className="text-blue-500 font-semibold">{Math.max(0, Math.round(((metrics.income - metrics.realExpenses) / metrics.income) * 100))}%</span>.</>
+                ) : (
+                  <>Importez vos relevés bancaires pour débloquer l'audit automatique des abonnements récurrents et le calcul certifié de votre solde.</>
+                )}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsToolsSheetOpen(true)}
+                className="liquid-pill px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold flex items-center space-x-2 hover:shadow-lg hover:shadow-blue-500/10 active:scale-95 transition-all cursor-pointer text-foreground"
+              >
+                <Layers size={15} className="text-amber-400" />
+                <span>Centre d'Analyses (8 Modules)</span>
+              </button>
+            </div>
+          </div>
+        </section>
 
-          <button 
-            onClick={() => setIsToolsSheetOpen(true)} 
-            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-transform flex-shrink-0 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 cursor-pointer group"
-          >
-             <Layers size={16} className="text-orange-500 group-hover:rotate-12 transition-transform" />
-             <span className="text-xs font-bold">Outils & Analyses</span>
-             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 font-extrabold border border-orange-500/20">8</span>
-          </button>
-        </div>
+        {/* 4. APPLE VISIONOS TRANSACTIONS LEDGER (INSTANT PAGINATION & FILTERS) */}
+        <div id="tx-ledger" className="space-y-4 pb-12">
+          {/* Barre d'outils et de filtrage rapide */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-2 overflow-x-auto pb-1 sm:pb-0 hide-scrollbar">
+              <button
+                onClick={() => setSelectedFilter(selectedFilter === 'ALL' ? 'ALL' : 'ALL')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedFilter === 'ALL' ? 'liquid-pill-active text-white' : 'liquid-pill text-muted-foreground'
+                }`}
+              >
+                Toutes ({monthScopedTransactions.length})
+              </button>
+              <button
+                onClick={() => setSelectedFilter(selectedFilter === 'FIXED' ? 'ALL' : 'FIXED')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedFilter === 'FIXED' ? 'liquid-pill-active text-white' : 'liquid-pill text-muted-foreground'
+                }`}
+              >
+                Fixes
+              </button>
+              <button
+                onClick={() => setSelectedFilter(selectedFilter === 'VARIABLE' ? 'ALL' : 'VARIABLE')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedFilter === 'VARIABLE' ? 'liquid-pill-active text-white' : 'liquid-pill text-muted-foreground'
+                }`}
+              >
+                Variables
+              </button>
+              <button
+                onClick={() => setSelectedFilter(selectedFilter === 'INCOME' ? 'ALL' : 'INCOME')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedFilter === 'INCOME' ? 'liquid-pill-active text-white' : 'liquid-pill text-muted-foreground'
+                }`}
+              >
+                Revenus
+              </button>
+              <button
+                onClick={() => setSelectedFilter(selectedFilter === 'EXPENSE' ? 'ALL' : 'EXPENSE')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedFilter === 'EXPENSE' ? 'liquid-pill-active text-white' : 'liquid-pill text-muted-foreground'
+                }`}
+              >
+                Dépenses
+              </button>
 
-          {/* 3. Bloc 2 : Les Graphiques (Sélecteur de vue) */}
-          <div className="bg-white dark:bg-gray-800 rounded-[2rem] p-5 shadow-sm border border-gray-100 dark:border-gray-800">
-           <MobileCharts 
-             metrics={metrics} 
-             categoryStats={categoryStats} 
-             onCategoryClick={(cat) => {
-               setSearchTerm(cat);
-               setTimeout(() => {
-                 document.getElementById('tx-list')?.scrollIntoView({ behavior: 'smooth' });
-               }, 50);
-             }}
-           />
-        </div>
+              {/* Sélecteur de catégorie */}
+              <div className="relative">
+                <select
+                  aria-label="Filtrer par catégorie"
+                  className="appearance-none px-3.5 py-1.5 pr-7 rounded-full text-xs font-semibold whitespace-nowrap liquid-pill text-muted-foreground outline-none cursor-pointer"
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value === 'all' ? '' : e.target.value);
+                  }}
+                  value={CATEGORIES.includes(searchTerm) ? searchTerm : (searchTerm === '' ? 'all' : 'custom')}
+                >
+                  <option value="all">Toutes Catégories</option>
+                  {CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+              </div>
 
-        {/* 4. Bloc 3 : Historique des Transactions */}
-        <div id="tx-list" className="space-y-4 pb-12">
-           {/* Filtres Rapides */}
-           <div className="flex space-x-2 overflow-x-auto pb-1 hide-scrollbar">
-             <button onClick={() => setSelectedFilter(selectedFilter === 'FIXED' ? 'ALL' : 'FIXED')} className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedFilter === 'FIXED' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-100 dark:border-gray-700'}`}>Fixes</button>
-             <button onClick={() => setSelectedFilter(selectedFilter === 'VARIABLE' ? 'ALL' : 'VARIABLE')} className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedFilter === 'VARIABLE' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-100 dark:border-gray-700'}`}>Variables</button>
-             
-             {/* Simple select dropdown for Category */}
-             <div className="relative">
-               <select 
-                 className="appearance-none px-4 py-2 pr-8 rounded-full text-sm font-medium whitespace-nowrap bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-100 dark:border-gray-700 outline-none cursor-pointer"
-                 onChange={(e) => {
-                   setSearchTerm(e.target.value === 'all' ? '' : e.target.value);
-                 }}
-                 value={CATEGORIES.includes(searchTerm) ? searchTerm : (searchTerm === '' ? 'all' : 'custom')}
-               >
-                 <option value="all">Catégories</option>
-                 {CATEGORIES.map(cat => (
-                   <option key={cat} value={cat}>{cat}</option>
-                 ))}
-               </select>
-               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
-             </div>
+              {(searchTerm || selectedFilter !== 'ALL') && (
+                <button
+                  onClick={() => { setSearchTerm(''); setSelectedFilter('ALL'); }}
+                  className="px-3 py-1.5 rounded-full text-xs font-bold bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 whitespace-nowrap transition-colors cursor-pointer"
+                >
+                  Effacer filtres
+                </button>
+              )}
+            </div>
 
-             {(searchTerm || selectedFilter !== 'ALL') && (
-               <button onClick={() => {setSearchTerm(''); setSelectedFilter('ALL');}} className="px-4 py-2 rounded-full text-sm font-medium bg-rose-50 text-rose-600 dark:bg-rose-900/20 whitespace-nowrap">Effacer</button>
-             )}
-           </div>
+            {/* Barre de recherche par mot-clé */}
+            <div className="relative w-full sm:w-64 shrink-0">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Rechercher libellé..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-7 py-1.5 rounded-full text-xs liquid-pill text-foreground placeholder:text-muted-foreground outline-none focus:border-blue-400 transition-all"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  aria-label="Effacer la recherche"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          </div>
 
-           {/* Liste Verticale Epurée */}
-           <div className="bg-white dark:bg-gray-800 rounded-[2rem] shadow-sm border border-gray-100 dark:border-gray-800 divide-y divide-gray-50 dark:divide-gray-800/50">
-             {filteredTransactions.length === 0 ? (
-               <div className="p-10 text-center text-gray-400 font-medium">Aucune transaction trouvée</div>
-             ) : (
-               filteredTransactions.slice(0, 100).map(tx => (
-                 <div key={tx.id} onClick={() => handleOpenEditModal(tx)} className="p-4 flex items-center justify-between hover:bg-gray-100/80 dark:hover:bg-gray-700/50 active:scale-[0.98] transition-all cursor-pointer">
-                   <div className="flex items-center space-x-4 overflow-hidden">
-                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${
-                        tx.flowType === 'INCOME' || tx.type === 'credit' 
-                          ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 border border-green-500/20' 
-                          : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 border border-red-500/20'
-                      }`}>
-                        {tx.flowType === 'INCOME' || tx.type === 'credit' 
-                          ? <ArrowDownLeft size={18} /> 
-                          : <ArrowUpRight size={18} />}
+          {/* Registre des Transactions Liquid Glass */}
+          <div className="liquid-glass rounded-3xl overflow-hidden divide-y divide-white/5">
+            {paginatedTransactions.length === 0 ? (
+              <div className="p-12 text-center text-muted-foreground font-medium flex flex-col items-center justify-center gap-2">
+                <Compass className="w-8 h-8 text-muted-foreground/40" />
+                <span>Aucune transaction ne correspond aux critères sélectionnés</span>
+                {(searchTerm || selectedFilter !== 'ALL') && (
+                  <button
+                    onClick={() => { setSearchTerm(''); setSelectedFilter('ALL'); }}
+                    className="mt-2 text-xs text-blue-400 hover:underline cursor-pointer"
+                  >
+                    Réinitialiser les filtres
+                  </button>
+                )}
+              </div>
+            ) : (
+              paginatedTransactions.map((tx) => {
+                const isIncome = tx.flowType === 'INCOME' || tx.type === 'credit' || tx.amount > 0;
+                return (
+                  <div
+                    key={tx.id}
+                    onClick={() => handleOpenEditModal(tx)}
+                    className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-white/[0.04] active:scale-[0.99] transition-all cursor-pointer group"
+                  >
+                    <div className="flex items-center space-x-3.5 overflow-hidden">
+                      {/* Icône de catégorie liquide */}
+                      <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 bg-white/5 border border-white/10 shadow-inner group-hover:scale-105 transition-transform">
+                        {getCategoryIcon(tx.category, tx.flowType)}
                       </div>
-                     <div className="truncate">
-                       <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                         <span className="text-[11px] font-semibold text-gray-400 tracking-wide">{formatDateFR(tx.date)}</span>
-                         
-                         {/* Badge de catégorie interactif (Tailwind) avec menu déroulant */}
-                         <div className="relative inline-block" onClick={e => e.stopPropagation()}>
-                           <button
-                             type="button"
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               setOpenCategoryDropdownTxId(openCategoryDropdownTxId === tx.id ? null : tx.id);
-                             }}
-                             className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 dark:bg-gray-700/80 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-400 hover:bg-blue-50/70 dark:hover:bg-blue-900/30 transition-all cursor-pointer group/badge"
-                             title="Cliquer pour changer de catégorie et mémoriser la règle"
-                           >
-                             <Tag size={10} className="text-gray-400 group-hover/badge:text-blue-500" />
-                             <span className="truncate max-w-[120px] sm:max-w-[180px] font-medium">{tx.category || 'Autre'}</span>
-                             <ChevronDown size={10} className="text-gray-400 group-hover/badge:text-blue-500 transition-transform" />
-                           </button>
 
-                           {openCategoryDropdownTxId === tx.id && (
-                             <div 
-                               className="absolute left-0 top-full mt-1.5 w-64 max-h-60 overflow-y-auto bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-150"
-                               onClick={e => e.stopPropagation()}
-                             >
-                               <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-gray-400 border-b border-gray-100 dark:border-gray-700/50 mb-1 flex items-center justify-between">
-                                 <span>Modifier la catégorie</span>
-                                 <span className="text-[9px] text-blue-500 font-semibold">Règle mémorisée</span>
-                               </div>
-                               {CATEGORIES.map(cat => (
-                                 <button
-                                   key={cat}
-                                   type="button"
-                                   onClick={(e) => {
-                                     e.stopPropagation();
-                                     handleQuickCategoryRemap(tx, cat);
-                                   }}
-                                   className={`w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors ${
-                                     tx.category === cat ? 'font-bold text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/15' : 'text-gray-700 dark:text-gray-200'
-                                   }`}
-                                 >
-                                   <span className="truncate">{cat}</span>
-                                   {tx.category === cat && <Check size={12} className="text-blue-500 shrink-0 ml-1" />}
-                                 </button>
-                               ))}
-                             </div>
-                           )}
-                         </div>
-                          {/* Badge Abonnement détecté avec tag Payé */}
+                      {/* Détails libellé et badges */}
+                      <div className="truncate">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <span className="text-[11px] font-medium text-muted-foreground tracking-wide font-mono">
+                            {formatDateFR(tx.date)}
+                          </span>
+
+                          {/* Badge Catégorie interactif avec changement rapide */}
+                          <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenCategoryDropdownTxId(openCategoryDropdownTxId === tx.id ? null : tx.id);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground border border-white/10 hover:border-blue-400/40 transition-all cursor-pointer group/badge"
+                              title="Cliquer pour modifier la catégorie et mémoriser la règle"
+                            >
+                              <Tag size={10} className="text-muted-foreground group-hover/badge:text-blue-400" />
+                              <span className="truncate max-w-[120px] sm:max-w-[180px] font-medium">
+                                {tx.category || 'Autre'}
+                              </span>
+                              <ChevronDown size={10} className="text-muted-foreground group-hover/badge:text-blue-400 transition-transform" />
+                            </button>
+
+                            {openCategoryDropdownTxId === tx.id && (
+                              <div
+                                className="absolute left-0 top-full mt-1.5 w-64 max-h-60 overflow-y-auto liquid-glass rounded-2xl shadow-2xl p-1.5 z-50 text-xs backdrop-blur-2xl"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-muted-foreground border-b border-white/10 mb-1 flex items-center justify-between">
+                                  <span>Modifier la catégorie</span>
+                                  <span className="text-[9px] text-blue-400 font-semibold">Règle mémorisée</span>
+                                </div>
+                                {CATEGORIES.map((cat) => (
+                                  <button
+                                    key={cat}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleQuickCategoryRemap(tx, cat);
+                                    }}
+                                    className={`w-full text-left px-3 py-1.5 rounded-xl flex items-center justify-between hover:bg-white/10 transition-colors ${
+                                      tx.category === cat ? 'font-bold text-blue-400 bg-white/5' : 'text-foreground'
+                                    }`}
+                                  >
+                                    <span className="truncate">{cat}</span>
+                                    {tx.category === cat && <Check size={12} className="text-blue-400 shrink-0 ml-1" />}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Badge Abonnement */}
                           {Boolean(tx.isSubscription) && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                               <span>🔁 Abonnement</span>
-                              <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-[9px]">Payé</span>
+                              <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[9px]">Payé</span>
                             </span>
                           )}
 
-                          {/* Badge Échanges Proches / Famille */}
+                          {/* Badge Échanges Proches */}
                           {Boolean(tx.isFamilyTransfer || isPeerTransferTransaction(tx)) && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-pink-50 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300 border border-pink-200 dark:border-pink-800">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-pink-500/10 text-pink-400 border border-pink-500/20">
                               👥 Proches
                             </span>
                           )}
-                       </div>
-                       <div className="font-semibold text-gray-900 dark:text-gray-100 truncate text-sm">{tx.description}</div>
-                        {/* Affichage du libellé brut bancaire si différent du marchand nettoyé */}
+                        </div>
+
+                        {/* Titre marchand / description */}
+                        <div className="font-semibold text-foreground truncate text-sm">
+                          {tx.description}
+                        </div>
+
+                        {/* Libellé brut original si différent */}
                         {tx.rawLabel && tx.rawLabel.trim().toLowerCase() !== tx.description.trim().toLowerCase() && (
-                          <div className="text-[11px] text-gray-400 dark:text-gray-500 truncate font-mono mt-0.5" title={tx.rawLabel}>
+                          <div className="text-[11px] text-muted-foreground/70 truncate font-mono mt-0.5" title={tx.rawLabel}>
                             {tx.rawLabel}
                           </div>
                         )}
-                     </div>
-                   </div>
-                   <div className={`font-bold flex-shrink-0 ml-3 text-[15px] ${tx.flowType === 'INCOME' || tx.type === 'credit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                     {tx.flowType === 'INCOME' || tx.type === 'credit' ? '+' : '-'}{formatBankAmount(Math.abs(tx.amount), currency, {showSign: false})}
-                   </div>
-                 </div>
-               ))
-             )}
-             {filteredTransactions.length > 100 && (
-               <div className="p-4 text-center text-xs font-semibold text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-b-[2rem]">Affichage limité aux 100 dernières opérations</div>
-             )}
-           </div>
+                      </div>
+                    </div>
+
+                    {/* Montant */}
+                    <div className="flex items-center space-x-2 shrink-0 ml-3">
+                      <div className={`font-bold text-[15px] font-mono tracking-tight ${
+                        isIncome ? 'text-emerald-500 dark:text-emerald-400' : 'text-foreground'
+                      }`}>
+                        {isIncome ? '+' : '-'}{formatBankAmount(Math.abs(tx.amount), currency, { showSign: false })}
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground/40 group-hover:text-muted-foreground group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Contrôleur de Pagination VisionOS (0ms Latency) */}
+          {filteredTransactions.length > PAGE_SIZE && (
+            <div className="liquid-glass rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <span className="text-muted-foreground">
+                Affichage de <strong className="text-foreground">{(currentPage - 1) * PAGE_SIZE + 1}</strong> à <strong className="text-foreground">{Math.min(currentPage * PAGE_SIZE, filteredTransactions.length)}</strong> sur <strong className="text-foreground">{filteredTransactions.length}</strong> opérations
+              </span>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="liquid-pill px-3 py-1.5 rounded-xl font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition flex items-center gap-1 cursor-pointer"
+                >
+                  <ChevronLeft size={14} />
+                  <span>Précédent</span>
+                </button>
+
+                <span className="px-3 py-1.5 rounded-xl bg-white/5 font-mono font-semibold text-foreground">
+                  {currentPage} / {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="liquid-pill px-3 py-1.5 rounded-xl font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Suivant</span>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 5. QUICK DOCK FLOTTANT MOBILE (Actif uniquement sur Mobile `md:hidden`) */}
+        <div className="md:hidden fixed bottom-6 inset-x-4 z-40 max-w-md mx-auto pointer-events-none">
+          <div className="liquid-glass rounded-3xl p-2 flex items-center justify-around shadow-2xl backdrop-blur-2xl pointer-events-auto border border-white/20">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex flex-col items-center justify-center p-2 rounded-2xl hover:bg-white/10 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+            >
+              <UploadCloud size={18} className="text-blue-400" />
+              <span className="text-[10px] font-semibold mt-0.5">Importer</span>
+            </button>
+
+            <button
+              onClick={() => setIsToolsSheetOpen(true)}
+              className="flex flex-col items-center justify-center p-2 rounded-2xl hover:bg-white/10 text-muted-foreground hover:text-foreground transition-all cursor-pointer relative"
+            >
+              <Layers size={18} className="text-amber-400" />
+              <span className="text-[10px] font-semibold mt-0.5">Outils</span>
+              <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" />
+            </button>
+
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/30 active:scale-90 transition-transform cursor-pointer -mt-4 border border-white/30"
+              title="Ajouter une opération"
+            >
+              <Plus size={20} />
+            </button>
+
+            <button
+              onClick={() => setActiveViewMode('timeline')}
+              className="flex flex-col items-center justify-center p-2 rounded-2xl hover:bg-white/10 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+            >
+              <GitCommit size={18} className="text-purple-400" />
+              <span className="text-[10px] font-semibold mt-0.5">Frise</span>
+            </button>
+
+            <button
+              onClick={() => {
+                const el = document.getElementById('tx-ledger');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="flex flex-col items-center justify-center p-2 rounded-2xl hover:bg-white/10 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+            >
+              <Sliders size={18} className="text-cyan-400" />
+              <span className="text-[10px] font-semibold mt-0.5">Filtrer</span>
+            </button>
+          </div>
         </div>
         </>
       )}
