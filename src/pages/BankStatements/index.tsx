@@ -2328,11 +2328,11 @@ export const BankStatements: React.FC = () => {
                 </p>
                 <div className="mt-3 flex items-center gap-2 flex-wrap">
                   <button 
-                    onClick={() => handleOpenDeepAudit()}
+                    onClick={() => setIsToolsSheetOpen(true)}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:opacity-95 text-white text-xs font-bold shadow-md shadow-emerald-600/20 active:scale-95 transition cursor-pointer"
                   >
-                    <Sparkles size={14} className="text-amber-300" />
-                    <span>Consulter le Rapport d'Audit Approfondi IA</span>
+                    <Layers size={14} className="text-amber-300" />
+                    <span>Explorer le Centre d'Analyses & Outils (8 Modules)</span>
                   </button>
                 </div>
               </div>
@@ -2414,25 +2414,6 @@ export const BankStatements: React.FC = () => {
           >
              <Upload size={16} className="text-blue-500" />
              <span className="text-xs font-semibold">Importer RB</span>
-          </button>
-
-          <button 
-            onClick={() => handleOpenSubscriptionsAudit()} 
-            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-blue-500/25 hover:border-blue-500/50 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-all flex-shrink-0 text-blue-700 dark:text-blue-300 cursor-pointer"
-            title="Consulter le tiroir des abonnements et prélèvements récurrents"
-          >
-             <Calendar size={16} className="text-blue-500" />
-             <span className="text-xs font-bold">Abonnements & Prélèvements</span>
-             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-extrabold border border-blue-500/20">Anti-Hausse</span>
-          </button>
-
-          <button 
-            onClick={() => handleOpenDeepAudit()} 
-            className="flex items-center space-x-2 bg-white dark:bg-gray-800 border border-indigo-500/25 hover:border-indigo-500/50 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 px-4 py-2.5 rounded-[1.2rem] shadow-sm active:scale-95 transition-all flex-shrink-0 text-indigo-700 dark:text-indigo-300 cursor-pointer"
-            title="Consulter le rapport d'audit financier en 3 temps"
-          >
-             <Sparkles size={16} className="text-indigo-500" />
-             <span className="text-xs font-bold">Rapport d'Audit (3 Temps)</span>
           </button>
 
           <button 

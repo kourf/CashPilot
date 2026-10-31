@@ -45,25 +45,23 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
   const [activeTab, setActiveTab] = useState<'revenues' | 'expenses' | 'coverage' | 'markdown'>('revenues');
   const [copied, setCopied] = useState(false);
 
-  if (!isOpen || !report) return null;
-
-  const currSym = currency === 'CHF' ? 'CHF' : '€';
-
   // 1. CALCULS TEMPS 1 : Encaissements & Stabilité des Revenus
-  const totalInflow = report.inflows.totalInflow || 0;
-  const recurringItems = report.inflows.items.filter(i => i.isRecurringCore);
-  const oneOffItems = report.inflows.items.filter(i => !i.isRecurringCore);
+  const totalInflow = report?.inflows?.totalInflow || 0;
+  const recurringItems = report?.inflows?.items ? report.inflows.items.filter(i => i.isRecurringCore) : [];
+  const oneOffItems = report?.inflows?.items ? report.inflows.items.filter(i => !i.isRecurringCore) : [];
 
-  const totalRecurringInflows = recurringItems.reduce((sum, i) => sum + i.total, 0) || report.inflows.totalRecurringResources || 0;
+  const totalRecurringInflows = recurringItems.reduce((sum, i) => sum + i.total, 0) || report?.inflows?.totalRecurringResources || 0;
   const totalOneOffInflows = Math.max(0, totalInflow - totalRecurringInflows);
   const recurringInflowsPct = totalInflow > 0 ? Math.round((totalRecurringInflows / totalInflow) * 100) : 0;
   const isIncomeStable = recurringInflowsPct >= 65;
 
   // 2. CALCULS TEMPS 2 : Sorties & Ventilation des Dépenses (avec Top 3 Médailles)
-  const totalOutflow = report.outflows.totalOutflow || 0;
+  const totalOutflow = report?.outflows?.totalOutflow || 0;
 
   // Consolidation de l'intégralité des dépenses (postes lourds récurrents + dépenses courantes)
+  // Hook appelé INCONDITIONNELLEMENT au tout premier niveau du composant (Règles des Hooks React)
   const allOutflowItems = useMemo(() => {
+    if (!report || !report.outflows) return [];
     const list: Array<{
       id: string;
       title: string;
@@ -104,7 +102,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
 
     // Classement du poste le plus coûteux au moins coûteux
     return list.sort((a, b) => b.total - a.total);
-  }, [report.outflows, totalOutflow, totalInflow]);
+  }, [report, totalOutflow, totalInflow]);
 
   // Top 3 postes de dépenses (Médailles 🥇, 🥈, 🥉)
   const top3Expenses = allOutflowItems.slice(0, 3);
@@ -115,6 +113,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
   const isSurplus = netBalance >= 0;
 
   const handleCopyReport = async () => {
+    if (!report) return;
     try {
       await navigator.clipboard.writeText(report.markdownReport);
       setCopied(true);
@@ -123,6 +122,11 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
       console.warn("Échec de copie dans le presse-papier:", err);
     }
   };
+
+  // RETOUR CONDITIONNEL STRICTEMENT APRÈS TOUS LES HOOKS
+  if (!isOpen || !report) return null;
+
+  const currSym = currency === 'CHF' ? 'CHF' : '€';
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center items-center animate-in fade-in duration-200">
