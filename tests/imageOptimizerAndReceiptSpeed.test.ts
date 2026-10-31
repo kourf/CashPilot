@@ -60,20 +60,21 @@ describe('Audit Performance & Optimisation Téléversement Tickets PNG', () => {
     assert.equal(formatFileSize(15.2 * 1024 * 1024), '15.2 Mo');
   });
 
-  it('4. CASCADE MODÈLES GEMINI : Éradication totale du modèle fantôme gemini-3.8-flash', () => {
-    // Vérification que les modèles officiels disponibles sont bien listés
+  it('4. CASCADE MODÈLES GEMINI : Éradication totale des anciens modèles 404 (gemini-2.0-flash, gemini-1.5-flash)', () => {
+    // Vérification que les modèles officiels actifs sont bien listés
     const modelIds = AVAILABLE_FREE_GEMINI_MODELS.map(m => m.id);
-    assert.ok(modelIds.includes('gemini-2.5-flash'));
+    assert.ok(modelIds.includes('gemini-3.5-flash'));
+    assert.ok(modelIds.includes('gemini-flash-lite-latest'));
+    assert.ok(modelIds.includes('gemini-3.8-flash'));
     assert.ok(modelIds.includes('gemini-flash-latest'));
-    assert.ok(modelIds.includes('gemini-2.0-flash'));
 
-    // Interdiction formelle du modèle inexistant
-    assert.ok(!modelIds.includes('gemini-3.8-flash'));
-    assert.ok(!modelIds.includes('gemini-3.5-flash'));
+    // Éradication formelle des modèles dépréciés/supprimés par Google (erreurs 404)
+    assert.ok(!modelIds.includes('gemini-2.0-flash'));
+    assert.ok(!modelIds.includes('gemini-1.5-flash'));
 
-    // Le modèle par défaut doit être valide et ultra-rapide (~1s)
+    // Le modèle par défaut doit être valide, ultra-rapide (~1s) et actif
     const defaultModel = getGeminiModelName();
-    assert.equal(defaultModel, 'gemini-2.5-flash');
+    assert.equal(defaultModel, 'gemini-3.5-flash');
   });
 
   it('5. PREPARATION MULTIMODALE : Traite les fichiers et génère un payload conforme inlineData', async () => {

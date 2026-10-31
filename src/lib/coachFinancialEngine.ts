@@ -8,14 +8,24 @@ export const COACH_MAX_OUTPUT_TOKENS = 8192;
 export function getGeminiModelName(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('cashpilot_gemini_model');
-    if (saved && saved !== 'gemini-3.8-flash' && saved !== 'gemini-3.5-flash') {
+    if (saved && !saved.includes('2.0') && !saved.includes('1.5') && saved !== 'gemini-2.5-flash-lite') {
       return saved;
     }
+    // Nettoyage automatique des anciens modèles dépréciés / 404
+    localStorage.setItem('cashpilot_gemini_model', 'gemini-3.5-flash');
   }
-  return 'gemini-2.5-flash';
+  return 'gemini-3.5-flash';
 }
 
 export function getGeminiApiKey(): string {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const userKey = localStorage.getItem('cashpilot_gemini_api_key');
+      if (userKey && userKey.trim()) {
+        return userKey.trim();
+      }
+    }
+  } catch (e) {}
   try {
     if (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GEMINI_API_KEY) {
       return (import.meta as any).env.VITE_GEMINI_API_KEY;
@@ -24,11 +34,6 @@ export function getGeminiApiKey(): string {
   try {
     if (typeof process !== 'undefined' && process.env?.VITE_GEMINI_API_KEY) {
       return process.env.VITE_GEMINI_API_KEY;
-    }
-  } catch (e) {}
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return localStorage.getItem('cashpilot_gemini_api_key') || '';
     }
   } catch (e) {}
   return '';
@@ -1353,14 +1358,19 @@ export async function askFinancialCoach(
   const systemContext = buildCoachSystemContext(profile, transactions, receipts, products, curr, userPrompt);
   const genAI = new GoogleGenerativeAI(apiKey);
 
-  // Modèles candidats avec bascule automatique
+  // Modèles candidats actifs avec bascule automatique et résilience aux erreurs 404 / 429
   const preferredModel = getGeminiModelName();
   const candidateModels = Array.from(new Set([
     preferredModel,
-    'gemini-2.5-flash',
+    'gemini-3.5-flash',
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
     'gemini-flash-latest',
-    'gemini-2.0-flash'
-  ]));
+    'gemini-2.5-flash'
+  ])).filter(m => m && !m.includes('2.0') && !m.includes('1.5') && m !== 'gemini-2.5-flash-lite');
 
   let lastError: any = null;
 
@@ -1420,5 +1430,18 @@ export async function askFinancialCoach(
     return `${preAudit.directSynthesisText}\n\n${preAudit.markdownTable}`;
   }
 
-  throw new Error(lastError?.message || "Le Coach IA n'a pas pu générer de réponse. Veuillez réessayer dans quelques instants.");
+  const rawMsg = lastError?.message || '';
+  if (rawMsg.includes('429') || rawMsg.includes('Quota exceeded') || rawMsg.includes('RESOURCE_EXHAUSTED')) {
+    throw new Error(
+      "Le quota journalier gratuit de Google Gemini est temporairement saturé. " +
+      "Vous pouvez patienter un moment ou renseigner votre propre clé API Google Gemini gratuite dans les Paramètres pour un accès illimité."
+    );
+  }
+  if (rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('API key not valid')) {
+    throw new Error(
+      "La clé API Google Gemini n'est pas valide. Veuillez vérifier votre clé API dans vos Paramètres."
+    );
+  }
+
+  throw new Error(rawMsg || "Le Coach IA n'a pas pu générer de réponse. Veuillez réessayer dans quelques instants.");
 }

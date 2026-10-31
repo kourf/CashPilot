@@ -12,39 +12,48 @@ import {
 
 export const AVAILABLE_FREE_GEMINI_MODELS = [
   {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash Ultra',
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash Ultra',
     badge: '⭐ Recommandé (Ultra-rapide ~1s)',
     description: 'Le modèle Google officiel dernière génération ultra-rapide. Vitesse maximale, audit comptable et précision OCR.',
-    quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
+    quota: '1 500 requêtes / jour (100% Gratuit)',
     speed: '~1 seconde'
+  },
+  {
+    id: 'gemini-flash-lite-latest',
+    name: 'Gemini Flash-Lite Latest',
+    badge: '⚡ Ultra Léger & Rapide',
+    description: 'Modèle léger haute disponibilité, idéal pour les réponses immédiates et économie de quota.',
+    quota: 'Haute disponibilité Google',
+    speed: '~0.8 seconde'
+  },
+  {
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    badge: '🚀 Dernière Génération',
+    description: 'Modèle recommandé par Google API pour les fonctionnalités avancées et analyses financières.',
+    quota: 'Dernière version Google',
+    speed: '~1.2 seconde'
   },
   {
     id: 'gemini-flash-latest',
     name: 'Gemini Flash Latest',
-    badge: '⚡ Auto-Update',
+    badge: '🔄 Auto-Update',
     description: 'Bascule automatiquement sur la dernière version stable déployée par Google AI Studio.',
-    quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
+    quota: 'Mise à jour continue Google',
     speed: '~1.2 seconde'
-  },
-  {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    badge: '🛡️ Repli Transparent',
-    description: 'Modèle de secours fiable et rapide.',
-    quota: '1 500 requêtes / jour (15 req/min, 100% Gratuit)',
-    speed: '~1.5 seconde'
   }
 ];
 
 export function getGeminiModelName(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('cashpilot_gemini_model');
-    if (saved && saved !== 'gemini-3.8-flash' && saved !== 'gemini-3.5-flash') {
+    if (saved && !saved.includes('2.0') && !saved.includes('1.5') && saved !== 'gemini-2.5-flash-lite') {
       return saved;
     }
+    localStorage.setItem('cashpilot_gemini_model', 'gemini-3.5-flash');
   }
-  return 'gemini-2.5-flash';
+  return 'gemini-3.5-flash';
 }
 
 export function setGeminiModelName(modelId: string): void {
@@ -80,6 +89,14 @@ export async function testGeminiModelConnection(modelName?: string): Promise<{ s
 
 export function getGeminiApiKey(): string {
   try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const userKey = localStorage.getItem('cashpilot_gemini_api_key');
+      if (userKey && userKey.trim()) {
+        return userKey.trim();
+      }
+    }
+  } catch (e) {}
+  try {
     if (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GEMINI_API_KEY) {
       return (import.meta as any).env.VITE_GEMINI_API_KEY;
     }
@@ -87,11 +104,6 @@ export function getGeminiApiKey(): string {
   try {
     if (typeof process !== 'undefined' && process.env?.VITE_GEMINI_API_KEY) {
       return process.env.VITE_GEMINI_API_KEY;
-    }
-  } catch (e) {}
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return localStorage.getItem('cashpilot_gemini_api_key') || '';
     }
   } catch (e) {}
   return '';
@@ -178,7 +190,7 @@ Renvoie UNIQUEMENT un tableau JSON d'objets au format :
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: getGeminiModelName(),
       generationConfig: { responseMimeType: 'application/json' }
     });
     const result = await model.generateContent(prompt);
@@ -186,10 +198,10 @@ Renvoie UNIQUEMENT un tableau JSON d'objets au format :
     const jsonStr = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
     return JSON.parse(jsonStr);
   } catch (error: any) {
-    console.warn('Erreur Gemini 2.5 Flash pour audit, repli automatique 1.5...', error);
+    console.warn('Erreur Gemini premier choix pour audit, repli automatique...', error);
     try {
       const fallbackModel = genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-flash-lite-latest',
         generationConfig: { responseMimeType: 'application/json' }
       });
       const fallbackResult = await fallbackModel.generateContent(prompt);
@@ -229,7 +241,7 @@ Renvoie UNIQUEMENT un objet JSON valide dont les clés sont les libellés exacts
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: getGeminiModelName(),
       generationConfig: { responseMimeType: 'application/json' }
     });
     const result = await model.generateContent(prompt);
@@ -237,10 +249,10 @@ Renvoie UNIQUEMENT un objet JSON valide dont les clés sont les libellés exacts
     const jsonStr = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
     return JSON.parse(jsonStr);
   } catch (error: any) {
-    console.warn('Erreur Gemini 2.5 Flash, repli automatique...', error);
+    console.warn('Erreur Gemini premier choix, repli automatique...', error);
     try {
       const fallbackModel = genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-flash-lite-latest',
         generationConfig: { responseMimeType: 'application/json' }
       });
       const fallbackResult = await fallbackModel.generateContent(prompt);
@@ -277,8 +289,15 @@ export async function batchAuditStatementWithGemini(
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const preferredModel = getGeminiModelName();
-  // Modèle ultra-rapide validé en priorité (~1s), sans les anciens modèles 503/404
-  const modelsToTry = ['gemini-2.5-flash', preferredModel, 'gemini-flash-latest'];
+  // Modèles ultra-rapides validés en priorité (~1s), sans les anciens modèles 503/404
+  const modelsToTry = [
+    preferredModel,
+    'gemini-3.5-flash',
+    'gemini-flash-lite-latest',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-flash'
+  ];
   const uniqueModels = Array.from(new Set(modelsToTry));
 
   const CHUNK_SIZE = 60;
@@ -1406,10 +1425,11 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
   if (apiKey) {
     const candidateModels = [
       getGeminiModelName(),
-      'gemini-2.5-flash',
+      'gemini-3.5-flash',
+      'gemini-flash-lite-latest',
+      'gemini-3.8-flash',
       'gemini-flash-latest',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash'
+      'gemini-2.5-flash'
     ];
     const uniqueModels = Array.from(new Set(candidateModels));
 
@@ -1897,10 +1917,11 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
   // Ordre de priorité de la cascade : Modèles officiels ultra-rapides Google AI Studio (100% existants)
   const candidateModels = [
     preferredModel,
-    'gemini-2.5-flash',
+    'gemini-3.5-flash',
+    'gemini-flash-lite-latest',
+    'gemini-3.8-flash',
     'gemini-flash-latest',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash'
+    'gemini-2.5-flash'
   ];
   const uniqueModels = Array.from(new Set(candidateModels));
   const genAI = new GoogleGenerativeAI(apiKey);
