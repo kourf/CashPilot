@@ -8,11 +8,14 @@ import {
   X,
   Sparkles,
   Zap,
-  Laptop
+  Laptop,
+  MoreVertical,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-// Déclaration de l'événement BeforeInstallPromptEvent W3C pour TypeScript
+// Déclaration de l'événement BeforeInstallPromptEvent W3C
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
@@ -20,6 +23,12 @@ interface BeforeInstallPromptEvent extends Event {
     platform: string;
   }>;
   prompt(): Promise<void>;
+}
+
+declare global {
+  interface Window {
+    __pwaInstallPrompt?: BeforeInstallPromptEvent | null;
+  }
 }
 
 export interface InstallPWAButtonProps {
@@ -36,15 +45,18 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
   className,
   showIfInstalled = false
 }) => {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(() => {
+    return (typeof window !== 'undefined' && window.__pwaInstallPrompt) ? window.__pwaInstallPrompt : null;
+  });
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [isIOS, setIsIOS] = useState<boolean>(false);
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
-  const [showIOSModal, setShowIOSModal] = useState<boolean>(false);
+  const [isInAppBrowser, setIsInAppBrowser] = useState<boolean>(false);
+  const [showGuidanceModal, setShowGuidanceModal] = useState<boolean>(false);
   const [showSuccessToast, setShowSuccessToast] = useState<boolean>(false);
 
   useEffect(() => {
-    // 1. Détection du mode Standalone (PWA déjà ouverte comme une app installée)
+    // 1. Détection du mode Standalone (PWA lancée comme application native)
     const checkStandalone = () => {
       const isStandaloneMode =
         window.matchMedia('(display-mode: standalone)').matches ||
@@ -56,66 +68,80 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
     };
     checkStandalone();
 
-    // 2. Détection d'iOS (iPhone, iPad, iPod)
+    // 2. Détection de la plateforme (iOS, Android, In-App browser)
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIOSDevice =
       /iphone|ipad|ipod/.test(userAgent) ||
       (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
     setIsIOS(isIOSDevice);
 
-    // 3. Écoute de l'événement natif avant installation (Android, Chrome, Edge)
+    const inApp = /fban|fbav|instagram|line|twitter|snapchat|whatsapp|tiktok|wechat/i.test(userAgent);
+    setIsInAppBrowser(inApp);
+
+    // 3. Récupération immédiate du prompt global pré-capturé
+    if (window.__pwaInstallPrompt && !deferredPrompt) {
+      setDeferredPrompt(window.__pwaInstallPrompt);
+    }
+
+    // Écouteur personnalisé déclenché dès que le script de head capture l'événement
+    const handlePromptReady = () => {
+      if (window.__pwaInstallPrompt) {
+        setDeferredPrompt(window.__pwaInstallPrompt);
+      }
+    };
+
+    // Écouteur direct de secours
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      const promptEvent = e as BeforeInstallPromptEvent;
+      window.__pwaInstallPrompt = promptEvent;
+      setDeferredPrompt(promptEvent);
     };
 
     // 4. Écoute de la fin d'installation réussie
     const handleAppInstalled = () => {
       setIsInstalled(true);
       setDeferredPrompt(null);
+      window.__pwaInstallPrompt = null;
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 5000);
     };
 
+    window.addEventListener('pwa-prompt-ready', handlePromptReady);
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
+      window.removeEventListener('pwa-prompt-ready', handlePromptReady);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, []);
+  }, [deferredPrompt]);
 
   // Déclencheur du clic d'installation
   const handleInstallClick = async () => {
-    // Cas A : L'événement natif Chrome/Android est disponible
-    if (deferredPrompt) {
+    // Cas A : L'événement natif Chrome/Edge/Android est disponible
+    const activePrompt = deferredPrompt || window.__pwaInstallPrompt;
+    if (activePrompt) {
       try {
-        await deferredPrompt.prompt();
-        const choice = await deferredPrompt.userChoice;
+        await activePrompt.prompt();
+        const choice = await activePrompt.userChoice;
         if (choice.outcome === 'accepted') {
           setIsInstalled(true);
           setShowSuccessToast(true);
           setTimeout(() => setShowSuccessToast(false), 5000);
         }
         setDeferredPrompt(null);
+        window.__pwaInstallPrompt = null;
       } catch (err) {
         console.error('Erreur lors du prompt PWA:', err);
+        setShowGuidanceModal(true);
       }
       return;
     }
 
-    // Cas B : Appareil iOS (Safari ne gère pas beforeinstallprompt, on guide l'utilisateur)
-    if (isIOS) {
-      setShowIOSModal(true);
-      return;
-    }
-
-    // Cas C : Navigateur Desktop ou déjà prêt
-    if (!isStandalone) {
-      // Afficher la modale d'aide ou l'indication d'installation
-      setShowIOSModal(true);
-    }
+    // Cas B : Pas de prompt direct (iOS, in-app browser ou Chrome nécessitant l'action du menu)
+    setShowGuidanceModal(true);
   };
 
   // Si l'application est déjà lancée en mode standalone et qu'on ne force pas l'affichage
@@ -140,7 +166,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
             className="relative px-7 py-4 rounded-2xl bg-gradient-to-r from-slate-900/90 via-slate-950/95 to-slate-900/90 hover:from-slate-800/95 hover:to-slate-900/95 border border-cyan-400/40 hover:border-cyan-400 text-white shadow-[0_12px_36px_rgba(6,182,212,0.25)] hover:shadow-[0_16px_48px_rgba(6,182,212,0.4)] backdrop-blur-2xl transition-all duration-300 flex items-center gap-4 cursor-pointer active:scale-95 group/btn"
           >
             {/* Icône animée */}
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/30 border border-white/25 group-hover/btn:scale-110 transition-transform">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/30 border border-white/25 group-hover/btn:scale-110 transition-transform shrink-0">
               {isInstalled ? (
                 <CheckCircle2 size={24} className="text-emerald-300 stroke-[2.5]" />
               ) : (
@@ -150,9 +176,9 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
 
             {/* Texte & Badges */}
             <div className="text-left">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm sm:text-base font-black tracking-tight text-white group-hover/btn:text-cyan-300 transition-colors">
-                  {isInstalled ? 'CashPilot est installé' : 'Installer l\'application CashPilot'}
+                  {isInstalled ? 'CashPilot est déjà installé' : 'Installer l\'application CashPilot'}
                 </span>
                 <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 flex items-center gap-1">
                   <Sparkles size={10} />
@@ -168,12 +194,12 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
                   <Laptop size={13} className="text-indigo-400" /> PC / Mac
                 </span>
                 <span>•</span>
-                <span className="text-emerald-400 font-semibold">Sans App Store</span>
+                <span className="text-emerald-400 font-semibold">Plein écran sans URL</span>
               </p>
             </div>
 
             {/* Flèche d'action */}
-            <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-white/[0.08] group-hover/btn:bg-cyan-500/20 text-slate-300 group-hover/btn:text-cyan-300 transition-colors ml-2">
+            <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-white/[0.08] group-hover/btn:bg-cyan-500/20 text-slate-300 group-hover/btn:text-cyan-300 transition-colors ml-2 shrink-0">
               <Zap size={16} />
             </div>
           </button>
@@ -221,7 +247,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
             </div>
             <div>
               <p className="text-xs font-bold text-white">Installer CashPilot</p>
-              <p className="text-[11px] text-slate-400">Accès plein écran & hors-ligne</p>
+              <p className="text-[11px] text-slate-400">Plein écran & accès direct</p>
             </div>
           </div>
           <button
@@ -235,14 +261,14 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
       )}
 
       {/* =========================================================================
-          MODALE / FEUILLE D'INSTRUCTION (iOS Safari & Desktop)
+          MODALE DE GUIDAGE D'INSTALLATION (iOS, Android, Navigateurs intégrés)
          ========================================================================= */}
-      {showIOSModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md rounded-3xl bg-slate-900/95 border border-white/20 p-6 sm:p-7 shadow-[0_25px_60px_rgba(0,0,0,0.8)] text-slate-100 space-y-5">
+      {showGuidanceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-3xl bg-slate-900/98 border border-white/20 p-6 sm:p-7 shadow-[0_25px_60px_rgba(0,0,0,0.85)] text-slate-100 space-y-5">
             {/* Bouton Fermer */}
             <button
-              onClick={() => setShowIOSModal(false)}
+              onClick={() => setShowGuidanceModal(false)}
               className="absolute top-4 right-4 p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-slate-400 hover:text-white transition-colors cursor-pointer"
             >
               <X size={18} />
@@ -255,17 +281,34 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
               </div>
               <div>
                 <h3 className="text-lg font-black text-white tracking-tight">
-                  Installer CashPilot
+                  Installer l'application CashPilot
                 </h3>
                 <p className="text-xs text-cyan-300 font-medium">
-                  {isIOS ? 'Procédure directe pour iPhone & iPad' : 'Installation en 2 étapes'}
+                  {isInAppBrowser
+                    ? 'Navigateur intégré détecté'
+                    : isIOS
+                    ? 'Procédure directe pour iPhone & iPad'
+                    : 'Installation directe sur Android / Chrome'}
                 </p>
               </div>
             </div>
 
+            {/* In-App Browser Warning */}
+            {isInAppBrowser && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <ExternalLink size={14} /> Ouvrez dans votre navigateur principal
+                </p>
+                <p className="text-amber-300/80">
+                  Vous êtes actuellement dans le navigateur intégré d'une messagerie. Touchez le menu ⋮ ou Partager en haut à droite et choisissez <strong>"Ouvrir dans Chrome"</strong> ou <strong>"Ouvrir dans Safari"</strong> pour pouvoir installer l'application.
+                </p>
+              </div>
+            )}
+
             {/* Instructions Pas-à-Pas */}
             <div className="space-y-3 pt-1">
               {isIOS ? (
+                // --- GUIDE IPHONE / IPAD ---
                 <>
                   <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
                     <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0 font-bold text-sm">
@@ -277,7 +320,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
                         <Share size={14} className="text-cyan-400" />
                       </p>
                       <p className="text-slate-400">
-                        En bas de votre écran sur Safari (icône carrée avec une flèche vers le haut).
+                        En bas sur Safari (l'icône carrée avec la flèche vers le haut).
                       </p>
                     </div>
                   </div>
@@ -292,7 +335,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
                         <PlusSquare size={14} className="text-indigo-400" />
                       </p>
                       <p className="text-slate-400">
-                        Faites défiler le menu d'action vers le bas et touchez cette option.
+                        Faites défiler la liste vers le bas jusqu'à cette option.
                       </p>
                     </div>
                   </div>
@@ -304,42 +347,70 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
                     <div className="text-xs text-slate-300 space-y-0.5">
                       <p className="font-semibold text-white">Appuyez sur "Ajouter"</p>
                       <p className="text-slate-400">
-                        L'icône CashPilot s'installe instantanément sur votre écran d'accueil sans passer par l'App Store.
+                        CashPilot devient une véritable application plein écran sur votre écran d'accueil sans barre d'URL.
                       </p>
                     </div>
                   </div>
                 </>
               ) : (
-                <div className="space-y-2.5 text-xs text-slate-300">
+                // --- GUIDE ANDROID / CHROME / EDGE ---
+                <>
                   <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
                     <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0 font-bold text-sm">
                       1
                     </div>
-                    <div className="space-y-0.5">
-                      <p className="font-semibold text-white">Installation directe</p>
+                    <div className="text-xs text-slate-300 space-y-0.5">
+                      <p className="font-semibold text-white flex items-center gap-1.5">
+                        Touchez le menu ⋮ de Chrome
+                        <MoreVertical size={14} className="text-cyan-400" />
+                      </p>
                       <p className="text-slate-400">
-                        Sur Chrome, Edge ou Android, cliquez sur l'icône d'installation dans la barre d'adresse ou le menu ⋮ puis "Installer CashPilot".
+                        En haut à droite de votre navigateur Chrome.
                       </p>
                     </div>
                   </div>
+
+                  <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0 font-bold text-sm">
+                      2
+                    </div>
+                    <div className="text-xs text-slate-300 space-y-0.5">
+                      <p className="font-semibold text-white flex items-center gap-1.5">
+                        Appuyez sur "Installer l'application"
+                        <Download size={14} className="text-indigo-400" />
+                      </p>
+                      <p className="text-slate-400">
+                        (ou <em>"Installer CashPilot"</em> / <em>"Ajouter à l'écran d'accueil"</em>).
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
                     <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0 font-bold text-sm">
-                      ✓
+                      3
                     </div>
-                    <div className="space-y-0.5">
-                      <p className="font-semibold text-white">Plein écran & Gratuit</p>
+                    <div className="text-xs text-slate-300 space-y-0.5">
+                      <p className="font-semibold text-white">Confirmez "Installer"</p>
                       <p className="text-slate-400">
-                        L'application fonctionne comme une application native sans barre d'adresse et sans abonnement.
+                        L'application se télécharge et se lance en plein écran avec son propre icône sur votre écran d'accueil, exactement comme une appli téléchargée sur le Play Store !
                       </p>
                     </div>
                   </div>
-                </div>
+                </>
               )}
+            </div>
+
+            {/* Avantages PWA */}
+            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2.5 text-[11px] text-emerald-300">
+              <ShieldCheck size={18} className="text-emerald-400 shrink-0" />
+              <span>
+                100% Gratuit • Aucun compte App Store requis • Mises à jour instantanées
+              </span>
             </div>
 
             {/* Bouton de confirmation */}
             <button
-              onClick={() => setShowIOSModal(false)}
+              onClick={() => setShowGuidanceModal(false)}
               type="button"
               className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 via-primary to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-cyan-500/25 border border-white/20 transition-all cursor-pointer active:scale-95"
             >

@@ -1,11 +1,16 @@
 {
+  "id": "/",
   "name": "CashPilot - Analyse Financière",
   "short_name": "CashPilot",
   "description": "Gérez et analysez vos finances personnelles et tickets de caisse intelligemment avec CashPilot.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "portrait-primary",
   "background_color": "#020617",
   "theme_color": "#020617",
   "lang": "fr-FR",
@@ -15,12 +20,6 @@
     "utilities"
   ],
   "icons": [
-    {
-      "src": "/favicon.svg",
-      "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
     {
       "src": "/pwa-192x192.png",
       "sizes": "192x192",

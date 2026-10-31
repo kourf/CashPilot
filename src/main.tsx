@@ -32,11 +32,14 @@ if (typeof window !== 'undefined') {
   }, 15 * 60 * 1000);
 }
 
-// Rechargement fluide unique lors de l'activation d'une nouvelle version déployée
+// Rechargement fluide unique lors de l'activation d'une NOUVELLE version déployée
+// CRITIQUE : on ne recharge QUE si un controller existait déjà au démarrage (mise à jour)
+// pour ne jamais interrompre l'enregistrement initial lors de la première visite !
 if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!refreshing) {
+    if (hadControllerAtStart && !refreshing) {
       refreshing = true;
       window.location.reload();
     }

@@ -14,6 +14,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
+      manifestFilename: 'manifest.json',
       includeAssets: [
         'favicon.svg',
         'icons.svg',
@@ -23,24 +24,20 @@ export default defineConfig({
         'maskable-icon-512x512.png'
       ],
       manifest: {
+        id: '/',
         name: 'CashPilot - Analyse Financière',
         short_name: 'CashPilot',
         description: 'Gérez et analysez vos finances personnelles et tickets de caisse intelligemment avec CashPilot.',
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        orientation: 'portrait',
+        display_override: ['standalone', 'minimal-ui'],
+        orientation: 'portrait-primary',
         background_color: '#020617',
         theme_color: '#020617',
         lang: 'fr-FR',
         categories: ['finance', 'productivity', 'utilities'],
         icons: [
-          {
-            src: '/favicon.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
-            purpose: 'any'
-          },
           {
             src: '/pwa-192x192.png',
             sizes: '192x192',
@@ -66,6 +63,8 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/__/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
