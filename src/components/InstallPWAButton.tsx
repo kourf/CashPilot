@@ -9,9 +9,7 @@ import {
   Sparkles,
   Zap,
   Laptop,
-  MoreVertical,
-  ExternalLink,
-  ShieldCheck
+  Loader2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -51,46 +49,53 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [isIOS, setIsIOS] = useState<boolean>(false);
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
-  const [isInAppBrowser, setIsInAppBrowser] = useState<boolean>(false);
-  const [showGuidanceModal, setShowGuidanceModal] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [showIOSModal, setShowIOSModal] = useState<boolean>(false);
+  const [showAndroidDirectTip, setShowAndroidDirectTip] = useState<boolean>(false);
   const [showSuccessToast, setShowSuccessToast] = useState<boolean>(false);
 
   useEffect(() => {
     // 1. Détection du mode Standalone (PWA lancée comme application native)
-    const checkStandalone = () => {
+    const checkStandalone = async () => {
       const isStandaloneMode =
         window.matchMedia('(display-mode: standalone)').matches ||
         (window.navigator as unknown as { standalone?: boolean }).standalone === true;
       setIsStandalone(Boolean(isStandaloneMode));
       if (isStandaloneMode) {
         setIsInstalled(true);
+        return;
+      }
+
+      // Vérification native Chrome des applications déjà installées sur l'appareil
+      if (typeof navigator !== 'undefined' && 'getInstalledRelatedApps' in navigator) {
+        try {
+          const apps = await (navigator as any).getInstalledRelatedApps();
+          if (apps && apps.length > 0) {
+            setIsInstalled(true);
+          }
+        } catch {}
       }
     };
     checkStandalone();
 
-    // 2. Détection de la plateforme (iOS, Android, In-App browser)
+    // 2. Détection de la plateforme iOS
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIOSDevice =
       /iphone|ipad|ipod/.test(userAgent) ||
       (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
     setIsIOS(isIOSDevice);
 
-    const inApp = /fban|fbav|instagram|line|twitter|snapchat|whatsapp|tiktok|wechat/i.test(userAgent);
-    setIsInAppBrowser(inApp);
-
-    // 3. Récupération immédiate du prompt global pré-capturé
+    // 3. Récupération immédiate du prompt global pré-capturé dès le <head>
     if (window.__pwaInstallPrompt && !deferredPrompt) {
       setDeferredPrompt(window.__pwaInstallPrompt);
     }
 
-    // Écouteur personnalisé déclenché dès que le script de head capture l'événement
     const handlePromptReady = () => {
       if (window.__pwaInstallPrompt) {
         setDeferredPrompt(window.__pwaInstallPrompt);
       }
     };
 
-    // Écouteur direct de secours
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       const promptEvent = e as BeforeInstallPromptEvent;
@@ -98,7 +103,6 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
       setDeferredPrompt(promptEvent);
     };
 
-    // 4. Écoute de la fin d'installation réussie
     const handleAppInstalled = () => {
       setIsInstalled(true);
       setDeferredPrompt(null);
@@ -118,9 +122,23 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
     };
   }, [deferredPrompt]);
 
-  // Déclencheur du clic d'installation
-  const handleInstallClick = async () => {
-    // Cas A : L'événement natif Chrome/Edge/Android est disponible
+  // Clic 1-clic direct : déclenche directement l'installation sans manipulation
+  const handleDownloadClick = async () => {
+    // Si l'application est déjà installée sur l'appareil
+    if (isInstalled || isStandalone) {
+      alert("CashPilot est déjà installée sur votre smartphone ! Retrouvez l'icône sur votre écran d'accueil.");
+      return;
+    }
+
+    // Cas iOS (Safari n'a pas d'API native de prompt, guidage simple en 1 tap)
+    if (isIOS) {
+      setShowIOSModal(true);
+      return;
+    }
+
+    setIsLoading(true);
+
+    // 1. Si le prompt natif est déjà disponible -> déclenchement DIRECT 1-clic
     const activePrompt = deferredPrompt || window.__pwaInstallPrompt;
     if (activePrompt) {
       try {
@@ -134,14 +152,67 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
         setDeferredPrompt(null);
         window.__pwaInstallPrompt = null;
       } catch (err) {
-        console.error('Erreur lors du prompt PWA:', err);
-        setShowGuidanceModal(true);
+        console.warn('Erreur lors du prompt PWA:', err);
+      } finally {
+        setIsLoading(false);
       }
       return;
     }
 
-    // Cas B : Pas de prompt direct (iOS, in-app browser ou Chrome nécessitant l'action du menu)
-    setShowGuidanceModal(true);
+    // 2. Si le prompt n'a pas encore fini de s'initialiser, attendre jusqu'à 2 secondes
+    const waitForPrompt = new Promise<BeforeInstallPromptEvent | null>((resolve) => {
+      let resolved = false;
+      const onReady = () => {
+        if (window.__pwaInstallPrompt && !resolved) {
+          resolved = true;
+          resolve(window.__pwaInstallPrompt);
+        }
+      };
+      window.addEventListener('pwa-prompt-ready', onReady, { once: true });
+      window.addEventListener(
+        'beforeinstallprompt',
+        (e) => {
+          e.preventDefault();
+          if (!resolved) {
+            resolved = true;
+            resolve(e as BeforeInstallPromptEvent);
+          }
+        },
+        { once: true }
+      );
+
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(null);
+        }
+      }, 2000);
+    });
+
+    const captured = await waitForPrompt;
+    if (captured) {
+      try {
+        await captured.prompt();
+        const choice = await captured.userChoice;
+        if (choice.outcome === 'accepted') {
+          setIsInstalled(true);
+          setShowSuccessToast(true);
+          setTimeout(() => setShowSuccessToast(false), 5000);
+        }
+        setDeferredPrompt(null);
+        window.__pwaInstallPrompt = null;
+      } catch (err) {
+        console.warn('Erreur prompt:', err);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    setIsLoading(false);
+
+    // 3. Fallback immédiat et direct si Chrome a déjà l'application en mémoire
+    setShowAndroidDirectTip(true);
   };
 
   // Si l'application est déjà lancée en mode standalone et qu'on ne force pas l'affichage
@@ -152,54 +223,60 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
   return (
     <>
       {/* =========================================================================
-          BOUTON D'INSTALLATION SELON LA VARIANTE
+          BOUTON PRINCIPAL 1-CLIC « TÉLÉCHARGER CASHPILOT »
          ========================================================================= */}
       {variant === 'hero' && (
         <div className={cn('relative group inline-block', className)}>
-          {/* Halo néon animé en arrière-plan */}
-          <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 via-indigo-500 to-violet-500 rounded-3xl blur-xl opacity-40 group-hover:opacity-75 transition-all duration-500 animate-pulse" />
+          {/* Halo néon animé */}
+          <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 via-primary to-indigo-600 rounded-3xl blur-xl opacity-45 group-hover:opacity-80 transition-all duration-500 animate-pulse" />
 
-          {/* Bouton Principal Grand Format Hero */}
           <button
-            onClick={handleInstallClick}
+            onClick={handleDownloadClick}
+            disabled={isLoading}
             type="button"
-            className="relative px-7 py-4 rounded-2xl bg-gradient-to-r from-slate-900/90 via-slate-950/95 to-slate-900/90 hover:from-slate-800/95 hover:to-slate-900/95 border border-cyan-400/40 hover:border-cyan-400 text-white shadow-[0_12px_36px_rgba(6,182,212,0.25)] hover:shadow-[0_16px_48px_rgba(6,182,212,0.4)] backdrop-blur-2xl transition-all duration-300 flex items-center gap-4 cursor-pointer active:scale-95 group/btn"
+            className="relative px-8 py-4.5 rounded-2xl bg-gradient-to-r from-slate-900/95 via-slate-950/98 to-slate-900/95 hover:from-slate-800/95 hover:to-slate-900/95 border-2 border-cyan-400/50 hover:border-cyan-300 text-white shadow-[0_12px_40px_rgba(6,182,212,0.35)] hover:shadow-[0_16px_50px_rgba(6,182,212,0.5)] backdrop-blur-2xl transition-all duration-300 flex items-center gap-4 cursor-pointer active:scale-95 group/btn disabled:opacity-75"
           >
             {/* Icône animée */}
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/30 border border-white/25 group-hover/btn:scale-110 transition-transform shrink-0">
-              {isInstalled ? (
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/40 border border-white/30 group-hover/btn:scale-110 transition-transform shrink-0">
+              {isLoading ? (
+                <Loader2 size={24} className="animate-spin text-white" />
+              ) : isInstalled ? (
                 <CheckCircle2 size={24} className="text-emerald-300 stroke-[2.5]" />
               ) : (
-                <Download size={22} className="stroke-[2.5] animate-bounce" />
+                <Download size={24} className="stroke-[2.5] animate-bounce" />
               )}
             </div>
 
-            {/* Texte & Badges */}
+            {/* Texte & Titre */}
             <div className="text-left">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm sm:text-base font-black tracking-tight text-white group-hover/btn:text-cyan-300 transition-colors">
-                  {isInstalled ? 'CashPilot est déjà installé' : 'Installer l\'application CashPilot'}
+                <span className="text-base sm:text-lg font-black tracking-tight text-white group-hover/btn:text-cyan-300 transition-colors">
+                  {isLoading
+                    ? 'Téléchargement en cours...'
+                    : isInstalled
+                    ? 'Application CashPilot installée'
+                    : 'Télécharger CashPilot'}
                 </span>
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 flex items-center gap-1">
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-cyan-500/25 text-cyan-300 border border-cyan-400/40 flex items-center gap-1 shadow-sm">
                   <Sparkles size={10} />
                   <span>100% GRATUIT</span>
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium flex items-center gap-2 mt-0.5">
-                <span className="flex items-center gap-1 text-slate-300">
+                <span className="flex items-center gap-1 text-slate-200">
                   <Smartphone size={13} className="text-cyan-400" /> Mobile
                 </span>
                 <span>•</span>
-                <span className="flex items-center gap-1 text-slate-300">
-                  <Laptop size={13} className="text-indigo-400" /> PC / Mac
+                <span className="flex items-center gap-1 text-slate-200">
+                  <Laptop size={13} className="text-indigo-400" /> PC
                 </span>
                 <span>•</span>
-                <span className="text-emerald-400 font-semibold">Plein écran sans URL</span>
+                <span className="text-emerald-400 font-bold">1-Clic direct</span>
               </p>
             </div>
 
-            {/* Flèche d'action */}
-            <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-white/[0.08] group-hover/btn:bg-cyan-500/20 text-slate-300 group-hover/btn:text-cyan-300 transition-colors ml-2 shrink-0">
+            {/* Pastille Éclair */}
+            <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-white/[0.1] group-hover/btn:bg-cyan-500/30 text-cyan-300 transition-colors ml-2 shrink-0">
               <Zap size={16} />
             </div>
           </button>
@@ -208,36 +285,38 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
 
       {variant === 'compact' && (
         <button
-          onClick={handleInstallClick}
+          onClick={handleDownloadClick}
+          disabled={isLoading}
           type="button"
           className={cn(
-            'px-3.5 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 hover:from-cyan-500/30 hover:to-indigo-500/30 border border-cyan-400/40 text-cyan-300 hover:text-white text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95',
+            'px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500/25 to-indigo-500/25 hover:from-cyan-500/40 hover:to-indigo-500/40 border border-cyan-400/50 text-cyan-200 hover:text-white text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50',
             className
           )}
         >
-          <Download size={14} className="stroke-[2.5]" />
-          <span>Installer l'App</span>
+          {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} className="stroke-[2.5]" />}
+          <span>Télécharger l'App</span>
         </button>
       )}
 
       {variant === 'pill' && (
         <button
-          onClick={handleInstallClick}
+          onClick={handleDownloadClick}
+          disabled={isLoading}
           type="button"
           className={cn(
-            'inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/20 text-white text-xs font-semibold backdrop-blur-xl transition-all cursor-pointer active:scale-95',
+            'inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/[0.1] hover:bg-white/[0.18] border border-white/25 text-white text-xs font-bold backdrop-blur-xl transition-all cursor-pointer active:scale-95 disabled:opacity-50',
             className
           )}
         >
-          <Smartphone size={15} className="text-cyan-400" />
-          <span>Installer sur smartphone</span>
+          {isLoading ? <Loader2 size={15} className="animate-spin" /> : <Smartphone size={15} className="text-cyan-400" />}
+          <span>Télécharger sur mon téléphone</span>
         </button>
       )}
 
       {variant === 'banner' && (
         <div
           className={cn(
-            'fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-50 rounded-2xl bg-slate-950/90 backdrop-blur-2xl border border-cyan-400/30 p-4 shadow-[0_20px_50px_rgba(0,0,0,0.6)] flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300',
+            'fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-50 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border border-cyan-400/40 p-4 shadow-[0_20px_50px_rgba(0,0,0,0.7)] flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300',
             className
           )}
         >
@@ -246,186 +325,99 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
               <Download size={18} />
             </div>
             <div>
-              <p className="text-xs font-bold text-white">Installer CashPilot</p>
-              <p className="text-[11px] text-slate-400">Plein écran & accès direct</p>
+              <p className="text-xs font-bold text-white">Télécharger CashPilot</p>
+              <p className="text-[11px] text-slate-400">Plein écran & sans barre d'URL</p>
             </div>
           </div>
           <button
-            onClick={handleInstallClick}
+            onClick={handleDownloadClick}
             type="button"
-            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white text-xs font-bold shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white text-xs font-bold shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
           >
-            Installer
+            Télécharger
           </button>
         </div>
       )}
 
       {/* =========================================================================
-          MODALE DE GUIDAGE D'INSTALLATION (iOS, Android, Navigateurs intégrés)
+          NOTIFICATIONS DIRECTES (Sans manipulation complexe)
          ========================================================================= */}
-      {showGuidanceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md rounded-3xl bg-slate-900/98 border border-white/20 p-6 sm:p-7 shadow-[0_25px_60px_rgba(0,0,0,0.85)] text-slate-100 space-y-5">
-            {/* Bouton Fermer */}
+
+      {/* Toast Android direct si le prompt a déjà été utilisé */}
+      {showAndroidDirectTip && (
+        <div className="fixed inset-x-4 bottom-6 sm:left-auto sm:right-6 sm:w-96 z-50 rounded-2xl bg-slate-900/98 border border-cyan-400/50 p-4.5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] text-slate-100 space-y-2.5 animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-xs">
+                <Download size={15} />
+              </div>
+              <p className="font-bold text-xs text-white">Installation prête dans Chrome</p>
+            </div>
             <button
-              onClick={() => setShowGuidanceModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-slate-400 hover:text-white transition-colors cursor-pointer"
+              onClick={() => setShowAndroidDirectTip(false)}
+              className="text-slate-400 hover:text-white p-1"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Touchez l'icône de téléchargement dans la barre d'adresse de Chrome en haut (ou les 3 points <strong className="text-cyan-300">⋮</strong> puis <strong className="text-cyan-300">"Installer l'application"</strong>). L'icône se place immédiatement sur votre téléphone.
+          </p>
+          <button
+            onClick={() => setShowAndroidDirectTip(false)}
+            className="w-full py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/30 text-xs font-bold transition-colors cursor-pointer"
+          >
+            D'accord
+          </button>
+        </div>
+      )}
+
+      {/* Modale ultra-simple pour iOS Safari */}
+      {showIOSModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-sm rounded-3xl bg-slate-900/98 border border-white/20 p-6 shadow-2xl text-slate-100 space-y-4">
+            <button
+              onClick={() => setShowIOSModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/[0.06] text-slate-400 hover:text-white cursor-pointer"
             >
               <X size={18} />
             </button>
-
-            {/* Header Modale */}
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/30 border border-white/25">
-                <Smartphone size={24} />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                <Smartphone size={22} />
               </div>
               <div>
-                <h3 className="text-lg font-black text-white tracking-tight">
-                  Installer l'application CashPilot
-                </h3>
-                <p className="text-xs text-cyan-300 font-medium">
-                  {isInAppBrowser
-                    ? 'Navigateur intégré détecté'
-                    : isIOS
-                    ? 'Procédure directe pour iPhone & iPad'
-                    : 'Installation directe sur Android / Chrome'}
-                </p>
+                <h3 className="text-base font-bold text-white">Télécharger sur iPhone</h3>
+                <p className="text-xs text-cyan-300">Sur Safari</p>
               </div>
             </div>
-
-            {/* In-App Browser Warning */}
-            {isInAppBrowser && (
-              <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs space-y-1">
-                <p className="font-bold flex items-center gap-1.5">
-                  <ExternalLink size={14} /> Ouvrez dans votre navigateur principal
-                </p>
-                <p className="text-amber-300/80">
-                  Vous êtes actuellement dans le navigateur intégré d'une messagerie. Touchez le menu ⋮ ou Partager en haut à droite et choisissez <strong>"Ouvrir dans Chrome"</strong> ou <strong>"Ouvrir dans Safari"</strong> pour pouvoir installer l'application.
-                </p>
-              </div>
-            )}
-
-            {/* Instructions Pas-à-Pas */}
-            <div className="space-y-3 pt-1">
-              {isIOS ? (
-                // --- GUIDE IPHONE / IPAD ---
-                <>
-                  <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
-                    <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0 font-bold text-sm">
-                      1
-                    </div>
-                    <div className="text-xs text-slate-300 space-y-0.5">
-                      <p className="font-semibold text-white flex items-center gap-1.5">
-                        Touchez le bouton Partager
-                        <Share size={14} className="text-cyan-400" />
-                      </p>
-                      <p className="text-slate-400">
-                        En bas sur Safari (l'icône carrée avec la flèche vers le haut).
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0 font-bold text-sm">
-                      2
-                    </div>
-                    <div className="text-xs text-slate-300 space-y-0.5">
-                      <p className="font-semibold text-white flex items-center gap-1.5">
-                        Sélectionnez "Sur l'écran d'accueil"
-                        <PlusSquare size={14} className="text-indigo-400" />
-                      </p>
-                      <p className="text-slate-400">
-                        Faites défiler la liste vers le bas jusqu'à cette option.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0 font-bold text-sm">
-                      3
-                    </div>
-                    <div className="text-xs text-slate-300 space-y-0.5">
-                      <p className="font-semibold text-white">Appuyez sur "Ajouter"</p>
-                      <p className="text-slate-400">
-                        CashPilot devient une véritable application plein écran sur votre écran d'accueil sans barre d'URL.
-                      </p>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                // --- GUIDE ANDROID / CHROME / EDGE ---
-                <>
-                  <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
-                    <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0 font-bold text-sm">
-                      1
-                    </div>
-                    <div className="text-xs text-slate-300 space-y-0.5">
-                      <p className="font-semibold text-white flex items-center gap-1.5">
-                        Touchez le menu ⋮ de Chrome
-                        <MoreVertical size={14} className="text-cyan-400" />
-                      </p>
-                      <p className="text-slate-400">
-                        En haut à droite de votre navigateur Chrome.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0 font-bold text-sm">
-                      2
-                    </div>
-                    <div className="text-xs text-slate-300 space-y-0.5">
-                      <p className="font-semibold text-white flex items-center gap-1.5">
-                        Appuyez sur "Installer l'application"
-                        <Download size={14} className="text-indigo-400" />
-                      </p>
-                      <p className="text-slate-400">
-                        (ou <em>"Installer CashPilot"</em> / <em>"Ajouter à l'écran d'accueil"</em>).
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0 font-bold text-sm">
-                      3
-                    </div>
-                    <div className="text-xs text-slate-300 space-y-0.5">
-                      <p className="font-semibold text-white">Confirmez "Installer"</p>
-                      <p className="text-slate-400">
-                        L'application se télécharge et se lance en plein écran avec son propre icône sur votre écran d'accueil, exactement comme une appli téléchargée sur le Play Store !
-                      </p>
-                    </div>
-                  </div>
-                </>
-              )}
+            <div className="space-y-2 text-xs text-slate-300">
+              <p className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.04]">
+                1. Touchez Partager <Share size={14} className="text-cyan-400 ml-auto" />
+              </p>
+              <p className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.04]">
+                2. Choisissez "Sur l'écran d'accueil" <PlusSquare size={14} className="text-indigo-400 ml-auto" />
+              </p>
+              <p className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.04]">
+                3. Touchez "Ajouter"
+              </p>
             </div>
-
-            {/* Avantages PWA */}
-            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2.5 text-[11px] text-emerald-300">
-              <ShieldCheck size={18} className="text-emerald-400 shrink-0" />
-              <span>
-                100% Gratuit • Aucun compte App Store requis • Mises à jour instantanées
-              </span>
-            </div>
-
-            {/* Bouton de confirmation */}
             <button
-              onClick={() => setShowGuidanceModal(false)}
-              type="button"
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 via-primary to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-cyan-500/25 border border-white/20 transition-all cursor-pointer active:scale-95"
+              onClick={() => setShowIOSModal(false)}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-bold text-xs cursor-pointer"
             >
-              J'ai compris
+              Fermer
             </button>
           </div>
         </div>
       )}
 
-      {/* Toast de succès d'installation */}
+      {/* Toast de confirmation de téléchargement réussi */}
       {showSuccessToast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-emerald-950/90 border border-emerald-500/40 text-emerald-200 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-5">
           <CheckCircle2 size={20} className="text-emerald-400" />
           <span className="text-xs font-bold">
-            CashPilot a été installé avec succès sur votre appareil !
+            CashPilot a été installée avec succès sur votre téléphone !
           </span>
         </div>
       )}
