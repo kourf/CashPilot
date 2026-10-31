@@ -7,6 +7,13 @@ import {
   Sparkles,
   ChevronRight
 } from 'lucide-react';
+import { 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  Tooltip 
+} from 'recharts';
 import { MobileCharts } from './MobileCharts';
 import { formatBankAmount } from '../../../lib/kpiUtils';
 import { cn } from '../../../lib/utils';
@@ -23,15 +30,16 @@ interface LiquidDonutSectionProps {
 }
 
 const DONUT_COLORS = [
-  '#10b981', // 1. Emeraude
-  '#3b82f6', // 2. Bleu
-  '#f59e0b', // 3. Ambre
-  '#8b5cf6', // 4. Violet
-  '#a855f7', // 5. Pourpre
-  '#ec4899', // 6. Rose
-  '#06b6d4', // 7. Cyan
-  '#f97316', // 8. Orange
-  '#64748b'  // 9. Autre
+  '#10B981', // Emeraude
+  '#3B82F6', // Bleu
+  '#F59E0B', // Ambre
+  '#EF4444', // Rouge
+  '#8B5CF6', // Violet
+  '#EC4899', // Rose
+  '#06B6D4', // Cyan
+  '#F97316', // Orange
+  '#6366F1', // Indigo
+  '#14B8A6'  // Teal
 ];
 
 function isExcludedMacroCategory(categoryName: string): boolean {
@@ -77,6 +85,7 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
     if (onSelectCategory) onSelectCategory(category);
     else if (onCategoryClick) onCategoryClick(category);
   };
+
   const [activeChartTab, setActiveChartTab] = useState<'sankey' | 'donut' | 'bar'>('donut');
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
@@ -92,30 +101,126 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
     return sum > 0 ? sum : (metrics?.realExpenses || 0);
   }, [validExpenseCategories, metrics?.realExpenses]);
 
-  // Calcul des coordonnées du Donut SVG (Circonférence = 2 * PI * 38 ≈ 238.761)
+  // Donut Segments consolidés (top 8 pour un rendu visuel aéré)
   const donutSegments = useMemo(() => {
-    const circumference = 2 * Math.PI * 38;
-    let currentOffset = 0;
-
     return validExpenseCategories.slice(0, 8).map((cat, index) => {
       const proportion = totalExpenses > 0 ? cat.total / totalExpenses : 0;
-      const dashLength = proportion * circumference;
-      const segmentOffset = currentOffset;
-      currentOffset -= dashLength;
-
       return {
         ...cat,
         color: DONUT_COLORS[index % DONUT_COLORS.length],
         percentage: (proportion * 100).toFixed(1),
-        dashArray: `${dashLength.toFixed(2)} ${circumference.toFixed(2)}`,
-        dashOffset: segmentOffset.toFixed(2),
         subtitle: CATEGORY_SUBTITLES[cat.category] || 'Dépenses courantes'
       };
     });
   }, [validExpenseCategories, totalExpenses]);
 
+  const donutData = useMemo(() => {
+    return donutSegments.map(s => ({
+      name: s.category,
+      value: s.total,
+      color: s.color,
+      percentage: s.percentage,
+      subtitle: s.subtitle
+    }));
+  }, [donutSegments]);
+
   const topCategories = useMemo(() => donutSegments.slice(0, 4), [donutSegments]);
   const otherCategories = useMemo(() => donutSegments.slice(4, 8), [donutSegments]);
+
+  // Rendu personnalisé des flèches connectrices avec nom de la catégorie et montant (Design DNA Stitch)
+  const renderDonutCalloutLabel = (props: any) => {
+    const { cx, cy, midAngle, outerRadius, name, value, fill, index } = props;
+    const RADIAN = Math.PI / 180;
+    const cos = Math.cos(-midAngle * RADIAN);
+    const sin = Math.sin(-midAngle * RADIAN);
+    const isRight = cos >= 0;
+
+    // Point d'ancrage sur le pourtour extérieur du donut
+    const sx = cx + (outerRadius + 4) * cos;
+    const sy = cy + (outerRadius + 4) * sin;
+
+    // Point de coude angulaire
+    const mx = cx + (outerRadius + 22) * cos;
+    const my = cy + (outerRadius + 22) * sin;
+
+    // Segment horizontal vers le libellé
+    const ex = mx + (isRight ? 1 : -1) * 18;
+    const ey = my;
+
+    const color = fill || DONUT_COLORS[index % DONUT_COLORS.length];
+    const isHovered = hoveredCategory === name;
+    const formattedVal = formatBankAmount(value, currency);
+
+    return (
+      <g 
+        className="cursor-pointer select-none transition-all duration-200" 
+        onClick={() => handleCategoryClick(name)}
+        onMouseEnter={() => setHoveredCategory(name)}
+        onMouseLeave={() => setHoveredCategory(null)}
+      >
+        {/* Ligne connectrice / flèche directionnelle */}
+        <polyline
+          points={`${sx},${sy} ${mx},${my} ${ex},${ey}`}
+          fill="none"
+          stroke={color}
+          strokeWidth={isHovered ? 2.5 : 1.5}
+          strokeOpacity={hoveredCategory && !isHovered ? 0.35 : 0.85}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Puce directionnelle au terminal de la flèche */}
+        <circle 
+          cx={ex} 
+          cy={ey} 
+          r={isHovered ? 3.5 : 2.5} 
+          fill={color} 
+        />
+        {/* Libellé : Catégorie & Montant */}
+        <text
+          x={ex + (isRight ? 6 : -6)}
+          y={ey}
+          textAnchor={isRight ? 'start' : 'end'}
+          dominantBaseline="central"
+          fill={color}
+          className={cn(
+            "font-bold transition-all duration-200",
+            isHovered ? "opacity-100" : "",
+            hoveredCategory && !isHovered ? "opacity-40" : "opacity-95"
+          )}
+          style={{ 
+            fontSize: isHovered ? '11.5px' : '10.5px', 
+            fontWeight: isHovered ? 800 : 700 
+          }}
+        >
+          {`${name} (${formattedVal})`}
+        </text>
+      </g>
+    );
+  };
+
+  // Tooltip sombre élégant (Google Stitch)
+  const CustomDonutTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0];
+      return (
+        <div className="bg-gray-900/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-700/80 p-3 rounded-2xl shadow-xl text-xs space-y-1 z-50">
+          <div className="font-bold text-gray-100 flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: data.payload?.color || '#3b82f6' }} />
+            <span className="truncate">{data.name}</span>
+          </div>
+          <div className="font-mono font-extrabold text-cyan-400 text-sm">
+            {formatBankAmount(data.value, currency)}
+          </div>
+          {data.payload?.percentage && (
+            <div className="text-[10px] text-gray-400">
+              {data.payload.percentage}% des dépenses
+            </div>
+          )}
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <section className="liquid-glass rounded-3xl p-5 sm:p-7 md:p-8 space-y-6">
@@ -135,7 +240,7 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
           </p>
         </div>
 
-        {/* Sélecteur de vue graphique (Apple Segmented Pill) */}
+        {/* Sélecteur de vue graphique unique (Apple Segmented Pill) */}
         <div className="flex items-center p-1 rounded-2xl liquid-glass-subtle space-x-1 shrink-0">
           <button
             type="button"
@@ -181,55 +286,51 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
         </div>
       </div>
 
-      {/* Contenu principal selon l'onglet graphique actif */}
-      {activeChartTab === 'donut' ? (
+      {/* 1. ONGLET DONUT ACTIF (AVEC FLÈCHES ET LIBELLÉS) */}
+      {activeChartTab === 'donut' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center pt-2">
-          {/* Cœur visuel Donut (Centre Apple Liquid Graphic) */}
-          <div className="lg:col-span-6 flex flex-col items-center justify-center relative py-4">
+          {/* Cœur visuel Donut (Recharts avec flèches + Centre Apple Liquid Graphic) */}
+          <div className="lg:col-span-7 flex flex-col items-center justify-center relative py-2">
             {/* Halo lumineux d'arrière-plan */}
-            <div className="w-64 h-64 sm:w-72 sm:h-72 rounded-full absolute bg-gradient-to-tr from-cyan-500/15 via-blue-600/15 to-indigo-500/10 blur-3xl pointer-events-none" />
+            <div className="w-72 h-72 rounded-full absolute bg-gradient-to-tr from-cyan-500/15 via-blue-600/15 to-indigo-500/10 blur-3xl pointer-events-none" />
 
-            {/* Donut SVG interactif */}
-            <div className="relative w-64 h-64 sm:w-72 sm:h-72 chart-container-float flex items-center justify-center">
-              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                {/* Anneau d'arrière-plan */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="38"
-                  fill="transparent"
-                  stroke="currentColor"
-                  strokeWidth="12"
-                  className="text-secondary/40 dark:text-white/[0.06]"
-                />
-
-                {/* Segments colorés des catégories */}
-                {donutSegments.map((segment) => {
-                  const isHovered = hoveredCategory === segment.category;
-                  return (
-                    <circle
-                      key={segment.category}
-                      cx="50"
-                      cy="50"
-                      r="38"
-                      fill="transparent"
-                      stroke={segment.color}
-                      strokeWidth={isHovered ? 14 : 12}
-                      strokeDasharray={segment.dashArray}
-                      strokeDashoffset={segment.dashOffset}
-                      strokeLinecap="round"
-                      className="transition-all duration-300 cursor-pointer opacity-90 hover:opacity-100"
-                      onMouseEnter={() => setHoveredCategory(segment.category)}
-                      onMouseLeave={() => setHoveredCategory(null)}
-                      onClick={() => handleCategoryClick(segment.category)}
-                    />
-                  );
-                })}
-              </svg>
+            {/* Donut Recharts avec flèches connectrices vers catégories et montants */}
+            <div className="relative w-full h-[360px] sm:h-[390px] flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 25, right: 35, bottom: 25, left: 35 }}>
+                  <Pie
+                    data={donutData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={62}
+                    outerRadius={88}
+                    paddingAngle={3.5}
+                    dataKey="value"
+                    onClick={(data) => handleCategoryClick(data.name)}
+                    onMouseEnter={(data) => setHoveredCategory(data.name)}
+                    onMouseLeave={() => setHoveredCategory(null)}
+                    className="cursor-pointer"
+                    labelLine={false}
+                    label={renderDonutCalloutLabel}
+                  >
+                    {donutData.map((entry) => (
+                      <Cell
+                        key={`cell-${entry.name}`}
+                        fill={entry.color}
+                        stroke={hoveredCategory === entry.name ? '#ffffff' : 'transparent'}
+                        strokeWidth={hoveredCategory === entry.name ? 2 : 0}
+                        className="transition-all duration-200 cursor-pointer"
+                        opacity={hoveredCategory && hoveredCategory !== entry.name ? 0.45 : 1}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomDonutTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
 
               {/* Centre d'affichage du Liquid Donut */}
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-4">
-                <span className="text-[10px] sm:text-[11px] uppercase tracking-wider text-muted-foreground font-bold">
+                <span className="text-[10px] sm:text-[11px] uppercase tracking-wider text-muted-foreground font-bold truncate max-w-[130px]">
                   {hoveredCategory || 'Total Dépenses'}
                 </span>
                 <span className="text-xl sm:text-2xl font-black text-foreground tracking-tight mt-0.5 font-mono">
@@ -246,14 +347,14 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground mt-4 flex items-center space-x-1.5">
+            <p className="text-xs text-muted-foreground mt-2 flex items-center space-x-1.5">
               <Info size={13} className="text-primary" />
-              <span>Survolez ou cliquez un segment pour isoler ses opérations</span>
+              <span>Cliquez un segment ou une étiquette pour isoler ses opérations</span>
             </p>
           </div>
 
-          {/* Nuage des Catégories & Légende détaillée */}
-          <div className="lg:col-span-6 space-y-2.5">
+          {/* Nuage des Catégories & Légende détaillée (sur la droite) */}
+          <div className="lg:col-span-5 space-y-2.5">
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center justify-between">
               <span>Détail par Catégorie Principale</span>
               <span>Part (%)</span>
@@ -271,7 +372,7 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
                     onMouseLeave={() => setHoveredCategory(null)}
                     className={cn(
                       "liquid-pill px-4 py-2.5 rounded-2xl flex items-center justify-between group cursor-pointer transition-all",
-                      (isHovered || selectedCategory === cat.category) ? "border-primary/60 scale-[1.01] shadow-md ring-1 ring-primary/40" : ""
+                      (isHovered || selectedCategory === cat.category) ? "border-primary/60 scale-[1.01] shadow-md ring-1 ring-primary/40 bg-primary/5" : ""
                     )}
                   >
                     <div className="flex items-center space-x-3 min-w-0">
@@ -334,12 +435,31 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
             )}
           </div>
         </div>
-      ) : (
-        /* Vues alternatives Sankey ou Barres */
-        <div className="pt-2">
+      )}
+
+      {/* 2. ONGLET SANKEY (DIRECTEMENT CONTRÔLÉ SANS ONGLETS INTERNES DOUBLONS) */}
+      {activeChartTab === 'sankey' && (
+        <div className="pt-2 animate-in fade-in duration-300">
           <MobileCharts
             metrics={metrics}
             categoryStats={categoryStats}
+            currency={currency}
+            activeTab="sankey"
+            hideInternalTabs={true}
+            onCategoryClick={handleCategoryClick}
+          />
+        </div>
+      )}
+
+      {/* 3. ONGLET BARRES (DIRECTEMENT CONTRÔLÉ SANS ONGLETS INTERNES DOUBLONS) */}
+      {activeChartTab === 'bar' && (
+        <div className="pt-2 animate-in fade-in duration-300">
+          <MobileCharts
+            metrics={metrics}
+            categoryStats={categoryStats}
+            currency={currency}
+            activeTab="bar"
+            hideInternalTabs={true}
             onCategoryClick={handleCategoryClick}
           />
         </div>
