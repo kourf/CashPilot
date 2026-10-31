@@ -197,12 +197,13 @@
 .liquid-mesh {
   background-color: #070a14;
   background-image: 
-    radial-gradient(at 15% 15%, rgba(56, 189, 248, 0.18) 0px, transparent 55%),
-    radial-gradient(at 85% 10%, rgba(139, 92, 246, 0.22) 0px, transparent 50%),
-    radial-gradient(at 50% 50%, rgba(14, 165, 233, 0.12) 0px, transparent 65%),
-    radial-gradient(at 80% 85%, rgba(16, 185, 129, 0.14) 0px, transparent 50%),
-    radial-gradient(at 10% 90%, rgba(99, 102, 241, 0.2) 0px, transparent 60%);
+    radial-gradient(at 15% 15%, rgba(56, 189, 248, 0.22) 0px, transparent 55%),
+    radial-gradient(at 85% 10%, rgba(139, 92, 246, 0.25) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(14, 165, 233, 0.15) 0px, transparent 65%),
+    radial-gradient(at 80% 85%, rgba(16, 185, 129, 0.18) 0px, transparent 50%),
+    radial-gradient(at 10% 90%, rgba(99, 102, 241, 0.22) 0px, transparent 60%);
   background-attachment: fixed;
+  background-size: cover;
 }
 
 .glass-surface {

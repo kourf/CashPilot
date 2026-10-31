@@ -649,7 +649,7 @@ export default function Receipts() {
   }, [filteredRows]);
 
   return (
-    <div className="liquid-mesh min-h-screen text-slate-100 pb-36 p-3 sm:p-6 md:p-8 space-y-6 sm:space-y-8 rounded-3xl max-w-7xl mx-auto relative select-none">
+    <div className="min-h-full text-slate-100 pb-36 p-3 sm:p-6 md:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto relative select-none">
       
       {/* ========================================================================= */}
       {/* 1. EN-TÊTE PRINCIPAL STITCH & SYNCHRONISATION MULTI-APPAREILS             */}
@@ -842,7 +842,7 @@ export default function Receipts() {
                     key={fileItem.id}
                     className="relative group rounded-2xl overflow-hidden border border-white/10 bg-slate-900/60 p-2 shadow-md"
                   >
-                    <div className="w-full h-24 rounded-xl bg-slate-950 flex items-center justify-center overflow-hidden mb-1.5 relative">
+                    <div className="w-full h-24 rounded-xl bg-[#0c1222]/60 flex items-center justify-center overflow-hidden mb-1.5 relative">
                       {fileItem.isPdf ? (
                         <div className="flex flex-col items-center justify-center text-slate-400 p-2 text-center">
                           <FileText size={28} className="text-rose-400 mb-1" />
@@ -1516,7 +1516,7 @@ export default function Receipts() {
 
                           {group.rows.map(row => (
                             <tr key={row.cleBesoin || row.nomGenerique} className="hover:bg-white/[0.03] transition-colors group">
-                              <td className="py-3 px-4 sticky left-0 bg-slate-950/90 backdrop-blur-xs z-1 border-r border-white/10 max-w-[220px] align-middle">
+                              <td className="py-3 px-4 sticky left-0 bg-[#0c1222]/90 backdrop-blur-xs z-1 border-r border-white/10 max-w-[220px] align-middle">
                                 <div className="flex items-center gap-2">
                                   <span className="text-base shrink-0">{getProductEmoji(row.nomGenerique, row.rayon)}</span>
                                   <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight leading-snug">
@@ -1668,7 +1668,7 @@ export default function Receipts() {
           {/* BARRE FLOTTANTE INFÉRIEURE STITCH (TOTAL ÉCONOMIES & PANIER OPTIMAL)      */}
           {/* ========================================================================= */}
           {filteredRows.length > 0 && (
-            <div className="fixed bottom-[4.75rem] md:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-4xl p-2.5 sm:p-3 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-white/15 shadow-2xl shadow-black/80 flex items-center justify-between gap-3 text-xs">
+            <div className="fixed bottom-[4.75rem] md:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-4xl p-2.5 sm:p-3 rounded-2xl bg-[#0c1222]/95 backdrop-blur-xl border border-white/20 shadow-2xl shadow-cyan-950/30 flex items-center justify-between gap-3 text-xs">
               {/* Économies potentielles détectées */}
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
@@ -1745,7 +1745,7 @@ export default function Receipts() {
       {/* ========================================================================= */}
       {floatingTooltip && (
         <div
-          className="fixed z-[9999] pointer-events-none -translate-x-1/2 -translate-y-full mb-2.5 w-60 p-3.5 rounded-2xl bg-slate-900/95 backdrop-blur-xl border border-white/20 shadow-2xl shadow-black/80 text-xs animate-in fade-in zoom-in-95 duration-150 select-none text-slate-100"
+          className="fixed z-[9999] pointer-events-none -translate-x-1/2 -translate-y-full mb-2.5 w-60 p-3.5 rounded-2xl bg-[#0c1222]/95 backdrop-blur-xl border border-white/20 shadow-2xl shadow-black/80 text-xs animate-in fade-in zoom-in-95 duration-150 select-none text-slate-100"
           style={{
             left: `${floatingTooltip.x}px`,
             top: `${floatingTooltip.y - 8}px`
@@ -1834,7 +1834,7 @@ export default function Receipts() {
           </div>
 
           {/* Flèche pointant vers la cellule de prix */}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-900/95" />
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#0c1222]/95" />
         </div>
       )}
 

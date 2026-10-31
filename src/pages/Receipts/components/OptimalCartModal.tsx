@@ -59,7 +59,7 @@ export const OptimalCartModal: React.FC<OptimalCartModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-[#070a14]/80 backdrop-blur-xl animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div 

@@ -55,12 +55,21 @@ export default function Layout() {
   };
 
   const pageInfo = getPageTitle();
+  const isTicketsTab = location.pathname.startsWith('/tickets');
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden flex-col md:flex-row antialiased selection:bg-primary/20 selection:text-primary">
+    <div className={cn(
+      "flex h-screen overflow-hidden flex-col md:flex-row antialiased selection:bg-primary/20 selection:text-primary transition-colors duration-300",
+      isTicketsTab ? "liquid-mesh text-slate-100" : "bg-background text-foreground"
+    )}>
       
       {/* Desktop Sidebar (Apple + HarmonyOS aesthetic) */}
-      <aside className="hidden md:flex flex-col w-64 border-r border-border/70 dark:border-white/[0.06] bg-card/60 dark:bg-[#0c0f17]/80 backdrop-blur-2xl p-4 justify-between z-30">
+      <aside className={cn(
+        "hidden md:flex flex-col w-64 border-r backdrop-blur-2xl p-4 justify-between z-30 transition-all duration-300",
+        isTicketsTab 
+          ? "border-white/10 bg-slate-950/20 text-slate-100" 
+          : "border-border/70 dark:border-white/[0.06] bg-card/60 dark:bg-[#0c0f17]/80 text-foreground"
+      )}>
         <div className="space-y-6">
           {/* Brand Header */}
           <Link to="/" className="flex items-center gap-3 px-2 group">
@@ -76,7 +85,7 @@ export default function Layout() {
                   PRO
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground font-medium">Finance & Patrimoine</p>
+              <p className={cn("text-[11px] font-medium", isTicketsTab ? "text-slate-400" : "text-muted-foreground")}>Finance & Patrimoine</p>
             </div>
           </Link>
 
@@ -95,7 +104,9 @@ export default function Layout() {
                     "flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative",
                     isActive 
                       ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold" 
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/70 dark:hover:bg-white/[0.04]"
+                      : isTicketsTab
+                        ? "text-slate-300 hover:text-white hover:bg-white/[0.08]"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/70 dark:hover:bg-white/[0.04]"
                   )}
                 >
                   <div className="flex items-center gap-3">
@@ -133,7 +144,12 @@ export default function Layout() {
           <ThemeToggle variant="expanded" />
 
           {userProfile && (
-            <div className="px-3 py-2.5 rounded-xl bg-secondary/50 dark:bg-white/[0.03] border border-border/60 dark:border-white/[0.06] flex items-center justify-between gap-2">
+            <div className={cn(
+              "px-3 py-2.5 rounded-xl border flex items-center justify-between gap-2 transition-colors",
+              isTicketsTab
+                ? "bg-white/[0.05] border-white/10"
+                : "bg-secondary/50 dark:bg-white/[0.03] border-border/60 dark:border-white/[0.06]"
+            )}>
               <div className="flex items-center gap-2.5 min-w-0">
                 {userProfile.photoURL ? (
                   <img
@@ -148,7 +164,7 @@ export default function Layout() {
                 )}
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-bold text-foreground truncate">
+                    <p className={cn("text-xs font-bold truncate", isTicketsTab ? "text-white" : "text-foreground")}>
                       {userProfile.displayName || 'Utilisateur'}
                     </p>
                     {userProfile.isAdmin && (
@@ -157,7 +173,7 @@ export default function Layout() {
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground truncate">
+                  <p className={cn("text-[10px] truncate", isTicketsTab ? "text-slate-400" : "text-muted-foreground")}>
                     {userProfile.activeWorkspace ? `Espace : ${userProfile.activeWorkspace}` : userProfile.email}
                   </p>
                 </div>
@@ -172,10 +188,15 @@ export default function Layout() {
             </div>
           )}
 
-          <div className="px-3 py-2 rounded-xl bg-secondary/40 dark:bg-white/[0.02] border border-border/50 dark:border-white/[0.04] flex items-center justify-between">
+          <div className={cn(
+            "px-3 py-2 rounded-xl border flex items-center justify-between transition-colors",
+            isTicketsTab
+              ? "bg-white/[0.03] border-white/[0.07]"
+              : "bg-secondary/40 dark:bg-white/[0.02] border-border/50 dark:border-white/[0.04]"
+          )}>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] font-medium text-muted-foreground">UID Isolé & Chiffré</span>
+              <span className={cn("text-[11px] font-medium", isTicketsTab ? "text-slate-300" : "text-muted-foreground")}>UID Isolé & Chiffré</span>
             </div>
             <ShieldCheck size={14} className="text-emerald-500" />
           </div>
@@ -186,12 +207,17 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
         {/* Top Sticky Header */}
-        <header className="h-16 px-4 md:px-8 border-b border-border/70 dark:border-white/[0.06] bg-background/80 dark:bg-[#0a0d14]/80 backdrop-blur-xl flex items-center justify-between z-20 shrink-0">
+        <header className={cn(
+          "h-16 px-4 md:px-8 border-b backdrop-blur-xl flex items-center justify-between z-20 shrink-0 transition-all duration-300",
+          isTicketsTab
+            ? "border-white/10 bg-slate-950/20 text-white"
+            : "border-border/70 dark:border-white/[0.06] bg-background/80 dark:bg-[#0a0d14]/80 text-foreground"
+        )}>
           <div>
-            <h2 className="text-base md:text-lg font-bold tracking-tight text-foreground">
+            <h2 className={cn("text-base md:text-lg font-bold tracking-tight", isTicketsTab ? "text-white" : "text-foreground")}>
               {pageInfo.title}
             </h2>
-            <p className="hidden sm:block text-xs text-muted-foreground">
+            <p className={cn("hidden sm:block text-xs", isTicketsTab ? "text-slate-400" : "text-muted-foreground")}>
               {pageInfo.subtitle}
             </p>
           </div>
@@ -199,7 +225,7 @@ export default function Layout() {
           <div className="flex items-center gap-2.5">
             <ThemeToggle variant="compact" />
 
-            <div className="flex items-center gap-2 pl-3 border-l border-border/70 dark:border-white/[0.08]">
+            <div className={cn("flex items-center gap-2 pl-3 border-l", isTicketsTab ? "border-white/10" : "border-border/70 dark:border-white/[0.08]")}>
               {userProfile?.photoURL ? (
                 <img
                   src={userProfile.photoURL}
