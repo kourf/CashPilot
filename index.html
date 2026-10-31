@@ -11,12 +11,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="CashPilot" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="CashPilot" />
     <title>CashPilot</title>
-    <!-- Capture immédiate de l'événement natif d'installation PWA avant chargement React -->
+    <!-- Capture précoce de l'événement natif d'installation PWA -->
     <script>
       window.__pwaInstallPrompt = null;
       window.addEventListener('beforeinstallprompt', function(e) {
-        e.preventDefault();
         window.__pwaInstallPrompt = e;
         window.dispatchEvent(new Event('pwa-prompt-ready'));
       });

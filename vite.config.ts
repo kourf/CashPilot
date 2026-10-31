@@ -21,13 +21,15 @@ export default defineConfig({
         'apple-touch-icon.png',
         'pwa-192x192.png',
         'pwa-512x512.png',
-        'maskable-icon-512x512.png'
+        'maskable-icon-512x512.png',
+        'screenshot-mobile.png',
+        'screenshot-desktop.png'
       ],
       manifest: {
         id: '/',
         name: 'CashPilot - Analyse Financière',
         short_name: 'CashPilot',
-        description: 'Gérez et analysez vos finances personnelles et tickets de caisse intelligemment avec CashPilot.',
+        description: 'Pilotez et analysez vos finances personnelles et tickets de caisse intelligemment avec CashPilot.',
         start_url: '/',
         scope: '/',
         display: 'standalone',
@@ -36,6 +38,7 @@ export default defineConfig({
         background_color: '#020617',
         theme_color: '#020617',
         lang: 'fr-FR',
+        dir: 'ltr',
         categories: ['finance', 'productivity', 'utilities'],
         icons: [
           {
@@ -55,6 +58,22 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable'
+          }
+        ],
+        screenshots: [
+          {
+            src: '/screenshot-mobile.png',
+            sizes: '540x960',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'Cockpit financier et Reste à vivre sur smartphone'
+          },
+          {
+            src: '/screenshot-desktop.png',
+            sizes: '1280x720',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Audit bancaire et comparateur multi-enseignes sur PC'
           }
         ]
       },
