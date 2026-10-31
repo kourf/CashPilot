@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import InstallPWAButton from '../../components/InstallPWAButton';
 import { cn } from '../../lib/utils';
 
 type AuthMode = 'login' | 'register' | 'reset';
@@ -223,6 +224,7 @@ export const LandingPage: React.FC = () => {
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-2.5">
+            <InstallPWAButton variant="compact" className="hidden sm:inline-flex" />
             <ThemeToggle variant="compact" />
             
             {user ? (
@@ -388,6 +390,11 @@ export const LandingPage: React.FC = () => {
               <Zap size={16} className="text-cyan-400" />
               <span>⚡ Démo Express (Direct)</span>
             </button>
+          </div>
+
+          {/* Bouton d'Installation PWA Mobile & PC au centre de la Landing Page */}
+          <div className="pt-2 flex justify-center">
+            <InstallPWAButton variant="hero" />
           </div>
 
           {/* Google 1-Click option */}
@@ -687,7 +694,29 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* =========================================================================
-          7. FOOTER ÉPURÉ
+          7. SECTION APPLICATION MOBILE & PWA
+         ========================================================================= */}
+      <section className="max-w-4xl mx-auto px-4 sm:px-6 pb-12">
+        <div className="rounded-3xl bg-gradient-to-r from-cyan-950/40 via-indigo-950/40 to-slate-900/60 border border-cyan-400/30 p-6 sm:p-8 backdrop-blur-2xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
+          <div className="space-y-2 text-center md:text-left">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-bold border border-cyan-400/30 uppercase">
+              <Sparkles size={11} /> Application Progressive Web App (PWA)
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black text-white">
+              Installez CashPilot en 1 clic sur votre écran d'accueil
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-300 font-light max-w-xl">
+              Profitez d'un affichage plein écran sans barre d'URL, de performances instantanées et d'une sécurité maximale sans passer par les stores d'applications.
+            </p>
+          </div>
+          <div className="shrink-0">
+            <InstallPWAButton variant="hero" />
+          </div>
+        </div>
+      </section>
+
+      {/* =========================================================================
+          8. FOOTER ÉPURÉ
          ========================================================================= */}
       <footer className="border-t border-white/10 py-10 px-4 text-center text-xs text-slate-400 space-y-3">
         <div className="flex items-center justify-center gap-2">
