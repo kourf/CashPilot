@@ -1668,7 +1668,7 @@ export default function Receipts() {
           {/* BARRE FLOTTANTE INFÉRIEURE STITCH (TOTAL ÉCONOMIES & PANIER OPTIMAL)      */}
           {/* ========================================================================= */}
           {filteredRows.length > 0 && (
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-4xl p-2.5 sm:p-3 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-white/15 shadow-2xl shadow-black/80 flex items-center justify-between gap-3 text-xs">
+            <div className="fixed bottom-[4.75rem] md:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-4xl p-2.5 sm:p-3 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-white/15 shadow-2xl shadow-black/80 flex items-center justify-between gap-3 text-xs">
               {/* Économies potentielles détectées */}
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">

@@ -17,11 +17,11 @@ import { useCoach } from '../../context/CoachContext';
 import { useAuth } from '../../context/AuthContext';
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Accueil', path: '/' },
-  { icon: Landmark, label: 'Relevé bancaire', path: '/releves' },
-  { icon: Receipt, label: 'Ticket de caisse', path: '/tickets' },
-  { icon: MessageSquareHeart, label: 'Coach IA', path: '/coach', badge: 'IA' },
-  { icon: Settings, label: 'Paramètres', path: '/parametres' },
+  { icon: LayoutDashboard, label: 'Accueil', shortLabel: 'Accueil', path: '/' },
+  { icon: Landmark, label: 'Relevé bancaire', shortLabel: 'Relevés', path: '/releves' },
+  { icon: Receipt, label: 'Ticket de caisse', shortLabel: 'Tickets', path: '/tickets' },
+  { icon: MessageSquareHeart, label: 'Coach IA', shortLabel: 'Coach IA', path: '/coach', badge: 'IA' },
+  { icon: Settings, label: 'Paramètres', shortLabel: 'Paramètres', path: '/parametres' },
 ];
 
 export default function Layout() {
@@ -231,9 +231,9 @@ export default function Layout() {
         </main>
       </div>
 
-      {/* Bottom Navigation for Mobile (iOS 18 Floating Glass Bar) */}
-      <nav className="md:hidden fixed bottom-3 left-3 right-3 rounded-2xl border border-border/80 dark:border-white/[0.1] bg-card/90 dark:bg-[#10141e]/90 backdrop-blur-2xl shadow-luxury z-50">
-        <div className="flex justify-around items-center p-2">
+      {/* Bottom Navigation for Mobile (Apple VisionOS / iOS 26 Floating Liquid Glass) */}
+      <nav className="md:hidden fixed bottom-3 inset-x-3 max-w-lg mx-auto z-50 pointer-events-none select-none">
+        <div className="pointer-events-auto rounded-[26px] bg-[#0c101d]/90 dark:bg-[#07090e]/90 backdrop-blur-2xl border border-white/20 dark:border-white/15 shadow-[0_16px_40px_-8px_rgba(0,0,0,0.7),inset_0_1px_1.5px_0_rgba(255,255,255,0.35)] p-1.5 flex items-center justify-between gap-1">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path || 
               (item.path !== '/' && location.pathname.startsWith(item.path));
@@ -244,22 +244,54 @@ export default function Layout() {
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  "flex flex-col items-center gap-1 p-2 rounded-xl transition-all relative",
-                  isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                  "flex-1 relative flex flex-col items-center justify-center py-2 px-1 rounded-2xl transition-all duration-300 group cursor-pointer active:scale-95",
+                  isActive
+                    ? "bg-white/[0.14] dark:bg-white/[0.10] text-white shadow-[0_2px_12px_rgba(56,189,248,0.25)] border border-white/25 dark:border-white/20"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] border border-transparent"
                 )}
               >
-                <div className="relative">
-                  <item.icon size={20} className={cn(
-                    "transition-transform duration-300",
-                    isActive && "scale-110 stroke-[2.5]"
-                  )} />
+                {/* Active Indicator Top Specular Glow */}
+                {isActive && (
+                  <span className="absolute -top-[1px] inset-x-3 h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_8px_rgba(56,189,248,0.9)] rounded-full" />
+                )}
+
+                <div className="relative flex items-center justify-center">
+                  <item.icon 
+                    size={19} 
+                    className={cn(
+                      "transition-all duration-300",
+                      isActive 
+                        ? "text-cyan-400 dark:text-cyan-300 scale-110 stroke-[2.4] drop-shadow-[0_0_8px_rgba(56,189,248,0.5)]" 
+                        : "text-slate-400 group-hover:text-slate-200 stroke-[1.8]"
+                    )} 
+                  />
                   {isCoachTab && isCoachLoading && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 animate-ping shadow-[0_0_6px_rgba(56,189,248,1)]" />
+                  )}
+                  {item.badge && !isCoachLoading && (
+                    <span className={cn(
+                      "absolute -top-1.5 -right-2.5 text-[8px] font-black px-1 py-0.2 rounded-full uppercase leading-none tracking-wider",
+                      isActive 
+                        ? "bg-gradient-to-r from-cyan-500 to-indigo-500 text-white shadow-[0_0_6px_rgba(56,189,248,0.6)]" 
+                        : "bg-white/15 text-slate-300 border border-white/10"
+                    )}>
+                      {item.badge}
+                    </span>
                   )}
                 </div>
-                <span className="text-[10px] font-medium">{item.label}</span>
+
+                <span className={cn(
+                  "text-[10px] mt-1 transition-colors duration-200 leading-tight",
+                  isActive 
+                    ? "font-bold text-white tracking-tight" 
+                    : "font-medium text-slate-400 group-hover:text-slate-200"
+                )}>
+                  {item.shortLabel || item.label}
+                </span>
+
+                {/* Subtile Active Pill Dot */}
                 {isActive && (
-                  <span className="absolute -bottom-1 w-4 h-0.5 rounded-full bg-primary" />
+                  <span className="absolute bottom-1 w-3.5 h-0.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(56,189,248,0.8)]" />
                 )}
               </Link>
             );

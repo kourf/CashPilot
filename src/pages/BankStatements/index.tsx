@@ -2359,11 +2359,12 @@ export const BankStatements: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsToolsSheetOpen(true)}
-              className="liquid-pill px-3 py-1.5 rounded-2xl hidden sm:flex items-center space-x-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
+              className="liquid-pill px-2.5 sm:px-3 py-1.5 rounded-2xl flex items-center space-x-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
               title="Centre d'analyses & outils"
             >
               <Sliders size={13} className="text-amber-500" />
-              <span className="hidden xl:inline">Outils (8)</span>
+              <span className="inline sm:inline">Outils</span>
+              <span className="hidden xl:inline"> (8)</span>
             </button>
 
             {/* Bouton Principal Importer RB */}
@@ -2797,55 +2798,6 @@ export const BankStatements: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
-
-        {/* 5. QUICK DOCK FLOTTANT MOBILE (Actif uniquement sur Mobile `md:hidden`) */}
-        <div className="md:hidden fixed bottom-6 inset-x-4 z-40 max-w-md mx-auto pointer-events-none">
-          <div className="liquid-glass rounded-3xl p-2 flex items-center justify-around shadow-2xl backdrop-blur-2xl pointer-events-auto border border-white/20">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex flex-col items-center justify-center p-2 rounded-2xl hover:bg-white/10 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
-            >
-              <UploadCloud size={18} className="text-blue-400" />
-              <span className="text-[10px] font-semibold mt-0.5">Importer</span>
-            </button>
-
-            <button
-              onClick={() => setIsToolsSheetOpen(true)}
-              className="flex flex-col items-center justify-center p-2 rounded-2xl hover:bg-white/10 text-muted-foreground hover:text-foreground transition-all cursor-pointer relative"
-            >
-              <Layers size={18} className="text-amber-400" />
-              <span className="text-[10px] font-semibold mt-0.5">Outils</span>
-              <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" />
-            </button>
-
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/30 active:scale-90 transition-transform cursor-pointer -mt-4 border border-white/30"
-              title="Ajouter une opération"
-            >
-              <Plus size={20} />
-            </button>
-
-            <button
-              onClick={() => setActiveViewMode('timeline')}
-              className="flex flex-col items-center justify-center p-2 rounded-2xl hover:bg-white/10 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
-            >
-              <GitCommit size={18} className="text-purple-400" />
-              <span className="text-[10px] font-semibold mt-0.5">Frise</span>
-            </button>
-
-            <button
-              onClick={() => {
-                const el = document.getElementById('tx-ledger');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="flex flex-col items-center justify-center p-2 rounded-2xl hover:bg-white/10 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
-            >
-              <Sliders size={18} className="text-cyan-400" />
-              <span className="text-[10px] font-semibold mt-0.5">Filtrer</span>
-            </button>
-          </div>
         </div>
         </>
       )}
