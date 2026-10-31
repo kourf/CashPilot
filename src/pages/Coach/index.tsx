@@ -460,10 +460,10 @@ export default function Coach() {
         <div className="fixed inset-0 z-50 flex justify-end animate-in fade-in duration-200">
           <div 
             onClick={() => setIsHistoryOpen(false)}
-            className="absolute inset-0 bg-black/60 backdrop-blur-md cursor-pointer"
+            className="absolute inset-0 bg-[#070a14]/80 backdrop-blur-xl cursor-pointer"
           />
 
-          <div className="relative w-full max-w-sm md:max-w-md apple-glass bg-[#080a14]/95 border-l border-white/20 h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-right duration-300">
+          <div className="relative w-full max-w-sm md:max-w-md apple-glass bg-[#0b0f1e]/95 border-l border-white/20 h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-right duration-300">
             <div className="p-4 md:p-5 border-b border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <History size={18} className="text-sky-400" />
@@ -565,10 +565,10 @@ export default function Coach() {
         <div className="fixed inset-0 z-50 flex justify-end animate-in fade-in duration-200">
           <div
             onClick={() => setIsRulesOpen(false)}
-            className="absolute inset-0 bg-black/60 backdrop-blur-md cursor-pointer"
+            className="absolute inset-0 bg-[#070a14]/80 backdrop-blur-xl cursor-pointer"
           />
 
-          <div className="relative w-full max-w-lg apple-glass bg-[#080a14]/95 border-l border-white/20 h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-right duration-300">
+          <div className="relative w-full max-w-lg apple-glass bg-[#0b0f1e]/95 border-l border-white/20 h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-right duration-300">
             <div className="p-4 md:p-5 border-b border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-2xl apple-glass text-emerald-400 border border-emerald-400/30 flex items-center justify-center">
@@ -961,7 +961,7 @@ export default function Coach() {
             </div>
 
             {/* Zone de Saisie Flottante Pinned en Bas (au-dessus de la nav mobile sur téléphone) */}
-            <div className="fixed bottom-[4.25rem] md:bottom-2 left-0 right-0 md:left-64 z-40 p-2.5 sm:p-4 bg-gradient-to-t from-[#080a14] via-[#080a14]/90 to-transparent backdrop-blur-md">
+            <div className="fixed bottom-[4.25rem] md:bottom-2 left-0 right-0 md:left-64 z-40 p-2.5 sm:p-4 bg-gradient-to-t from-[#070a14] via-[#070a14]/85 to-transparent backdrop-blur-xl">
               <div className="max-w-3xl mx-auto space-y-2">
                 
                 {/* Pilules d'audit rapide horizontales */}

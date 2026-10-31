@@ -55,37 +55,28 @@ export default function Layout() {
   };
 
   const pageInfo = getPageTitle();
-  const isTicketsTab = location.pathname.startsWith('/tickets');
 
   return (
-    <div className={cn(
-      "flex h-screen overflow-hidden flex-col md:flex-row antialiased selection:bg-primary/20 selection:text-primary transition-colors duration-300",
-      isTicketsTab ? "liquid-mesh text-slate-100" : "bg-background text-foreground"
-    )}>
+    <div className="flex h-screen overflow-hidden flex-col md:flex-row antialiased liquid-mesh text-slate-100 selection:bg-cyan-500/20 selection:text-cyan-400 transition-colors duration-300">
       
-      {/* Desktop Sidebar (Apple + HarmonyOS aesthetic) */}
-      <aside className={cn(
-        "hidden md:flex flex-col w-64 border-r backdrop-blur-2xl p-4 justify-between z-30 transition-all duration-300",
-        isTicketsTab 
-          ? "border-white/10 bg-slate-950/20 text-slate-100" 
-          : "border-border/70 dark:border-white/[0.06] bg-card/60 dark:bg-[#0c0f17]/80 text-foreground"
-      )}>
+      {/* Desktop Sidebar (Apple VisionOS / Liquid Glass aesthetic) */}
+      <aside className="hidden md:flex flex-col w-64 border-r border-white/10 backdrop-blur-2xl p-4 justify-between z-30 bg-slate-950/25 text-slate-100 shadow-[4px_0_24px_rgba(0,0,0,0.3)]">
         <div className="space-y-6">
           {/* Brand Header */}
           <Link to="/" className="flex items-center gap-3 px-2 group">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary to-cyan-500 flex items-center justify-center text-primary-foreground shadow-md shadow-primary/20 group-hover:scale-105 transition-transform duration-300">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-transform duration-300 border border-white/20">
               <Landmark size={20} className="stroke-[2.5]" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/75 bg-clip-text text-transparent">
+                <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
                   CashPilot
                 </span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
                   PRO
                 </span>
               </div>
-              <p className={cn("text-[11px] font-medium", isTicketsTab ? "text-slate-400" : "text-muted-foreground")}>Finance & Patrimoine</p>
+              <p className="text-[11px] font-medium text-slate-400">Finance & Patrimoine</p>
             </div>
           </Link>
 
@@ -101,12 +92,10 @@ export default function Layout() {
                   key={item.path}
                   to={item.path}
                   className={cn(
-                    "flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative",
+                    "flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative cursor-pointer",
                     isActive 
-                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25 font-semibold" 
-                      : isTicketsTab
-                        ? "text-slate-300 hover:text-white hover:bg-white/[0.08]"
-                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/70 dark:hover:bg-white/[0.04]"
+                      ? "bg-white/[0.14] text-white shadow-[0_2px_14px_rgba(56,189,248,0.25)] border border-white/20 font-semibold" 
+                      : "text-slate-300 hover:text-white hover:bg-white/[0.07] border border-transparent"
                   )}
                 >
                   <div className="flex items-center gap-3">
@@ -114,7 +103,7 @@ export default function Layout() {
                       size={18} 
                       className={cn(
                         "transition-transform duration-200 group-hover:scale-110",
-                        isActive ? "text-primary-foreground stroke-[2.5]" : "text-muted-foreground group-hover:text-foreground"
+                        isActive ? "text-cyan-400 stroke-[2.5]" : "text-slate-400 group-hover:text-slate-200"
                       )} 
                     />
                     <span>{item.label}</span>
@@ -123,7 +112,7 @@ export default function Layout() {
                   {item.badge && (
                     <span className={cn(
                       "text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1",
-                      isActive ? "bg-white/20 text-white" : "bg-primary/15 text-primary"
+                      isActive ? "bg-white/20 text-white" : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
                     )}>
                       {isCoachTab && isCoachLoading ? (
                         <Loader2 size={10} className="animate-spin text-cyan-400" />
@@ -140,31 +129,26 @@ export default function Layout() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="space-y-3 pt-4 border-t border-border/60 dark:border-white/[0.05]">
+        <div className="space-y-3 pt-4 border-t border-white/10">
           <ThemeToggle variant="expanded" />
 
           {userProfile && (
-            <div className={cn(
-              "px-3 py-2.5 rounded-xl border flex items-center justify-between gap-2 transition-colors",
-              isTicketsTab
-                ? "bg-white/[0.05] border-white/10"
-                : "bg-secondary/50 dark:bg-white/[0.03] border-border/60 dark:border-white/[0.06]"
-            )}>
+            <div className="px-3 py-2.5 rounded-xl border border-white/10 bg-white/[0.05] flex items-center justify-between gap-2 transition-colors">
               <div className="flex items-center gap-2.5 min-w-0">
                 {userProfile.photoURL ? (
                   <img
                     src={userProfile.photoURL}
                     alt={userProfile.displayName || 'Profil'}
-                    className="w-7 h-7 rounded-full object-cover border border-primary/30 shrink-0"
+                    className="w-7 h-7 rounded-full object-cover border border-cyan-500/30 shrink-0"
                   />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary/20 to-cyan-500/20 border border-primary/30 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-cyan-500/20 to-primary/20 border border-cyan-500/30 flex items-center justify-center text-[10px] font-bold text-cyan-300 shrink-0">
                     {userInitials}
                   </div>
                 )}
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <p className={cn("text-xs font-bold truncate", isTicketsTab ? "text-white" : "text-foreground")}>
+                    <p className="text-xs font-bold truncate text-white">
                       {userProfile.displayName || 'Utilisateur'}
                     </p>
                     {userProfile.isAdmin && (
@@ -173,7 +157,7 @@ export default function Layout() {
                       </span>
                     )}
                   </div>
-                  <p className={cn("text-[10px] truncate", isTicketsTab ? "text-slate-400" : "text-muted-foreground")}>
+                  <p className="text-[10px] truncate text-slate-400">
                     {userProfile.activeWorkspace ? `Espace : ${userProfile.activeWorkspace}` : userProfile.email}
                   </p>
                 </div>
@@ -181,24 +165,19 @@ export default function Layout() {
               <button
                 onClick={handleLogout}
                 title="Se déconnecter"
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0 cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0 cursor-pointer"
               >
                 <LogOut size={14} />
               </button>
             </div>
           )}
 
-          <div className={cn(
-            "px-3 py-2 rounded-xl border flex items-center justify-between transition-colors",
-            isTicketsTab
-              ? "bg-white/[0.03] border-white/[0.07]"
-              : "bg-secondary/40 dark:bg-white/[0.02] border-border/50 dark:border-white/[0.04]"
-          )}>
+          <div className="px-3 py-2 rounded-xl border border-white/[0.08] bg-white/[0.03] flex items-center justify-between transition-colors">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className={cn("text-[11px] font-medium", isTicketsTab ? "text-slate-300" : "text-muted-foreground")}>UID Isolé & Chiffré</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+              <span className="text-[11px] font-medium text-slate-300">UID Isolé & Chiffré</span>
             </div>
-            <ShieldCheck size={14} className="text-emerald-500" />
+            <ShieldCheck size={14} className="text-emerald-400" />
           </div>
         </div>
       </aside>
@@ -207,17 +186,12 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
         {/* Top Sticky Header */}
-        <header className={cn(
-          "h-16 px-4 md:px-8 border-b backdrop-blur-xl flex items-center justify-between z-20 shrink-0 transition-all duration-300",
-          isTicketsTab
-            ? "border-white/10 bg-slate-950/20 text-white"
-            : "border-border/70 dark:border-white/[0.06] bg-background/80 dark:bg-[#0a0d14]/80 text-foreground"
-        )}>
+        <header className="h-16 px-4 md:px-8 border-b border-white/10 backdrop-blur-xl flex items-center justify-between z-20 shrink-0 bg-slate-950/20 text-white shadow-[0_4px_20px_rgba(0,0,0,0.2)]">
           <div>
-            <h2 className={cn("text-base md:text-lg font-bold tracking-tight", isTicketsTab ? "text-white" : "text-foreground")}>
+            <h2 className="text-base md:text-lg font-bold tracking-tight text-white flex items-center gap-2">
               {pageInfo.title}
             </h2>
-            <p className={cn("hidden sm:block text-xs", isTicketsTab ? "text-slate-400" : "text-muted-foreground")}>
+            <p className="hidden sm:block text-xs text-slate-400">
               {pageInfo.subtitle}
             </p>
           </div>
@@ -225,17 +199,17 @@ export default function Layout() {
           <div className="flex items-center gap-2.5">
             <ThemeToggle variant="compact" />
 
-            <div className={cn("flex items-center gap-2 pl-3 border-l", isTicketsTab ? "border-white/10" : "border-border/70 dark:border-white/[0.08]")}>
+            <div className="flex items-center gap-2 pl-3 border-l border-white/10">
               {userProfile?.photoURL ? (
                 <img
                   src={userProfile.photoURL}
                   alt={userProfile.displayName || 'Profil'}
-                  className="w-8 h-8 rounded-full object-cover border border-primary/30"
+                  className="w-8 h-8 rounded-full object-cover border border-cyan-500/30"
                 />
               ) : (
                 <div
                   title={userProfile?.email || 'Compte connecté'}
-                  className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary/20 to-cyan-500/20 border border-primary/30 flex items-center justify-center text-xs font-bold text-primary"
+                  className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500/20 to-primary/20 border border-cyan-500/30 flex items-center justify-center text-xs font-bold text-cyan-300"
                 >
                   {userInitials}
                 </div>
@@ -243,7 +217,7 @@ export default function Layout() {
               <button
                 onClick={handleLogout}
                 title="Se déconnecter"
-                className="p-2 rounded-xl text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
               >
                 <LogOut size={16} />
               </button>

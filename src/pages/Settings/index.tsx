@@ -1413,9 +1413,9 @@ export const Settings: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div
             onClick={() => setShowArchiveConfirmModal(false)}
-            className="absolute inset-0 bg-black/70 backdrop-blur-md cursor-pointer"
+            className="absolute inset-0 bg-[#070a14]/80 backdrop-blur-xl cursor-pointer"
           />
-          <div className="relative w-full max-w-md apple-glass bg-[#080a14]/95 border border-white/20 rounded-3xl p-6 shadow-2xl space-y-4 z-10 animate-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-md apple-glass bg-[#0b0f1e]/95 border border-white/20 rounded-3xl p-6 shadow-2xl space-y-4 z-10 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 text-amber-400">
               <div className="w-10 h-10 rounded-2xl apple-glass flex items-center justify-center border border-amber-400/30">
                 <AlertTriangle size={20} />
@@ -1458,9 +1458,9 @@ export const Settings: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div
             onClick={() => setItemToDeletePermanently(null)}
-            className="absolute inset-0 bg-black/70 backdrop-blur-md cursor-pointer"
+            className="absolute inset-0 bg-[#070a14]/80 backdrop-blur-xl cursor-pointer"
           />
-          <div className="relative w-full max-w-md apple-glass bg-[#080a14]/95 border border-rose-500/30 rounded-3xl p-6 shadow-2xl space-y-4 z-10 animate-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-md apple-glass bg-[#0b0f1e]/95 border border-rose-500/30 rounded-3xl p-6 shadow-2xl space-y-4 z-10 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 text-rose-400">
               <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center">
                 <Trash2 size={20} />
@@ -1504,9 +1504,9 @@ export const Settings: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div
             onClick={() => setShowResetConfirmModal(false)}
-            className="absolute inset-0 bg-black/75 backdrop-blur-md cursor-pointer"
+            className="absolute inset-0 bg-[#070a14]/80 backdrop-blur-xl cursor-pointer"
           />
-          <div className="relative w-full max-w-md apple-glass bg-[#080a14]/95 border border-rose-500/40 rounded-3xl p-6 shadow-2xl space-y-4 z-10 animate-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-md apple-glass bg-[#0b0f1e]/95 border border-rose-500/40 rounded-3xl p-6 shadow-2xl space-y-4 z-10 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 text-rose-400">
               <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center">
                 <ShieldAlert size={20} />

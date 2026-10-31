@@ -7,7 +7,7 @@ import { CoachProvider } from './context/CoachContext';
 
 function App() {
   return (
-    <div className="min-h-screen bg-background font-sans text-foreground">
+    <div className="min-h-screen liquid-mesh font-sans text-slate-100">
       <ErrorBoundary>
         <AuthProvider>
           <TransactionsProvider>

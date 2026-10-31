@@ -2245,7 +2245,7 @@ export const BankStatements: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background text-foreground font-sans relative overflow-x-hidden selection:bg-blue-500 selection:text-white">
+    <div className="flex flex-col min-h-full text-slate-100 font-sans relative overflow-x-hidden selection:bg-cyan-500 selection:text-white pb-20">
       {/* Ambient Background Lights (Apple VisionOS Liquid Glow) */}
       <div className="glow-sphere-1 pointer-events-none" />
       <div className="glow-sphere-2 pointer-events-none" />
@@ -2258,7 +2258,7 @@ export const BankStatements: React.FC = () => {
           <div className="flex items-center space-x-3 sm:space-x-4">
             <div className="flex items-center space-x-2.5">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 p-[1.5px] shadow-md shadow-blue-500/25 flex items-center justify-center shrink-0">
-                <div className="w-full h-full bg-card/90 dark:bg-[#0d1024]/90 backdrop-blur-md rounded-[14px] flex items-center justify-center text-primary dark:text-cyan-300">
+                <div className="w-full h-full bg-white/[0.08] backdrop-blur-md rounded-[14px] flex items-center justify-center text-cyan-300">
                   <Compass size={20} className="stroke-[2.2]" />
                 </div>
               </div>
@@ -2334,9 +2334,9 @@ export const BankStatements: React.FC = () => {
                 onChange={e => setSelectedMonth(e.target.value)}
                 className="liquid-pill appearance-none pl-8 pr-7 py-1.5 rounded-2xl text-xs font-bold text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
               >
-                <option value="all">Tous les mois</option>
+                <option value="all" className="bg-[#070a14] text-white">Tous les mois</option>
                 {availableMonths.map(m => (
-                  <option key={m} value={m} className="bg-card text-foreground py-1 font-semibold">
+                  <option key={m} value={m} className="bg-[#070a14] text-white py-1 font-semibold">
                     {formatMonthLabel(m)}
                   </option>
                 ))}
@@ -2808,12 +2808,12 @@ export const BankStatements: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200">
            {/* Backdrop avec flou haut de gamme */}
            <div 
-             className="absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity" 
+             className="absolute inset-0 bg-[#070a14]/80 backdrop-blur-xl transition-opacity" 
              onClick={() => setIsToolsSheetOpen(false)}
            />
 
            {/* Boîte Modale / Hub Bento Réactif */}
-           <div className="bg-white dark:bg-gray-900 w-full sm:max-w-4xl lg:max-w-5xl rounded-t-[2.2rem] sm:rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-gray-800/80 relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden text-gray-900 dark:text-gray-100 z-10">
+           <div className="bg-[#0b0f1e]/95 backdrop-blur-2xl w-full sm:max-w-4xl lg:max-w-5xl rounded-t-[2.2rem] sm:rounded-[2.5rem] shadow-[0_25px_60px_rgba(0,0,0,0.7)] border border-white/15 relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden text-slate-100 z-10">
              
              {/* Poignée mobile */}
              <div className="pt-3 pb-1 flex justify-center sm:hidden shrink-0">
@@ -3203,29 +3203,29 @@ export const BankStatements: React.FC = () => {
       
       {/* Edit Tx Modal */}
       {isEditModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-end justify-center backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-t-[2rem] w-full max-w-md animate-in slide-in-from-bottom duration-300">
+        <div className="fixed inset-0 bg-[#070a14]/80 z-[100] flex items-end justify-center backdrop-blur-xl animate-in fade-in">
+          <div className="bg-[#0b0f1e]/95 backdrop-blur-2xl border border-white/15 p-6 rounded-t-[2rem] w-full max-w-md animate-in slide-in-from-bottom duration-300 text-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.7)]">
             <div className="flex justify-between items-center mb-6">
-               <h3 className="font-bold text-xl">Modifier l'opération</h3>
-               <button onClick={() => setIsEditModalOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={18}/></button>
+               <h3 className="font-bold text-xl text-white">Modifier l'opération</h3>
+               <button onClick={() => setIsEditModalOpen(false)} className="p-2 bg-white/[0.08] hover:bg-white/[0.15] text-slate-300 rounded-full cursor-pointer"><X size={18}/></button>
             </div>
             <form onSubmit={handleSaveEditModal} className="space-y-5">
               <div>
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Libellé</label>
-                <input type="text" value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none outline-none font-medium text-gray-900 dark:text-white" />
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Libellé</label>
+                <input type="text" value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="w-full p-4 rounded-2xl bg-white/[0.06] border border-white/10 outline-none font-medium text-white focus:border-cyan-400" />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Catégorie</label>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Catégorie</label>
                 <div className="relative">
-                  <select value={editForm.category} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border-none outline-none font-medium text-gray-900 dark:text-white appearance-none pr-10">
-                    {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  <select value={editForm.category} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-full p-4 rounded-2xl bg-[#0b0f1e] border border-white/10 outline-none font-medium text-white appearance-none pr-10 focus:border-cyan-400">
+                    {CATEGORIES.map(cat => <option key={cat} value={cat} className="bg-[#070a14] text-white">{cat}</option>)}
                   </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
                 </div>
               </div>
               <div className="pt-2">
-                <button type="submit" className="w-full p-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-600/30 active:scale-95 transition-transform">Enregistrer les modifs</button>
-                <button type="button" onClick={() => editingTx && handleDelete(editingTx.id)} className="w-full p-4 font-bold mt-3 text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-2xl active:scale-95 transition-transform">Supprimer l'opération</button>
+                <button type="submit" className="w-full p-4 bg-gradient-to-r from-cyan-500 to-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-cyan-500/25 active:scale-95 transition-transform cursor-pointer">Enregistrer les modifs</button>
+                <button type="button" onClick={() => editingTx && handleDelete(editingTx.id)} className="w-full p-4 font-bold mt-3 text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-2xl active:scale-95 transition-transform cursor-pointer">Supprimer l'opération</button>
               </div>
             </form>
           </div>
@@ -3234,8 +3234,8 @@ export const BankStatements: React.FC = () => {
 
       {/* Modal Configuration & Montée en Gamme IA (100% Gratuit) */}
       {isGeminiKeyModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[110] flex items-end sm:items-center justify-center backdrop-blur-sm animate-in fade-in p-0 sm:p-4">
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-t-[2.2rem] sm:rounded-[2rem] w-full max-w-lg shadow-2xl border border-gray-100 dark:border-gray-800 animate-in slide-in-from-bottom duration-300 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-[#070a14]/80 z-[110] flex items-end sm:items-center justify-center backdrop-blur-xl animate-in fade-in p-0 sm:p-4">
+          <div className="bg-[#0b0f1e]/95 backdrop-blur-2xl p-6 rounded-t-[2.2rem] sm:rounded-[2rem] w-full max-w-lg shadow-[0_25px_60px_rgba(0,0,0,0.7)] border border-white/15 animate-in slide-in-from-bottom duration-300 max-h-[92vh] overflow-y-auto text-slate-100">
             <div className="flex justify-between items-center mb-5 pb-3 border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
