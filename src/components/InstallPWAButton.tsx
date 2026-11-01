@@ -230,6 +230,13 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
       return;
     }
 
+    // Cas Samsung Internet : Sur Android 14/15, le serveur de packaging WebAPK de Samsung est systématiquement
+    // bloqué et rejeté silencieusement par Google Play Protect. On ouvre directement le guide avec bascule Chrome !
+    if (browserInfo.name === 'samsung') {
+      setShowGuideModal(true);
+      return;
+    }
+
     setIsLoading(true);
 
     // 1. Déclenchement direct si le prompt natif W3C est prêt (Chrome, Samsung Internet, Edge, Opera)
@@ -317,6 +324,18 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
       setTimeout(() => setHasCopiedLink(false), 3000);
     } catch {
       // Fallback
+    }
+  };
+
+  const handleOpenInChrome = () => {
+    try {
+      const rawUrl = window.location.href.replace(/^https?:\/\//, '');
+      const intentUrl = `intent://${rawUrl}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(
+        window.location.href
+      )};end;`;
+      window.location.href = intentUrl;
+    } catch {
+      window.open(window.location.href, '_blank');
     }
   };
 
@@ -483,49 +502,57 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
             </div>
 
             {/* =========================================================================
-                CAS 1 : SAMSUNG INTERNET BROWSER
+                CAS 1 : SAMSUNG INTERNET BROWSER (Android 14+ / One UI)
                ========================================================================= */}
             {browserInfo.name === 'samsung' && (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-300 font-medium">
-                  Pour installer l'application complète sans barre d'adresse :
-                </p>
-                <div className="space-y-2.5 text-xs text-slate-300">
+              <div className="space-y-3.5">
+                {/* Alerte Explicative Bug Samsung / Google Play Protect */}
+                <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs space-y-2">
+                  <p className="font-bold flex items-center gap-2 text-amber-300">
+                    <ShieldCheck size={16} className="text-amber-400 shrink-0" />
+                    Blocage Play Protect sur Samsung Internet
+                  </p>
+                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                    Sur Android 14+, le générateur interne de Samsung utilise une version cible obsolète. <strong>Google Play Protect bloque et supprime l'application</strong>, même en appuyant sur <em>« Installer quand même »</em>.
+                  </p>
+                </div>
+
+                {/* Solution Recommandée N°1 : Ouvrir dans Google Chrome (100% Fonctionnel) */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-950/60 to-indigo-950/60 border-2 border-cyan-400/50 space-y-2.5 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/25 text-cyan-300 border border-cyan-400/30">
+                      Solution Recommandée
+                    </span>
+                    <span className="text-emerald-400 font-bold text-[11px]">100% Garanti</span>
+                  </div>
+                  <p className="text-xs text-white font-bold">
+                    Installer via Google Chrome (WebAPK Officiel Google)
+                  </p>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Sur Chrome, l'installation est signée par Google Play Services : aucun blocage Play Protect, et l'application CashPilot apparaît immédiatement dans vos applications.
+                  </p>
+                  <button
+                    onClick={handleOpenInChrome}
+                    type="button"
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-primary to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-xs shadow-md shadow-cyan-500/30 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+                  >
+                    <ExternalLink size={15} />
+                    <span>Basculer sur Google Chrome &amp; Installer</span>
+                  </button>
+                </div>
+
+                {/* Solution Alternative N°2 : Raccourci Direct Samsung */}
+                <div className="space-y-2 text-xs">
+                  <p className="text-slate-300 font-medium text-[11px]">
+                    Ou si vous souhaitez rester sur Samsung Internet :
+                  </p>
                   <div className="p-3 rounded-xl bg-white/[0.04] border border-white/10 space-y-1">
-                    <p className="font-bold text-white flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px]">1</span>
-                      Option 1 (Le plus simple) : Barre d'adresse
+                    <p className="font-bold text-white flex items-center gap-2 text-xs">
+                      <span className="w-5 h-5 rounded-full bg-white/10 text-slate-300 flex items-center justify-center text-[10px]">2</span>
+                      Ajouter un raccourci direct
                     </p>
-                    <p className="text-slate-400 pl-7">
-                      Touchez l'icône de téléchargement <strong className="text-cyan-300">⬇️ (Installer l'application)</strong> qui se trouve directement dans la barre d'adresse en haut de votre écran.
-                    </p>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-white/[0.04] border border-white/10 space-y-1">
-                    <p className="font-bold text-white flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-[11px]">2</span>
-                      Option 2 : Menu Samsung
-                    </p>
-                    <p className="text-slate-400 pl-7">
-                      Touchez les 3 traits <strong className="text-white">≡</strong> en bas à droite &gt; touchez <strong className="text-cyan-300">« Installer l'application »</strong> (ou « Ajouter la page à » &gt; <strong className="text-cyan-300">« Écran applis »</strong>).
-                    </p>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-emerald-200">
-                    <p className="flex items-center gap-2">
-                      <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                      <span>L'icône s'ajoute à votre tiroir d'applications et se lance en plein écran autonome.</span>
-                    </p>
-                  </div>
-
-                  {/* Astuce Google Play Protect sur Samsung Internet */}
-                  <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 text-amber-200 text-xs space-y-1.5">
-                    <p className="font-bold text-amber-300 flex items-center gap-1.5">
-                      <ShieldCheck size={15} className="text-amber-400 shrink-0" />
-                      <span>Si « Google Play Protect » apparaît :</span>
-                    </p>
-                    <p className="text-slate-300 leading-relaxed pl-5 text-[11px]">
-                      Touchez <strong className="text-white underline">« Installer quand même »</strong> (situé juste au-dessus du bouton OK). C'est la confirmation de sécurité standard d'Android pour valider les WebAPK Samsung hors Play Store.
+                    <p className="text-slate-400 text-[11px] pl-7">
+                      Touchez les 3 traits <strong className="text-white">≡</strong> en bas à droite &gt; touchez <strong className="text-cyan-300">« Ajouter la page à »</strong> &gt; <strong className="text-cyan-300">« Écran d'accueil »</strong> (évite le bug du paquet APK de Samsung).
                     </p>
                   </div>
                 </div>
