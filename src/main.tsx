@@ -4,11 +4,41 @@ import './index.css'
 import App from './App.tsx'
 import { registerSW } from 'virtual:pwa-register'
 
-// Enregistrement transparent du Service Worker PWA avec synchronisation automatique en temps réel
+// Version d'application unique pour forcer la synchronisation mobile
+export const APP_BUILD_ID = '2026.11.01-v2.5';
+
+/**
+ * Purge complète du CacheStorage et réinitialisation du Service Worker
+ * pour garantir que le téléphone charge immédiatement la dernière version déployée.
+ */
+export async function forceAppUpdate() {
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registrations) {
+        await reg.unregister();
+      }
+    }
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      const keys = await caches.keys();
+      for (const k of keys) {
+        await caches.delete(k);
+      }
+    }
+  } catch (err) {
+    console.warn('[CashPilot] Erreur purge cache:', err);
+  }
+  // Bypasse le cache HTTP du navigateur via query param unique
+  if (typeof window !== 'undefined') {
+    window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+  }
+}
+
+// Enregistrement transparent du Service Worker PWA avec synchronisation automatique
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // Si une nouvelle version est déployée, déclenche la mise à jour sans friction
+    // Si une nouvelle version attend, active immédiatement
     updateSW(true);
   },
   onOfflineReady() {
@@ -16,30 +46,46 @@ const updateSW = registerSW({
   }
 });
 
-// Vérification immédiate lors du retour au premier plan (déverrouillage téléphone, changement d'onglet PC)
+// Force une vérification immédiate du SW sur le serveur au démarrage
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.ready.then((reg) => {
+    reg.update().catch(() => {});
+  });
+}
+
+// Vérification immédiate lors du retour au premier plan (déverrouillage téléphone, changement d'onglet)
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.update().catch(() => {});
+        });
+      }
       updateSW(true);
     }
   });
 }
 
-// Vérification périodique en arrière-plan toutes les 15 minutes
+// Vérification périodique en arrière-plan toutes les 5 minutes
 if (typeof window !== 'undefined') {
   setInterval(() => {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.update().catch(() => {});
+      });
+    }
     updateSW(true);
-  }, 15 * 60 * 1000);
+  }, 5 * 60 * 1000);
 }
 
-// Rechargement fluide unique lors de l'activation d'une NOUVELLE version déployée
-// CRITIQUE : on ne recharge QUE si un controller existait déjà au démarrage (mise à jour)
-// pour ne jamais interrompre l'enregistrement initial lors de la première visite !
+// Rechargement automatique lors de l'activation d'une NOUVELLE version déployée
 if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-  const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
+  const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (hadControllerAtStart && !refreshing) {
+    // Ne recharger que si un service worker existait déjà avant (mise à jour réelle, pas premier chargement)
+    if (!refreshing && hadControllerAtStart) {
       refreshing = true;
       window.location.reload();
     }

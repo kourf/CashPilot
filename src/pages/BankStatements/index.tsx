@@ -2245,17 +2245,17 @@ export const BankStatements: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-full text-slate-100 font-sans relative overflow-x-hidden selection:bg-cyan-500 selection:text-white pb-20">
+    <div className="flex flex-col min-h-full text-slate-100 font-sans relative overflow-x-hidden selection:bg-cyan-500 selection:text-white pb-36 sm:pb-32 md:pb-20">
       {/* Ambient Background Lights (Apple VisionOS Liquid Glow) */}
       <div className="glow-sphere-1 pointer-events-none" />
       <div className="glow-sphere-2 pointer-events-none" />
       <div className="glow-sphere-3 pointer-events-none" />
 
       {/* 1. BARRE D'OUTILS APPLE AÉRÉE (ERGONOMIQUE & FLUIDE) */}
-      <header className="sticky top-2 z-30 px-2 sm:px-4 max-w-[1520px] mx-auto w-full my-3">
-        <nav className="liquid-glass rounded-3xl px-4 sm:px-6 py-3 flex flex-wrap lg:flex-nowrap items-center justify-between gap-4 shadow-xl">
-          {/* Gauche : Contexte, Statut & Identité */}
-          <div className="flex items-center space-x-3 sm:space-x-4">
+      <header className="relative md:sticky md:top-2 z-30 px-2 sm:px-4 max-w-[1520px] mx-auto w-full my-2 sm:my-3">
+        <nav className="liquid-glass rounded-3xl p-2.5 sm:px-6 sm:py-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 sm:gap-4 shadow-xl">
+          {/* Gauche : Contexte, Statut & Identité (Caché sur mobile pour maximiser l'espace utile) */}
+          <div className="hidden md:flex items-center space-x-3 sm:space-x-4">
             <div className="flex items-center space-x-2.5">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 p-[1.5px] shadow-md shadow-blue-500/25 flex items-center justify-center shrink-0">
                 <div className="w-full h-full bg-white/[0.08] backdrop-blur-md rounded-[14px] flex items-center justify-center text-cyan-300">
@@ -2281,58 +2281,60 @@ export const BankStatements: React.FC = () => {
           </div>
 
           {/* Centre : Sélecteur Segmenté Apple (3 Vues Fluides 0ms) */}
-          <div className="flex items-center p-1 rounded-2xl liquid-glass-subtle space-x-1 order-3 lg:order-2 w-full lg:w-auto justify-center">
+          <div className="flex items-center p-1 rounded-2xl liquid-glass-subtle space-x-1 order-2 md:order-2 w-full md:w-auto justify-center overflow-x-auto no-scrollbar">
             <button
               type="button"
               onClick={() => setActiveViewMode('transactions')}
               className={cn(
-                "px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer",
+                "flex-1 md:flex-initial px-2.5 sm:px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 sm:space-x-2 transition-all cursor-pointer whitespace-nowrap",
                 activeViewMode === 'transactions'
                   ? "liquid-pill-active shadow-sm"
                   : "liquid-pill text-muted-foreground hover:text-foreground"
               )}
             >
-              <Layers size={14} />
-              <span>Opérations & Analyses</span>
+              <Layers size={14} className="shrink-0" />
+              <span className="hidden sm:inline">Opérations & Analyses</span>
+              <span className="sm:hidden">Opérations</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveViewMode('timeline')}
               className={cn(
-                "px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer",
+                "flex-1 md:flex-initial px-2.5 sm:px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 sm:space-x-2 transition-all cursor-pointer whitespace-nowrap",
                 activeViewMode === 'timeline'
                   ? "liquid-pill-active shadow-sm"
                   : "liquid-pill text-muted-foreground hover:text-foreground"
               )}
             >
-              <Clock size={14} />
-              <span>Frise Chronologique</span>
+              <Clock size={14} className="shrink-0" />
+              <span className="hidden sm:inline">Frise Chronologique</span>
+              <span className="sm:hidden">Frise</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveViewMode('reconciliation')}
               className={cn(
-                "px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer",
+                "flex-1 md:flex-initial px-2.5 sm:px-4 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 sm:space-x-2 transition-all cursor-pointer whitespace-nowrap",
                 activeViewMode === 'reconciliation'
                   ? "liquid-pill-active shadow-sm"
                   : "liquid-pill text-muted-foreground hover:text-foreground"
               )}
             >
-              <ShieldCheck size={14} />
+              <ShieldCheck size={14} className="shrink-0" />
               <span>Rapprochement</span>
             </button>
           </div>
 
           {/* Droite : Sélecteur Mois, Devise, Outils & Import */}
-          <div className="flex items-center space-x-2.5 sm:space-x-3 order-2 lg:order-3 self-end lg:self-auto">
+          <div className="flex items-center justify-between sm:justify-end space-x-1.5 sm:space-x-3 order-1 md:order-3 w-full md:w-auto">
             {/* Dropdown sélecteur de mois stylé en liquid-pill */}
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-initial min-w-0">
               <select
                 value={selectedMonth}
                 onChange={e => setSelectedMonth(e.target.value)}
-                className="liquid-pill appearance-none pl-8 pr-7 py-1.5 rounded-2xl text-xs font-bold text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
+                className="liquid-pill w-full appearance-none pl-7 sm:pl-8 pr-6 sm:pr-7 py-1.5 rounded-2xl text-xs font-bold text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary shadow-xs truncate"
               >
                 <option value="all" className="bg-[#070a14] text-white">Tous les mois</option>
                 {availableMonths.map(m => (
@@ -2350,7 +2352,7 @@ export const BankStatements: React.FC = () => {
               type="button"
               onClick={() => setCurrency(currency === 'EUR' ? 'CHF' : 'EUR')}
               title="Changer de devise"
-              className="liquid-pill px-2.5 py-1.5 rounded-2xl text-[11px] font-bold text-muted-foreground hover:text-foreground cursor-pointer"
+              className="liquid-pill px-2.5 py-1.5 rounded-2xl text-[11px] font-bold text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
             >
               {currency}
             </button>
@@ -2359,11 +2361,11 @@ export const BankStatements: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsToolsSheetOpen(true)}
-              className="liquid-pill px-2.5 sm:px-3 py-1.5 rounded-2xl flex items-center space-x-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
+              className="liquid-pill px-2.5 sm:px-3 py-1.5 rounded-2xl flex items-center space-x-1 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
               title="Centre d'analyses & outils"
             >
-              <Sliders size={13} className="text-amber-500" />
-              <span className="inline sm:inline">Outils</span>
+              <Sliders size={13} className="text-amber-500 shrink-0" />
+              <span>Outils</span>
               <span className="hidden xl:inline"> (8)</span>
             </button>
 
@@ -2371,10 +2373,11 @@ export const BankStatements: React.FC = () => {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="liquid-pill bg-gradient-to-r from-blue-600/30 to-indigo-600/30 hover:border-blue-400/50 px-3.5 py-1.5 rounded-2xl flex items-center space-x-2 text-xs font-bold text-blue-600 dark:text-cyan-200 cursor-pointer shadow-md shadow-blue-500/10 active:scale-95 transition-all"
+              className="liquid-pill bg-gradient-to-r from-blue-600/30 to-indigo-600/30 hover:border-blue-400/50 px-2.5 sm:px-3.5 py-1.5 rounded-2xl flex items-center space-x-1.5 text-xs font-bold text-blue-600 dark:text-cyan-200 cursor-pointer shadow-md shadow-blue-500/10 active:scale-95 transition-all shrink-0"
             >
-              <UploadCloud size={14} className="text-blue-500 dark:text-cyan-300" />
-              <span className="font-semibold">Importer RB</span>
+              <UploadCloud size={14} className="text-blue-500 dark:text-cyan-300 shrink-0" />
+              <span className="font-semibold hidden sm:inline">Importer RB</span>
+              <span className="font-semibold sm:hidden">Import</span>
             </button>
           </div>
         </nav>
@@ -2388,7 +2391,7 @@ export const BankStatements: React.FC = () => {
         onChange={(e) => { if (e.target.files && e.target.files.length > 0) handleFileUpload(e.target.files[0]) }} 
       />
 
-      <div className="flex-1 overflow-y-auto px-2 sm:px-4 max-w-[1520px] mx-auto w-full space-y-6 pb-24">
+      <div className="flex-1 overflow-y-auto px-2 sm:px-4 max-w-[1520px] mx-auto w-full space-y-6 pb-36 sm:pb-32 md:pb-24 touch-scroll">
         {activeViewMode === 'timeline' ? (
           <FriseChronologiqueView compteId="compte_principal" currency={currency} />
         ) : activeViewMode === 'reconciliation' ? (

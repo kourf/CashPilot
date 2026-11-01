@@ -9,11 +9,16 @@ import {
   Sparkles,
   Zap,
   Laptop,
-  Loader2
+  Loader2,
+  Copy,
+  Check,
+  ExternalLink,
+  ShieldCheck,
+  Compass
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-// Déclaration de l'événement BeforeInstallPromptEvent W3C
+// Déclaration de l'événement BeforeInstallPromptEvent W3C standard
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
@@ -29,6 +34,25 @@ declare global {
   }
 }
 
+export type DetectedBrowser =
+  | 'chrome'
+  | 'samsung'
+  | 'safari'
+  | 'opera'
+  | 'firefox'
+  | 'edge'
+  | 'other';
+
+export interface BrowserDetails {
+  name: DetectedBrowser;
+  label: string;
+  isIOS: boolean;
+  isAndroid: boolean;
+  isDesktop: boolean;
+  isSafariIOS: boolean;
+  isNonSafariIOS: boolean;
+}
+
 export interface InstallPWAButtonProps {
   /** Variante visuelle du bouton */
   variant?: 'hero' | 'compact' | 'pill' | 'banner';
@@ -38,23 +62,98 @@ export interface InstallPWAButtonProps {
   showIfInstalled?: boolean;
 }
 
+/**
+ * Détecte avec précision l'OS et le navigateur courant pour adapter
+ * les consignes d'installation WebAPK / Standalone.
+ */
+function getBrowserDetails(): BrowserDetails {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return {
+      name: 'other',
+      label: 'Navigateur',
+      isIOS: false,
+      isAndroid: false,
+      isDesktop: true,
+      isSafariIOS: false,
+      isNonSafariIOS: false
+    };
+  }
+
+  const ua = navigator.userAgent.toLowerCase();
+  const isIOS =
+    /iphone|ipad|ipod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isAndroid = /android/.test(ua);
+  const isDesktop = !isIOS && !isAndroid;
+
+  const isSamsung = /samsungbrowser/i.test(ua);
+  const isOpera = /opr\/|opera/i.test(ua);
+  const isEdge = /edg\/|edga\/|edgios/i.test(ua);
+  const isFirefox = /firefox|fxios/i.test(ua);
+  const isChromeIOS = isIOS && /crios/i.test(ua);
+  const isSafariIOS = isIOS && /safari/i.test(ua) && !isChromeIOS && !isFirefox && !isOpera && !isEdge;
+  const isNonSafariIOS = isIOS && !isSafariIOS;
+  const isChrome =
+    (/chrome|chromium/i.test(ua) || (isIOS && isChromeIOS)) &&
+    !isSamsung &&
+    !isOpera &&
+    !isEdge;
+
+  let name: DetectedBrowser = 'other';
+  let label = 'Votre navigateur';
+
+  if (isSamsung) {
+    name = 'samsung';
+    label = 'Samsung Internet';
+  } else if (isSafariIOS) {
+    name = 'safari';
+    label = 'Safari (iPhone)';
+  } else if (isOpera) {
+    name = 'opera';
+    label = 'Opera';
+  } else if (isFirefox) {
+    name = 'firefox';
+    label = 'Firefox';
+  } else if (isEdge) {
+    name = 'edge';
+    label = 'Microsoft Edge';
+  } else if (isChrome) {
+    name = 'chrome';
+    label = 'Google Chrome';
+  }
+
+  return {
+    name,
+    label,
+    isIOS,
+    isAndroid,
+    isDesktop,
+    isSafariIOS,
+    isNonSafariIOS
+  };
+}
+
 export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
   variant = 'hero',
   className,
   showIfInstalled = false
 }) => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(() => {
-    return (typeof window !== 'undefined' && window.__pwaInstallPrompt) ? window.__pwaInstallPrompt : null;
+    return typeof window !== 'undefined' && window.__pwaInstallPrompt
+      ? window.__pwaInstallPrompt
+      : null;
   });
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
-  const [isIOS, setIsIOS] = useState<boolean>(false);
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [showIOSModal, setShowIOSModal] = useState<boolean>(false);
-  const [showAndroidDirectTip, setShowAndroidDirectTip] = useState<boolean>(false);
+  const [browserInfo, setBrowserInfo] = useState<BrowserDetails>(() => getBrowserDetails());
+  const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
   const [showSuccessToast, setShowSuccessToast] = useState<boolean>(false);
+  const [hasCopiedLink, setHasCopiedLink] = useState<boolean>(false);
 
   useEffect(() => {
+    setBrowserInfo(getBrowserDetails());
+
     // 1. Détection du mode Standalone (PWA lancée comme application native)
     const checkStandalone = async () => {
       const isStandaloneMode =
@@ -66,7 +165,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
         return;
       }
 
-      // Vérification native Chrome des applications déjà installées sur l'appareil
+      // Vérification native des applications déjà installées sur l'appareil
       if (typeof navigator !== 'undefined' && 'getInstalledRelatedApps' in navigator) {
         try {
           const apps = await (navigator as any).getInstalledRelatedApps();
@@ -78,14 +177,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
     };
     checkStandalone();
 
-    // 2. Détection de la plateforme iOS
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    const isIOSDevice =
-      /iphone|ipad|ipod/.test(userAgent) ||
-      (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
-    setIsIOS(isIOSDevice);
-
-    // 3. Récupération immédiate du prompt global pré-capturé dès le <head>
+    // 2. Récupération immédiate du prompt global pré-capturé dès le <head>
     if (window.__pwaInstallPrompt && !deferredPrompt) {
       setDeferredPrompt(window.__pwaInstallPrompt);
     }
@@ -97,6 +189,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
     };
 
     const handleBeforeInstallPrompt = (e: Event) => {
+      // Bloque l'infobar par défaut pour permettre le déclenchement contrôlé au clic
       e.preventDefault();
       const promptEvent = e as BeforeInstallPromptEvent;
       window.__pwaInstallPrompt = promptEvent;
@@ -107,6 +200,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
       setIsInstalled(true);
       setDeferredPrompt(null);
       window.__pwaInstallPrompt = null;
+      setShowGuideModal(false);
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 5000);
     };
@@ -122,23 +216,23 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
     };
   }, [deferredPrompt]);
 
-  // Clic 1-clic direct : déclenche directement l'installation sans manipulation
+  // Clic sur Télécharger : Déclenche l'installation native ou ouvre le guide adapté au navigateur
   const handleDownloadClick = async () => {
-    // Si l'application est déjà installée sur l'appareil
+    // Si l'application est déjà lancée en mode autonome
     if (isInstalled || isStandalone) {
-      alert("CashPilot est déjà installée sur votre smartphone ! Retrouvez l'icône sur votre écran d'accueil.");
+      alert("CashPilot est déjà installée sur votre smartphone ! Retrouvez l'icône dans la liste de vos applications.");
       return;
     }
 
-    // Cas iOS (Safari n'a pas d'API native de prompt, guidage simple en 1 tap)
-    if (isIOS) {
-      setShowIOSModal(true);
+    // Cas iOS (Safari WebClip ou navigateur tiers)
+    if (browserInfo.isIOS) {
+      setShowGuideModal(true);
       return;
     }
 
     setIsLoading(true);
 
-    // 1. Si le prompt natif est déjà disponible -> déclenchement DIRECT 1-clic
+    // 1. Déclenchement direct si le prompt natif W3C est prêt (Chrome, Samsung Internet, Edge, Opera)
     const activePrompt = deferredPrompt || window.__pwaInstallPrompt;
     if (activePrompt) {
       try {
@@ -159,7 +253,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
       return;
     }
 
-    // 2. Si le prompt n'a pas encore fini de s'initialiser, attendre jusqu'à 2 secondes
+    // 2. Attente rapide de 1.5s pour laisser le navigateur finaliser son hook PWA
     const waitForPrompt = new Promise<BeforeInstallPromptEvent | null>((resolve) => {
       let resolved = false;
       const onReady = () => {
@@ -186,7 +280,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
           resolved = true;
           resolve(null);
         }
-      }, 2000);
+      }, 1500);
     });
 
     const captured = await waitForPrompt;
@@ -211,11 +305,21 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
 
     setIsLoading(false);
 
-    // 3. Fallback immédiat et direct si Chrome a déjà l'application en mémoire
-    setShowAndroidDirectTip(true);
+    // 3. Si aucun prompt natif disponible (Firefox mobile, Samsung Internet sans hook, Safari),
+    // ouvrir le guide interactif adapté au navigateur exact détecté
+    setShowGuideModal(true);
   };
 
-  // Si l'application est déjà lancée en mode standalone et qu'on ne force pas l'affichage
+  const handleCopyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.origin);
+      setHasCopiedLink(true);
+      setTimeout(() => setHasCopiedLink(false), 3000);
+    } catch {
+      // Fallback
+    }
+  };
+
   if (isStandalone && !showIfInstalled) {
     return null;
   }
@@ -271,7 +375,7 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
                   <Laptop size={13} className="text-indigo-400" /> PC
                 </span>
                 <span>•</span>
-                <span className="text-emerald-400 font-bold">1-Clic direct</span>
+                <span className="text-emerald-400 font-bold">Vraie Application</span>
               </p>
             </div>
 
@@ -340,73 +444,248 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
       )}
 
       {/* =========================================================================
-          NOTIFICATIONS DIRECTES (Sans manipulation complexe)
+          MODALE D'INSTALLATION INTELLIGENTE MULTI-NAVIGATEURS
+          S'adapte à Samsung Internet, Safari iOS, Opera, Firefox, Edge et Chrome
          ========================================================================= */}
-
-      {/* Toast Android direct si le prompt a déjà été utilisé */}
-      {showAndroidDirectTip && (
-        <div className="fixed inset-x-4 bottom-6 sm:left-auto sm:right-6 sm:w-96 z-50 rounded-2xl bg-slate-900/98 border border-cyan-400/50 p-4.5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] text-slate-100 space-y-2.5 animate-in fade-in slide-in-from-bottom-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-xs">
-                <Download size={15} />
-              </div>
-              <p className="font-bold text-xs text-white">Installation prête dans Chrome</p>
-            </div>
-            <button
-              onClick={() => setShowAndroidDirectTip(false)}
-              className="text-slate-400 hover:text-white p-1"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Touchez l'icône de téléchargement dans la barre d'adresse de Chrome en haut (ou les 3 points <strong className="text-cyan-300">⋮</strong> puis <strong className="text-cyan-300">"Installer l'application"</strong>). L'icône se place immédiatement sur votre téléphone.
-          </p>
-          <button
-            onClick={() => setShowAndroidDirectTip(false)}
-            className="w-full py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/30 text-xs font-bold transition-colors cursor-pointer"
-          >
-            D'accord
-          </button>
-        </div>
-      )}
-
-      {/* Modale ultra-simple pour iOS Safari */}
-      {showIOSModal && (
+      {showGuideModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-sm rounded-3xl bg-slate-900/98 border border-white/20 p-6 shadow-2xl text-slate-100 space-y-4">
+          <div className="relative w-full max-w-md rounded-3xl bg-slate-900/98 border border-cyan-400/30 p-6 shadow-2xl text-slate-100 space-y-4 max-h-[92vh] overflow-y-auto">
+            {/* Bouton de fermeture */}
             <button
-              onClick={() => setShowIOSModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/[0.06] text-slate-400 hover:text-white cursor-pointer"
+              onClick={() => setShowGuideModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/[0.06] text-slate-400 hover:text-white cursor-pointer transition-colors"
             >
               <X size={18} />
             </button>
+
+            {/* En-tête avec badge navigateur */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/30 border border-white/20 shrink-0">
                 <Smartphone size={22} />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Télécharger sur iPhone</h3>
-                <p className="text-xs text-cyan-300">Sur Safari</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">Installer CashPilot</h3>
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+                    {browserInfo.label}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">Véritable application plein écran sans barre d'adresse</p>
               </div>
             </div>
-            <div className="space-y-2 text-xs text-slate-300">
-              <p className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.04]">
-                1. Touchez Partager <Share size={14} className="text-cyan-400 ml-auto" />
-              </p>
-              <p className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.04]">
-                2. Choisissez "Sur l'écran d'accueil" <PlusSquare size={14} className="text-indigo-400 ml-auto" />
-              </p>
-              <p className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.04]">
-                3. Touchez "Ajouter"
+
+            {/* Alerte explicative : Vraie application vs Raccourci */}
+            <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-cyan-950/30 border border-cyan-400/20 text-xs text-cyan-200">
+              <ShieldCheck size={18} className="text-cyan-400 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                CashPilot n'est pas un simple favori internet : elle s'installe comme une <strong>vraie application autonome</strong> (WebAPK / Standalone) sur votre téléphone.
               </p>
             </div>
+
+            {/* =========================================================================
+                CAS 1 : SAMSUNG INTERNET BROWSER
+               ========================================================================= */}
+            {browserInfo.name === 'samsung' && (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-300 font-medium">
+                  Pour installer l'application complète sans barre d'adresse :
+                </p>
+                <div className="space-y-2.5 text-xs text-slate-300">
+                  <div className="p-3 rounded-xl bg-white/[0.04] border border-white/10 space-y-1">
+                    <p className="font-bold text-white flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px]">1</span>
+                      Option 1 (Le plus simple) : Barre d'adresse
+                    </p>
+                    <p className="text-slate-400 pl-7">
+                      Touchez l'icône de téléchargement <strong className="text-cyan-300">⬇️ (Installer l'application)</strong> qui se trouve directement dans la barre d'adresse en haut de votre écran.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/[0.04] border border-white/10 space-y-1">
+                    <p className="font-bold text-white flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-[11px]">2</span>
+                      Option 2 : Menu Samsung
+                    </p>
+                    <p className="text-slate-400 pl-7">
+                      Touchez les 3 traits <strong className="text-white">≡</strong> en bas à droite &gt; touchez <strong className="text-cyan-300">« Installer l'application »</strong> (ou « Ajouter la page à » &gt; <strong className="text-cyan-300">« Écran applis »</strong>).
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-emerald-200">
+                    <p className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                      <span>L'icône s'ajoute à votre tiroir d'applications et se lance en plein écran autonome.</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* =========================================================================
+                CAS 2 : SAFARI SUR IPHONE (iOS)
+               ========================================================================= */}
+            {browserInfo.isSafariIOS && (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-300 font-medium">
+                  Sur iPhone, Safari transforme CashPilot en véritable application native :
+                </p>
+                <div className="space-y-2.5 text-xs text-slate-300">
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/10">
+                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] shrink-0 font-bold">1</span>
+                    <span className="flex-1">En bas de l'écran, touchez <strong>Partager</strong></span>
+                    <Share size={18} className="text-cyan-400 shrink-0" />
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/10">
+                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] shrink-0 font-bold">2</span>
+                    <span className="flex-1">Faites défiler et touchez <strong>« Sur l'écran d'accueil »</strong></span>
+                    <PlusSquare size={18} className="text-indigo-400 shrink-0" />
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/10">
+                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] shrink-0 font-bold">3</span>
+                    <span className="flex-1">En haut à droite, touchez <strong>« Ajouter »</strong></span>
+                    <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-emerald-200">
+                    <p className="flex items-center gap-2">
+                      <Sparkles size={16} className="text-emerald-400 shrink-0" />
+                      <span>L'icône s'ouvre sans barre d'URL ni commandes Safari, exactement comme une appli de l'App Store !</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* =========================================================================
+                CAS 3 : IPHONE AVEC UN AUTRE NAVIGATEUR (Chrome iOS, Opera iOS, etc.)
+               ========================================================================= */}
+            {browserInfo.isNonSafariIOS && (
+              <div className="space-y-3">
+                <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 text-amber-200 text-xs space-y-2">
+                  <p className="font-bold flex items-center gap-2">
+                    <Compass size={16} className="text-amber-400" />
+                    Ouvrir dans Safari sur iPhone
+                  </p>
+                  <p className="text-slate-300 leading-relaxed">
+                    Sur iPhone, Apple réserve l'installation en véritable application plein écran au navigateur <strong>Safari</strong>. Dans Chrome ou Opera sur iOS, un simple lien est créé.
+                  </p>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  <p className="text-slate-300 font-medium">Pour installer l'application plein écran :</p>
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300">
+                    <span className="font-mono text-cyan-300 select-all truncate flex-1">
+                      {typeof window !== 'undefined' ? window.location.origin : 'cashpilot-app-2026.web.app'}
+                    </span>
+                    <button
+                      onClick={handleCopyUrl}
+                      type="button"
+                      className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/30 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      {hasCopiedLink ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                      <span>{hasCopiedLink ? 'Copié !' : 'Copier'}</span>
+                    </button>
+                  </div>
+                  <p className="text-slate-400 text-[11px]">
+                    1. Copiez le lien ci-dessus &gt; 2. Ouvrez <strong>Safari</strong> &gt; 3. Collez l'adresse &gt; 4. Touchez Partager &gt; « Sur l'écran d'accueil ».
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* =========================================================================
+                CAS 4 : FIREFOX MOBILE
+               ========================================================================= */}
+            {browserInfo.name === 'firefox' && !browserInfo.isIOS && (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-300 font-medium">
+                  Pour installer CashPilot sur Firefox Android :
+                </p>
+                <div className="space-y-2.5 text-xs text-slate-300">
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/10">
+                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] shrink-0 font-bold">1</span>
+                    <span className="flex-1">Touchez l'icône <strong>Installer (icône maison avec un +)</strong> dans la barre d'adresse en haut à droite.</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/10">
+                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] shrink-0 font-bold">2</span>
+                    <span className="flex-1">Ou touchez les <strong>3 points ⋮</strong> puis <strong>« Installer »</strong>.</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-emerald-200">
+                    <p className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                      <span>L'application se lance en plein écran avec son propre processus Android dédié.</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* =========================================================================
+                CAS 5 : OPERA MOBILE
+               ========================================================================= */}
+            {browserInfo.name === 'opera' && !browserInfo.isIOS && (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-300 font-medium">
+                  Pour installer CashPilot sur Opera :
+                </p>
+                <div className="space-y-2.5 text-xs text-slate-300">
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/10">
+                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] shrink-0 font-bold">1</span>
+                    <span className="flex-1">Touchez le bouton de menu <strong>Opera (ou ⋮)</strong>.</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/10">
+                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] shrink-0 font-bold">2</span>
+                    <span className="flex-1">Sélectionnez <strong>« Installer l'application »</strong>.</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-emerald-200">
+                    <p className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                      <span>L'application s'ajoute à vos applications en mode autonome.</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* =========================================================================
+                CAS 6 : CHROME, EDGE OU PC / MAC
+               ========================================================================= */}
+            {(browserInfo.name === 'chrome' || browserInfo.name === 'edge' || browserInfo.name === 'other') && !browserInfo.isIOS && (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-300 font-medium">
+                  Pour installer CashPilot sur {browserInfo.label} :
+                </p>
+                <div className="space-y-2.5 text-xs text-slate-300">
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/10">
+                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] shrink-0 font-bold">1</span>
+                    <span className="flex-1">
+                      {browserInfo.isDesktop
+                        ? 'Cliquez sur l\'icône d\'installation 💻 dans la barre d\'adresse en haut à droite.'
+                        : 'Touchez les 3 points ⋮ en haut à droite.'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/10">
+                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] shrink-0 font-bold">2</span>
+                    <span className="flex-1">
+                      Choisissez <strong className="text-cyan-300">« Installer l'application »</strong>.
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-emerald-200">
+                    <p className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                      <span>L'application s'installe directement sur votre système et se lance sans barre de navigation.</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Bouton de validation */}
             <button
-              onClick={() => setShowIOSModal(false)}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-bold text-xs cursor-pointer"
+              onClick={() => setShowGuideModal(false)}
+              className="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-bold text-xs shadow-lg shadow-cyan-500/30 hover:brightness-110 active:scale-98 transition-all cursor-pointer"
             >
-              Fermer
+              J'ai compris
             </button>
           </div>
         </div>

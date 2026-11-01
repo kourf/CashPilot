@@ -337,3 +337,25 @@
 .specular-glow {
   box-shadow: 0 0 45px -5px rgba(129, 140, 248, 0.35);
 }
+
+/* Utilitaires Mobiles Avancés (iOS 26 / Android Gestures & Safe-Areas) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+.pb-mobile-nav {
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.pb-mobile-nav-double {
+  padding-bottom: calc(10.5rem + env(safe-area-inset-bottom, 0px));
+}

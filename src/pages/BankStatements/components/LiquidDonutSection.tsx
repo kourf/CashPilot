@@ -88,6 +88,15 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
 
   const [activeChartTab, setActiveChartTab] = useState<'sankey' | 'donut' | 'bar'>('donut');
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 640 : false);
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Filtrage strict : Aucune macro-catégorie autorisée dans les graphiques
   const validExpenseCategories = useMemo(() => {
@@ -223,30 +232,30 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
   };
 
   return (
-    <section className="liquid-glass rounded-3xl p-5 sm:p-7 md:p-8 space-y-6">
+    <section className="liquid-glass rounded-3xl p-4 sm:p-7 md:p-8 space-y-5 sm:space-y-6">
       {/* En-tête du panneau avec sélecteur de vue segmenté */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-border/60 dark:border-white/10">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 pb-4 sm:pb-5 border-b border-border/60 dark:border-white/10">
         <div>
           <div className="flex items-center space-x-2">
-            <h2 className="text-base sm:text-lg font-bold text-foreground tracking-tight">
+            <h2 className="text-sm sm:text-lg font-bold text-foreground tracking-tight">
               Répartition des flux et postes de dépenses
             </h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 shrink-0">
               Analytique IA
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">
             Données consolidées d'après votre relevé bancaire de compte courant ({selectedMonthLabel})
           </p>
         </div>
 
         {/* Sélecteur de vue graphique unique (Apple Segmented Pill) */}
-        <div className="flex items-center p-1 rounded-2xl liquid-glass-subtle space-x-1 shrink-0">
+        <div className="flex items-center p-1 rounded-2xl liquid-glass-subtle space-x-1 shrink-0 self-stretch sm:self-auto justify-center">
           <button
             type="button"
             onClick={() => setActiveChartTab('sankey')}
             className={cn(
-              "px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer",
+              "flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition-all cursor-pointer",
               activeChartTab === 'sankey'
                 ? "liquid-pill-active shadow-sm"
                 : "liquid-pill text-muted-foreground hover:text-foreground"
@@ -260,21 +269,22 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
             type="button"
             onClick={() => setActiveChartTab('donut')}
             className={cn(
-              "px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer",
+              "flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition-all cursor-pointer",
               activeChartTab === 'donut'
                 ? "liquid-pill-active shadow-sm"
                 : "liquid-pill text-muted-foreground hover:text-foreground"
             )}
           >
             <PieChartIcon size={13} />
-            <span>Donut Actif</span>
+            <span className="hidden sm:inline">Donut Actif</span>
+            <span className="sm:hidden">Donut</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveChartTab('bar')}
             className={cn(
-              "px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer",
+              "flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition-all cursor-pointer",
               activeChartTab === 'bar'
                 ? "liquid-pill-active shadow-sm"
                 : "liquid-pill text-muted-foreground hover:text-foreground"
@@ -288,22 +298,22 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
 
       {/* 1. ONGLET DONUT ACTIF (AVEC FLÈCHES ET LIBELLÉS) */}
       {activeChartTab === 'donut' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center pt-2">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-center pt-1 sm:pt-2">
           {/* Cœur visuel Donut (Recharts avec flèches + Centre Apple Liquid Graphic) */}
-          <div className="lg:col-span-7 flex flex-col items-center justify-center relative py-2">
+          <div className="lg:col-span-7 flex flex-col items-center justify-center relative py-1 sm:py-2">
             {/* Halo lumineux d'arrière-plan */}
-            <div className="w-72 h-72 rounded-full absolute bg-gradient-to-tr from-cyan-500/15 via-blue-600/15 to-indigo-500/10 blur-3xl pointer-events-none" />
+            <div className="w-60 sm:w-72 h-60 sm:h-72 rounded-full absolute bg-gradient-to-tr from-cyan-500/15 via-blue-600/15 to-indigo-500/10 blur-3xl pointer-events-none" />
 
             {/* Donut Recharts avec flèches connectrices vers catégories et montants */}
-            <div className="relative w-full h-[360px] sm:h-[390px] flex items-center justify-center">
+            <div className="relative w-full h-[270px] sm:h-[390px] flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 25, right: 35, bottom: 25, left: 35 }}>
+                <PieChart margin={isMobile ? { top: 10, right: 10, bottom: 10, left: 10 } : { top: 25, right: 35, bottom: 25, left: 35 }}>
                   <Pie
                     data={donutData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={62}
-                    outerRadius={88}
+                    innerRadius={isMobile ? 68 : 62}
+                    outerRadius={isMobile ? 96 : 88}
                     paddingAngle={3.5}
                     dataKey="value"
                     onClick={(data) => handleCategoryClick(data.name)}
@@ -311,7 +321,7 @@ export const LiquidDonutSection: React.FC<LiquidDonutSectionProps> = ({
                     onMouseLeave={() => setHoveredCategory(null)}
                     className="cursor-pointer"
                     labelLine={false}
-                    label={renderDonutCalloutLabel}
+                    label={isMobile ? undefined : renderDonutCalloutLabel}
                   >
                     {donutData.map((entry) => (
                       <Cell

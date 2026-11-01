@@ -175,7 +175,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="p-3 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500 pb-28 md:pb-12 text-slate-100 select-none">
+    <div className="p-3 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500 pb-36 sm:pb-32 md:pb-12 text-slate-100 select-none">
       
       {/* Top Header Controls (Period selector & Demo badge) - Apple VisionOS Style */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/[0.03] backdrop-blur-2xl p-4 sm:p-5 rounded-3xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)]">
@@ -718,10 +718,10 @@ export default function Dashboard() {
       </div>
 
       {/* CHARTS GRID (Apple VisionOS Liquid Area & Donut) */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6">
         
         {/* Evolution Chart */}
-        <div className="col-span-4 rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)]">
+        <div className="col-span-1 md:col-span-2 lg:col-span-4 rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-4 sm:p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)]">
           <div className="flex flex-row items-center justify-between pb-4 border-b border-white/10">
             <div>
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Dynamique temporelle</span>
@@ -790,7 +790,7 @@ export default function Dashboard() {
         </div>
 
         {/* Category Breakdown Donut */}
-        <div className="col-span-3 rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)]">
+        <div className="col-span-1 md:col-span-2 lg:col-span-3 rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-4 sm:p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)]">
           <div className="pb-4 border-b border-white/10">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Ventilation</span>
             <h3 className="text-base font-extrabold text-white mt-0.5">Top Catégories de Dépenses</h3>
@@ -851,10 +851,10 @@ export default function Dashboard() {
       </div>
 
       {/* RECENT TRANSACTIONS & QUICK ACTIONS */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6">
         
         {/* Transactions list (Apple Wallet style) */}
-        <div className="col-span-4 rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)]">
+        <div className="col-span-1 md:col-span-2 lg:col-span-4 rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-4 sm:p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)]">
           <div className="flex flex-row items-center justify-between pb-4 border-b border-white/10">
             <div>
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Flux récents</span>
@@ -897,8 +897,8 @@ export default function Dashboard() {
                   const isPositive = (tx.amount || 0) > 0;
                   const isEpargne = tx.category === 'Épargne' || tx.category === 'Virements internes';
                   return (
-                    <div key={i} className="py-3.5 flex items-center justify-between group hover:bg-white/[0.05] px-2.5 rounded-2xl transition-colors">
-                      <div className="flex items-center gap-3 min-w-0">
+                    <div key={i} className="py-3.5 flex items-center justify-between group hover:bg-white/[0.05] px-2.5 rounded-2xl transition-colors gap-2">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className={cn(
                           "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-transform group-hover:scale-105 shadow-md",
                           isPositive 
@@ -945,7 +945,7 @@ export default function Dashboard() {
         </div>
 
         {/* Quick Launch & AI Insights */}
-        <div className="col-span-3 space-y-4">
+        <div className="col-span-1 md:col-span-2 lg:col-span-3 space-y-4">
           
           {/* AI Intelligence Card (Apple Intelligence Studio Feel) */}
           <div className="rounded-3xl bg-gradient-to-br from-cyan-500/15 via-primary/10 to-indigo-600/15 backdrop-blur-2xl p-6 border border-white/15 shadow-[0_16px_36px_rgba(0,0,0,0.4)] relative overflow-hidden group">

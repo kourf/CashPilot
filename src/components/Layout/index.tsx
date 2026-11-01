@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -8,7 +9,8 @@ import {
   Sparkles,
   ShieldCheck,
   Loader2,
-  LogOut
+  LogOut,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ThemeToggle } from '../ThemeToggle';
@@ -37,6 +39,31 @@ export default function Layout() {
   const userInitials = (userProfile?.displayName || userProfile?.email || 'CP')
     .slice(0, 2)
     .toUpperCase();
+
+  const [isRefreshingApp, setIsRefreshingApp] = useState(false);
+
+  const handleForceRefresh = async () => {
+    setIsRefreshingApp(true);
+    try {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      }
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) {
+          await caches.delete(k);
+        }
+      }
+    } catch (e) {
+      console.warn('[CashPilot] Erreur refresh:', e);
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -196,7 +223,18 @@ export default function Layout() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            {/* Bouton de mise à jour instantanée & purge cache (idéal pour PWA smartphone) */}
+            <button
+              onClick={handleForceRefresh}
+              title="Vider le cache et charger la dernière version"
+              disabled={isRefreshingApp}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-300 hover:text-cyan-300 hover:bg-white/[0.08] border border-white/10 flex items-center gap-1.5 text-xs transition-all active:scale-95 cursor-pointer bg-white/[0.04]"
+            >
+              <RefreshCw size={14} className={cn("text-cyan-400 shrink-0", isRefreshingApp && "animate-spin")} />
+              <span className="text-[11px] font-bold text-cyan-300 sm:inline">v2.4</span>
+            </button>
+
             <ThemeToggle variant="compact" />
 
             <div className="flex items-center gap-2 pl-3 border-l border-white/10">
@@ -226,13 +264,13 @@ export default function Layout() {
         </header>
 
         {/* Page Container */}
-        <main className="flex-1 overflow-y-auto pb-24 md:pb-8 relative">
+        <main className="flex-1 overflow-y-auto pb-36 sm:pb-32 md:pb-8 relative touch-scroll">
           <Outlet />
         </main>
       </div>
 
       {/* Bottom Navigation for Mobile (Apple VisionOS / iOS 26 Floating Liquid Glass) */}
-      <nav className="md:hidden fixed bottom-3 inset-x-3 max-w-lg mx-auto z-50 pointer-events-none select-none">
+      <nav className="md:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] inset-x-3 max-w-lg mx-auto z-50 pointer-events-none select-none">
         <div className="pointer-events-auto rounded-[26px] bg-[#0c101d]/90 dark:bg-[#07090e]/90 backdrop-blur-2xl border border-white/20 dark:border-white/15 shadow-[0_16px_40px_-8px_rgba(0,0,0,0.7),inset_0_1px_1.5px_0_rgba(255,255,255,0.35)] p-1.5 flex items-center justify-between gap-1">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path || 

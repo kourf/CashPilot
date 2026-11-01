@@ -384,28 +384,29 @@ export default function Coach() {
     <div className="coach-liquid-aura flex flex-col min-h-[calc(100vh-4rem)] text-white relative selection:bg-sky-500/30 selection:text-white overflow-x-hidden">
       
       {/* 1. TOP BAR ÉPURÉE LIQUID GLASS CAPSULE */}
-      <div className="sticky top-0 z-30 px-3 sm:px-6 py-3">
-        <div className="apple-glass rounded-full px-3 sm:px-5 py-2 flex items-center justify-between gap-2 max-w-5xl mx-auto shadow-2xl">
+      <div className="sticky top-0 z-30 px-2 sm:px-6 py-2.5 sm:py-3">
+        <div className="apple-glass rounded-full px-2.5 sm:px-5 py-1.5 sm:py-2 flex items-center justify-between gap-1.5 sm:gap-2 max-w-5xl mx-auto shadow-2xl">
           
           {/* Gauche: Historique & Mes Règles */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={() => setIsHistoryOpen(true)}
-              className="apple-glass-pill hover:bg-white/15 px-3 py-1.5 rounded-full text-xs font-semibold text-white/90 flex items-center gap-1.5 transition-all group cursor-pointer"
+              className="apple-glass-pill hover:bg-white/15 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold text-white/90 flex items-center gap-1 sm:gap-1.5 transition-all group cursor-pointer"
               title="Ouvrir l'historique des conversations"
             >
-              <History size={14} className="text-sky-400 group-hover:rotate-12 transition-transform" />
-              <span>Historique <span className="text-sky-400 font-bold">({validConversations.length})</span></span>
+              <History size={13} className="text-sky-400 group-hover:rotate-12 transition-transform shrink-0" />
+              <span className="hidden xs:inline">Historique</span>
+              <span className="text-sky-400 font-bold">({validConversations.length})</span>
             </button>
 
             <button
               onClick={() => setIsRulesOpen(true)}
-              className="apple-glass-pill hover:bg-white/15 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-400 border-emerald-500/30 flex items-center gap-1.5 transition-all group cursor-pointer"
+              className="apple-glass-pill hover:bg-white/15 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-400 border-emerald-500/30 flex items-center gap-1 sm:gap-1.5 transition-all group cursor-pointer"
               title="Gérer mes règles personnalisées et clarifications d'abonnements"
             >
-              <BookmarkCheck size={14} className="group-hover:scale-110 transition-transform" />
+              <BookmarkCheck size={13} className="group-hover:scale-110 transition-transform shrink-0" />
               <span className="hidden sm:inline">Mes Règles</span>
-              <span className="sm:hidden">Règles</span>
+              <span className="sm:hidden hidden xs:inline">Règles</span>
               <span className="font-bold">({customRules.length})</span>
             </button>
           </div>
@@ -423,13 +424,13 @@ export default function Coach() {
           </div>
 
           {/* Droite: Portée & Nouvelle discussion */}
-          <div className="flex items-center gap-2">
-            <div className="apple-glass-pill px-2.5 py-1 rounded-full flex items-center gap-1.5 text-xs text-slate-200">
-              <SlidersHorizontal size={12} className="text-slate-400" />
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <div className="apple-glass-pill px-2 py-1 rounded-full flex items-center gap-1 text-xs text-slate-200 min-w-0 max-w-[130px] sm:max-w-none">
+              <SlidersHorizontal size={11} className="text-slate-400 shrink-0" />
               <select
                 value={selectedScope}
                 onChange={(e) => handleScopeChange(e.target.value)}
-                className="bg-transparent text-xs font-medium text-white focus:outline-none cursor-pointer pr-1"
+                className="bg-transparent text-xs font-medium text-white focus:outline-none cursor-pointer pr-1 truncate w-full"
               >
                 <option value="all" className="bg-[#080a14] text-white">Toute la base ({transactions.length})</option>
                 {availableMonths.map(m => (
@@ -445,10 +446,10 @@ export default function Coach() {
                 handleCreateNewConversation();
                 setIsHistoryOpen(false);
               }}
-              className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-sky-500/25 active:scale-95 transition-all cursor-pointer"
+              className="p-1.5 sm:px-3.5 sm:py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white text-xs font-semibold flex items-center gap-1 shadow-lg shadow-sky-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
               title="Créer une nouvelle discussion"
             >
-              <Plus size={14} />
+              <Plus size={14} className="shrink-0" />
               <span className="hidden sm:inline">Nouvelle</span>
             </button>
           </div>
@@ -761,22 +762,22 @@ export default function Coach() {
         
         {messages.length === 0 ? (
           /* ÉCRAN D'ACCUEIL APPLE VISIONOS LIQUID GLASS */
-          <div className="flex-1 flex flex-col items-center justify-center py-6 md:py-12 pb-24 md:pb-12 space-y-6 md:space-y-8 animate-in fade-in duration-500">
+          <div className="flex-1 flex flex-col items-center justify-center py-4 sm:py-6 md:py-12 pb-36 sm:pb-32 md:pb-12 space-y-4 sm:space-y-6 md:space-y-8 animate-in fade-in duration-500">
             
             {/* Squircle Orb Central avec Specular Glow */}
             <div className="relative mb-2">
-              <div className="apple-glass specular-glow w-24 h-24 rounded-[32px] flex items-center justify-center relative z-10 transition-transform duration-500 hover:scale-105">
-                <div className="absolute inset-1 rounded-[28px] bg-gradient-to-tr from-cyan-500/20 via-sky-400/10 to-indigo-500/20" />
-                <Sparkles className="w-10 h-10 text-sky-400 relative z-10 drop-shadow-[0_0_12px_rgba(56,189,248,0.5)]" />
+              <div className="apple-glass specular-glow w-20 h-20 sm:w-24 sm:h-24 rounded-[28px] sm:rounded-[32px] flex items-center justify-center relative z-10 transition-transform duration-500 hover:scale-105">
+                <div className="absolute inset-1 rounded-[24px] sm:rounded-[28px] bg-gradient-to-tr from-cyan-500/20 via-sky-400/10 to-indigo-500/20" />
+                <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400 relative z-10 drop-shadow-[0_0_12px_rgba(56,189,248,0.5)]" />
               </div>
-              <div className="absolute -bottom-1 -right-1 z-20 w-8 h-8 rounded-full apple-glass flex items-center justify-center border border-white/30 text-emerald-400 shadow-lg">
-                <Zap size={14} />
+              <div className="absolute -bottom-1 -right-1 z-20 w-7 h-7 sm:w-8 sm:h-8 rounded-full apple-glass flex items-center justify-center border border-white/30 text-emerald-400 shadow-lg">
+                <Zap size={13} />
               </div>
             </div>
 
             {/* Titre & Sous-titre Épurés */}
-            <div className="text-center space-y-2.5 max-w-xl px-2">
-              <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-white">
+            <div className="text-center space-y-2 max-w-xl px-2">
+              <h1 className="text-2xl sm:text-3xl md:text-5xl font-extrabold tracking-tight text-white">
                 Par quoi voulez-vous commencer ?
               </h1>
               <p className="text-xs md:text-sm text-slate-400 max-w-lg mx-auto font-light leading-relaxed">
@@ -786,7 +787,7 @@ export default function Coach() {
 
             {/* Boîte de Saisie Flottante Centrale */}
             <div className="w-full max-w-2xl">
-              <div className="apple-glass rounded-full p-2 pl-5 sm:pl-6 flex items-center gap-2 sm:gap-3 relative transition-all duration-300 focus-within:border-sky-400/60 focus-within:shadow-[0_0_40px_rgba(56,189,248,0.25)]">
+              <div className="apple-glass rounded-full p-1.5 sm:p-2 pl-4 sm:pl-6 flex items-center gap-2 sm:gap-3 relative transition-all duration-300 focus-within:border-sky-400/60 focus-within:shadow-[0_0_40px_rgba(56,189,248,0.25)]">
                 <input
                   type="text"
                   value={inputPrompt}
@@ -797,7 +798,7 @@ export default function Coach() {
                       onSend();
                     }
                   }}
-                  placeholder="Combien j'ai dépensé chez Leclerc ce mois-ci ?"
+                  placeholder="Posez une question ou demandez un audit..."
                   disabled={isLoading}
                   className="flex-1 bg-transparent border-none text-white text-xs sm:text-sm placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
                 />
@@ -961,7 +962,7 @@ export default function Coach() {
             </div>
 
             {/* Zone de Saisie Flottante Pinned en Bas (au-dessus de la nav mobile sur téléphone) */}
-            <div className="fixed bottom-[4.25rem] md:bottom-2 left-0 right-0 md:left-64 z-40 p-2.5 sm:p-4 bg-gradient-to-t from-[#070a14] via-[#070a14]/85 to-transparent backdrop-blur-xl">
+            <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-2 left-0 right-0 md:left-64 z-40 p-2.5 sm:p-4 bg-gradient-to-t from-[#070a14] via-[#070a14]/85 to-transparent backdrop-blur-xl">
               <div className="max-w-3xl mx-auto space-y-2">
                 
                 {/* Pilules d'audit rapide horizontales */}

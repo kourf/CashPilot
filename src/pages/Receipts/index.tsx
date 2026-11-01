@@ -649,7 +649,7 @@ export default function Receipts() {
   }, [filteredRows]);
 
   return (
-    <div className="min-h-full text-slate-100 pb-36 p-3 sm:p-6 md:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto relative select-none">
+    <div className="min-h-full text-slate-100 pb-52 sm:pb-40 md:pb-24 p-3 sm:p-6 md:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto relative select-none">
       
       {/* ========================================================================= */}
       {/* 1. EN-TÊTE PRINCIPAL STITCH & SYNCHRONISATION MULTI-APPAREILS             */}
@@ -1035,7 +1035,7 @@ export default function Receipts() {
 
         {/* View Switcher: Cartes Liquid Glass vs Tableau Croisé */}
         {activeTab === 'matrix' && (
-          <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-md self-start sm:self-auto">
+          <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-md self-start sm:self-auto shrink-0">
             <button
               onClick={() => setViewMode('cards')}
               className={cn(
@@ -1047,7 +1047,8 @@ export default function Receipts() {
               title="Vue Cartes Liquid Glass (Google Stitch)"
             >
               <LayoutGrid size={13} />
-              <span>Cartes Stitch</span>
+              <span className="hidden sm:inline">Cartes Stitch</span>
+              <span className="sm:hidden">Cartes</span>
             </button>
             <button
               onClick={() => setViewMode('table')}
@@ -1060,7 +1061,8 @@ export default function Receipts() {
               title="Vue Tableau Croisé classique"
             >
               <Table size={13} />
-              <span>Tableau Croisé</span>
+              <span className="hidden sm:inline">Tableau Croisé</span>
+              <span className="sm:hidden">Tableau</span>
             </button>
           </div>
         )}
@@ -1176,7 +1178,7 @@ export default function Receipts() {
             </div>
 
             {/* PILLULES DE FILTRE PAR MAGASIN PHYSIQUE (STITCH PILLS) */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-2 border-t border-white/5">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-2 border-t border-white/5 touch-scroll px-1 py-1 -mx-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 mr-1">
                 Magasins :
               </span>
@@ -1440,26 +1442,31 @@ export default function Receipts() {
           {/* ========================================================================= */}
           {viewMode === 'table' && (
             <div className="rounded-2xl border border-white/15 bg-slate-900/60 overflow-hidden shadow-xl backdrop-blur-md">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[700px] text-xs">
+              <div className="overflow-x-auto touch-scroll">
+                {/* Indicateur de défilement horizontal sur mobile */}
+                <div className="sm:hidden px-3 py-1.5 text-[10px] font-medium text-cyan-300/80 bg-cyan-950/40 border-b border-white/10 flex items-center justify-between">
+                  <span>👉 Faites glisser pour comparer les enseignes</span>
+                  <span className="font-bold">{allStores.length} magasins</span>
+                </div>
+                <table className="w-full text-left border-collapse min-w-[550px] sm:min-w-[700px] text-xs">
                   <thead>
                     <tr className="border-b border-white/10 bg-white/5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      <th className="py-3 px-4 w-[28%] min-w-[180px] font-bold">
+                      <th className="py-2.5 px-3 sm:py-3 sm:px-4 w-[28%] min-w-[130px] sm:min-w-[180px] font-bold">
                         Produit (Besoin & Rayon) ({filteredRows.length})
                       </th>
 
                       {allStores.map(st => (
-                        <th key={st.displayName} className="py-3 px-3 text-center min-w-[130px] font-bold text-white">
-                          <div className="flex flex-col items-center justify-center gap-1">
-                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                              <span className={cn("w-2 h-2 rounded-full", getStoreDotColor(st.displayName))} />
-                              <span className="font-extrabold text-xs" title={st.displayName}>{st.displayName}</span>
+                        <th key={st.displayName} className="py-2.5 px-2 sm:py-3 sm:px-3 text-center min-w-[110px] sm:min-w-[130px] font-bold text-white">
+                          <div className="flex flex-col items-center justify-center gap-0.5">
+                            <div className="flex items-center justify-center gap-1 flex-wrap">
+                              <span className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", getStoreDotColor(st.displayName))} />
+                              <span className="font-bold sm:font-extrabold text-[11px] sm:text-xs leading-tight" title={st.displayName}>{st.displayName}</span>
                               {st.googleMapsUrl && (
                                 <a
                                   href={st.googleMapsUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-slate-400 hover:text-cyan-400 transition-colors p-0.5"
+                                  className="text-slate-400 hover:text-cyan-400 transition-colors p-0.5 shrink-0"
                                   title="Ouvrir sur Google Maps"
                                 >
                                   <ExternalLink size={10} />
@@ -1467,7 +1474,7 @@ export default function Receipts() {
                               )}
                             </div>
                             {st.address && (
-                              <span className="text-[9px] font-normal text-slate-400 truncate max-w-[120px]" title={st.address}>
+                              <span className="text-[9px] font-normal text-slate-400 truncate max-w-[95px] sm:max-w-[120px] hidden xs:inline" title={st.address}>
                                 {st.address}
                               </span>
                             )}
@@ -1516,10 +1523,10 @@ export default function Receipts() {
 
                           {group.rows.map(row => (
                             <tr key={row.cleBesoin || row.nomGenerique} className="hover:bg-white/[0.03] transition-colors group">
-                              <td className="py-3 px-4 sticky left-0 bg-[#0c1222]/90 backdrop-blur-xs z-1 border-r border-white/10 max-w-[220px] align-middle">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-base shrink-0">{getProductEmoji(row.nomGenerique, row.rayon)}</span>
-                                  <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight leading-snug">
+                              <td className="py-2.5 px-3 sm:py-3 sm:px-4 sticky left-0 bg-[#0c1222]/95 backdrop-blur-md z-1 border-r border-white/10 max-w-[130px] sm:max-w-[220px] align-middle">
+                                <div className="flex items-center gap-1.5 sm:gap-2">
+                                  <span className="text-sm sm:text-base shrink-0">{getProductEmoji(row.nomGenerique, row.rayon)}</span>
+                                  <span className="font-bold sm:font-extrabold text-white text-[11px] sm:text-xs tracking-tight leading-snug line-clamp-2">
                                     {correctFrenchSpelling(row.nomGenerique)}
                                   </span>
                                 </div>
@@ -1668,15 +1675,15 @@ export default function Receipts() {
           {/* BARRE FLOTTANTE INFÉRIEURE STITCH (TOTAL ÉCONOMIES & PANIER OPTIMAL)      */}
           {/* ========================================================================= */}
           {filteredRows.length > 0 && (
-            <div className="fixed bottom-[4.75rem] md:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-4xl p-2.5 sm:p-3 rounded-2xl bg-[#0c1222]/95 backdrop-blur-xl border border-white/20 shadow-2xl shadow-cyan-950/30 flex items-center justify-between gap-3 text-xs">
+            <div className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-4xl p-2 sm:p-3 rounded-2xl bg-[#0c1222]/95 backdrop-blur-2xl border border-white/20 shadow-2xl shadow-cyan-950/40 flex items-center justify-between gap-2 sm:gap-3 text-xs">
               {/* Économies potentielles détectées */}
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-                  <TrendingDown size={16} />
+              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                  <TrendingDown size={15} />
                 </div>
-                <div className="flex flex-col">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="font-black text-emerald-400 font-mono text-sm sm:text-base">
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-baseline gap-1 sm:gap-1.5 truncate">
+                    <span className="font-black text-emerald-400 font-mono text-xs sm:text-base">
                       -{formatCurrency(totalDetectedSavings, { showSign: false })}
                     </span>
                     <span className="text-[10px] font-bold text-slate-300 hidden sm:inline">
@@ -1691,27 +1698,27 @@ export default function Receipts() {
 
               {/* Pagination minimalist Stitch */}
               {viewMode === 'cards' && totalPages > 1 && (
-                <div className="flex items-center gap-2 bg-white/5 border border-white/10 px-2.5 py-1 rounded-xl">
+                <div className="flex items-center gap-1 sm:gap-2 bg-white/5 border border-white/10 px-2 sm:px-2.5 py-1 rounded-xl shrink-0">
                   <button
                     type="button"
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="p-1 text-slate-300 hover:text-white disabled:opacity-30 cursor-pointer"
+                    className="p-0.5 sm:p-1 text-slate-300 hover:text-white disabled:opacity-30 cursor-pointer"
                     title="Page précédente"
                   >
-                    <ChevronLeft size={14} />
+                    <ChevronLeft size={13} />
                   </button>
-                  <span className="font-mono text-[11px] font-bold text-slate-200">
+                  <span className="font-mono text-[10px] sm:text-[11px] font-bold text-slate-200">
                     {currentPage} / {totalPages}
                   </span>
                   <button
                     type="button"
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="p-1 text-slate-300 hover:text-white disabled:opacity-30 cursor-pointer"
+                    className="p-0.5 sm:p-1 text-slate-300 hover:text-white disabled:opacity-30 cursor-pointer"
                     title="Page suivante"
                   >
-                    <ChevronRight size={14} />
+                    <ChevronRight size={13} />
                   </button>
                 </div>
               )}
@@ -1719,9 +1726,9 @@ export default function Receipts() {
               {/* Bouton Panier Optimal CTA */}
               <Button
                 onClick={() => setIsOptimalCartModalOpen(true)}
-                className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black text-xs gap-1.5 rounded-xl shadow-lg shadow-emerald-500/25 h-9 px-3 sm:px-4 cursor-pointer"
+                className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black text-[11px] sm:text-xs gap-1.5 rounded-xl shadow-lg shadow-emerald-500/25 h-8 sm:h-9 px-2.5 sm:px-4 cursor-pointer shrink-0"
               >
-                <Navigation size={14} className="fill-slate-950" />
+                <Navigation size={13} className="fill-slate-950 shrink-0" />
                 <span className="hidden sm:inline">Créer mon panier optimal</span>
                 <span className="sm:hidden">Panier optimal</span>
               </Button>

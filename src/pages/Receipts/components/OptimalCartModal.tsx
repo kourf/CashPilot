@@ -67,37 +67,37 @@ export const OptimalCartModal: React.FC<OptimalCartModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* EN-TÊTE DE LA MODALE */}
-        <div className="p-5 sm:p-6 border-b border-white/10 flex items-center justify-between bg-white/[0.03]">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl glass-glow-emerald flex items-center justify-center text-emerald-300 shadow-glow-emerald shrink-0">
-              <Sparkles size={22} />
+        <div className="p-4 sm:p-6 border-b border-white/10 flex items-center justify-between bg-white/[0.03]">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl glass-glow-emerald flex items-center justify-center text-emerald-300 shadow-glow-emerald shrink-0">
+              <Sparkles size={20} />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400">
-                  Itinéraire &amp; Stratégie d'Achat
+                  Itinéraire &amp; Stratégie
                 </span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   Algorithme 0 €
                 </span>
               </div>
-              <h2 className="text-lg sm:text-xl font-black text-white tracking-tight mt-0.5">
-                Panier Optimal &amp; Économies Détectées
+              <h2 className="text-base sm:text-xl font-black text-white tracking-tight mt-0.5 truncate">
+                Panier Optimal &amp; Économies
               </h2>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-full glass-pill hover:bg-white/20 flex items-center justify-center text-slate-400 hover:text-white transition-colors shrink-0"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full glass-pill hover:bg-white/20 flex items-center justify-center text-slate-400 hover:text-white transition-colors shrink-0 ml-2"
             aria-label="Fermer"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
         {/* CORPS DÉFILANT */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto touch-scroll p-4 sm:p-6 space-y-5 sm:space-y-6">
           {/* BANDEAU TOP SYNTHÈSE D'ÉCONOMIE */}
           <div className="glass-glow-emerald rounded-2xl p-5 border border-emerald-400/40 relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">

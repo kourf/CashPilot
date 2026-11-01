@@ -21,6 +21,7 @@ export default defineConfig({
         'apple-touch-icon.png',
         'pwa-192x192.png',
         'pwa-512x512.png',
+        'maskable-icon-192x192.png',
         'maskable-icon-512x512.png',
         'screenshot-mobile.png',
         'screenshot-desktop.png'
@@ -46,6 +47,12 @@ export default defineConfig({
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any'
+          },
+          {
+            src: '/maskable-icon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable'
           },
           {
             src: '/pwa-512x512.png',

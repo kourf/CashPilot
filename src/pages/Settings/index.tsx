@@ -485,7 +485,7 @@ export const Settings: React.FC = () => {
   }, [customRules]);
 
   return (
-    <div className="coach-liquid-aura min-h-[calc(100vh-4rem)] text-white relative selection:bg-sky-500/30 selection:text-white overflow-x-hidden pb-20">
+    <div className="coach-liquid-aura min-h-[calc(100vh-4rem)] text-white relative selection:bg-sky-500/30 selection:text-white overflow-x-hidden pb-36 sm:pb-32 md:pb-20">
       
       {/* Toast Notification Flottant Liquid Glass */}
       {statusMessage && (
@@ -1368,6 +1368,45 @@ export const Settings: React.FC = () => {
                     Les invites du Coach IA n'entraînent aucun modèle public tiers. Vos relevés restent cantonnés à votre session d'analyse.
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Maintenance & Synchronisation PWA Mobile */}
+            <div className="apple-glass-card rounded-3xl p-5 sm:p-7 border-cyan-500/30 bg-cyan-500/[0.04] space-y-4">
+              <div className="flex items-center gap-3 text-cyan-300">
+                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center shrink-0">
+                  <RefreshCw size={20} className="text-cyan-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Mise à Jour & Cache de l'Application</h3>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Forcer le rafraîchissement immédiat de CashPilot et purger le cache local du navigateur (PWA smartphone).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-cyan-500/20">
+                <span className="text-xs text-slate-300 max-w-lg leading-relaxed">
+                  Version active : <strong className="text-cyan-300">v2.4 (01 Nov 2026)</strong>. Si des modifications récentes ne s'affichent pas sur votre téléphone, ce bouton purge instantanément le stockage hors-ligne et télécharge la dernière version déployée.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+                      navigator.serviceWorker.getRegistrations().then(regs => {
+                        regs.forEach(r => r.unregister());
+                      });
+                    }
+                    if (typeof window !== 'undefined' && 'caches' in window) {
+                      caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+                    }
+                    window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+                  }}
+                  className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer whitespace-nowrap self-start sm:self-auto shadow-lg shadow-cyan-500/20 flex items-center gap-2"
+                >
+                  <RefreshCw size={14} />
+                  <span>Vider le cache & Recharger</span>
+                </button>
               </div>
             </div>
 
