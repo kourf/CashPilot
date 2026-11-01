@@ -5,7 +5,7 @@ import App from './App.tsx'
 import { registerSW } from 'virtual:pwa-register'
 
 // Version d'application unique pour forcer la synchronisation mobile
-export const APP_BUILD_ID = '2026.11.01-v2.5';
+export const APP_BUILD_ID = '2026.11.01-v2.6';
 
 /**
  * Purge complète du CacheStorage et réinitialisation du Service Worker

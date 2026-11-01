@@ -517,6 +517,17 @@ export const InstallPWAButton: React.FC<InstallPWAButtonProps> = ({
                       <span>L'icône s'ajoute à votre tiroir d'applications et se lance en plein écran autonome.</span>
                     </p>
                   </div>
+
+                  {/* Astuce Google Play Protect sur Samsung Internet */}
+                  <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 text-amber-200 text-xs space-y-1.5">
+                    <p className="font-bold text-amber-300 flex items-center gap-1.5">
+                      <ShieldCheck size={15} className="text-amber-400 shrink-0" />
+                      <span>Si « Google Play Protect » apparaît :</span>
+                    </p>
+                    <p className="text-slate-300 leading-relaxed pl-5 text-[11px]">
+                      Touchez <strong className="text-white underline">« Installer quand même »</strong> (situé juste au-dessus du bouton OK). C'est la confirmation de sécurité standard d'Android pour valider les WebAPK Samsung hors Play Store.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}

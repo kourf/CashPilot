@@ -182,19 +182,19 @@ export const LandingPage: React.FC = () => {
       {/* =========================================================================
           1. TOP FLOATING NAVIGATION BAR (Apple Liquid Glass)
          ========================================================================= */}
-      <header className="sticky top-3 z-50 px-3 sm:px-6 w-full max-w-7xl mx-auto">
-        <nav className="rounded-full bg-slate-950/40 backdrop-blur-2xl border border-white/15 px-4 sm:px-6 py-2.5 shadow-[0_16px_40px_rgba(0,0,0,0.5)] flex items-center justify-between gap-4">
+      <header className="sticky top-2 sm:top-3 z-50 px-2 sm:px-6 w-full max-w-7xl mx-auto">
+        <nav className="rounded-full bg-slate-950/70 backdrop-blur-2xl border border-white/15 px-3 sm:px-6 py-1.5 sm:py-2.5 shadow-[0_16px_40px_rgba(0,0,0,0.5)] flex items-center justify-between gap-2 sm:gap-4">
           
           {/* Logo & Brand */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 border border-white/20">
-              <Landmark size={18} className="stroke-[2.5]" />
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 border border-white/20 shrink-0">
+              <Landmark size={17} className="stroke-[2.5]" />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-black tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
                 CashPilot
               </span>
-              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+              <span className="text-[9px] sm:text-[10px] font-extrabold uppercase px-1.5 sm:px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
                 PRO
               </span>
             </div>
@@ -223,20 +223,21 @@ export const LandingPage: React.FC = () => {
           </div>
 
           {/* Right Action Buttons */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             <InstallPWAButton variant="compact" className="hidden sm:inline-flex" />
             <ThemeToggle variant="compact" />
             
             {user ? (
               <button
                 onClick={() => navigate('/')}
-                className="px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/25 border border-white/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/25 border border-white/20 transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shrink-0"
               >
-                <span>Accéder au Cockpit</span>
-                <ArrowRight size={14} />
+                <span className="hidden sm:inline">Accéder au Cockpit</span>
+                <span className="sm:hidden">Cockpit</span>
+                <ArrowRight size={13} />
               </button>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <button
                   onClick={() => openModal('login')}
                   className="hidden sm:inline-flex px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
@@ -245,10 +246,11 @@ export const LandingPage: React.FC = () => {
                 </button>
                 <button
                   onClick={() => openModal('register')}
-                  className="px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/25 border border-white/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/25 border border-white/20 transition-all flex items-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shrink-0"
                 >
-                  <span>Démarrer l'aventure</span>
-                  <ArrowRight size={14} />
+                  <span className="hidden sm:inline">Démarrer l'aventure</span>
+                  <span className="sm:hidden">Démarrer</span>
+                  <ArrowRight size={13} />
                 </button>
               </div>
             )}
@@ -259,7 +261,7 @@ export const LandingPage: React.FC = () => {
       {/* =========================================================================
           2. HERO SECTION ENCADRÉ SUR PC (Pleine page & Éléments 3D flottants)
          ========================================================================= */}
-      <section className="relative w-full min-h-[92vh] flex flex-col justify-center items-center px-4 sm:px-6 pt-10 pb-16 overflow-hidden">
+      <section className="relative w-full min-h-[calc(100dvh-4.5rem)] flex flex-col justify-center items-center px-3 sm:px-6 pt-3 sm:pt-10 pb-12 sm:pb-16 overflow-hidden">
         
         {/* ÉLÉMENT 3D FLOTTANT GAUCHE : Hologramme Carte Bancaire Apple Card inclinée */}
         <div className="pointer-events-none absolute left-4 lg:left-8 xl:left-14 top-28 sm:top-36 hidden lg:block z-20 animate-float-slow">
@@ -324,24 +326,25 @@ export const LandingPage: React.FC = () => {
         </div>
 
         {/* CONTENU CENTRAL DU HERO */}
-        <div className="max-w-4xl mx-auto text-center space-y-6 relative z-10">
+        <div className="max-w-4xl mx-auto text-center space-y-4 sm:space-y-6 relative z-10 w-full">
           
           {/* Trust Badge Social Proof */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/[0.06] backdrop-blur-2xl border border-white/15 shadow-md">
-            <div className="flex items-center text-amber-400 gap-0.5">
-              <Star size={13} className="fill-amber-400" />
-              <Star size={13} className="fill-amber-400" />
-              <Star size={13} className="fill-amber-400" />
-              <Star size={13} className="fill-amber-400" />
-              <Star size={13} className="fill-amber-400" />
+          <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-white/[0.06] backdrop-blur-2xl border border-white/15 shadow-md max-w-full">
+            <div className="flex items-center text-amber-400 gap-0.5 shrink-0">
+              <Star size={11} className="fill-amber-400 sm:w-3 sm:h-3" />
+              <Star size={11} className="fill-amber-400 sm:w-3 sm:h-3" />
+              <Star size={11} className="fill-amber-400 sm:w-3 sm:h-3" />
+              <Star size={11} className="fill-amber-400 sm:w-3 sm:h-3" />
+              <Star size={11} className="fill-amber-400 sm:w-3 sm:h-3" />
             </div>
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-200">
-              AUDIT FINANCIER CERTIFIÉ 0 € • CHIFFREMENT ISOLÉ AES-256
+            <span className="text-[9px] sm:text-[11px] font-extrabold uppercase tracking-wider text-slate-200">
+              <span className="hidden sm:inline">AUDIT FINANCIER CERTIFIÉ 0 € • CHIFFREMENT ISOLÉ AES-256</span>
+              <span className="sm:hidden">AUDIT CERTIFIÉ 0 € • AES-256</span>
             </span>
           </div>
 
           {/* Monumental Headline */}
-          <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight text-white leading-[1.08]">
+          <h1 className="text-[1.85rem] sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight text-white leading-[1.12] sm:leading-[1.08] px-1 sm:px-0">
             Prenez le contrôle total de vos{' '}
             <span className="bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 bg-clip-text text-transparent drop-shadow-[0_4px_24px_rgba(56,189,248,0.4)]">
               finances
@@ -352,53 +355,57 @@ export const LandingPage: React.FC = () => {
             </span>
           </h1>
 
-          {/* Services horizontal tags pill row */}
-          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 pt-2 text-xs font-semibold text-slate-300">
-            <span className="px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/10 backdrop-blur-xl flex items-center gap-1.5">
-              <Activity size={14} className="text-cyan-400" /> Cockpit Trésorerie
+          {/* Services horizontal tags pill row (Grille 2x2 propre sur mobile) */}
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-center gap-2 sm:gap-3 pt-1 text-[11px] sm:text-xs font-semibold text-slate-300 max-w-sm sm:max-w-none mx-auto w-full">
+            <span className="px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/10 backdrop-blur-xl flex items-center justify-center gap-1.5 text-center">
+              <Activity size={13} className="text-cyan-400 shrink-0" />
+              <span className="truncate">Cockpit Trésorerie</span>
             </span>
-            <span className="px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/10 backdrop-blur-xl flex items-center gap-1.5">
-              <Clock size={14} className="text-indigo-400" /> Relevés & Rapprochement
+            <span className="px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/10 backdrop-blur-xl flex items-center justify-center gap-1.5 text-center">
+              <Clock size={13} className="text-indigo-400 shrink-0" />
+              <span className="truncate">Relevés & Frise</span>
             </span>
-            <span className="px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/10 backdrop-blur-xl flex items-center gap-1.5">
-              <Receipt size={14} className="text-sky-400" /> Comparateur Tickets
+            <span className="px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/10 backdrop-blur-xl flex items-center justify-center gap-1.5 text-center">
+              <Receipt size={13} className="text-sky-400 shrink-0" />
+              <span className="truncate">Comparateur Tickets</span>
             </span>
-            <span className="px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/10 backdrop-blur-xl flex items-center gap-1.5">
-              <MessageSquareHeart size={14} className="text-emerald-400" /> Coach IA 24/7
+            <span className="px-2.5 sm:px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/10 backdrop-blur-xl flex items-center justify-center gap-1.5 text-center">
+              <MessageSquareHeart size={13} className="text-emerald-400 shrink-0" />
+              <span className="truncate">Coach IA 24/7</span>
             </span>
           </div>
 
-          <p className="text-sm sm:text-base md:text-lg text-slate-300 max-w-2xl mx-auto font-light leading-relaxed pt-1">
+          <p className="text-xs sm:text-base md:text-lg text-slate-300 max-w-2xl mx-auto font-light leading-relaxed pt-0.5 sm:pt-1 px-1 sm:px-0">
             La première plateforme financière pour particuliers pensée avec la rigueur d'un expert-comptable. Analysez vos relevés, éradiquez les doublons de vos courses et pilotez votre reste à vivre réel.
           </p>
 
           {/* CTA Action Buttons Group */}
-          <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3.5 max-w-lg mx-auto">
+          <div className="pt-2 sm:pt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5 sm:gap-3.5 w-full max-w-sm sm:max-w-lg mx-auto">
             <button
               onClick={() => openModal('register')}
-              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-primary to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-extrabold text-sm shadow-[0_10px_35px_rgba(56,189,248,0.35)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2.5 cursor-pointer border border-white/25"
+              className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-primary to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-[0_10px_35px_rgba(56,189,248,0.35)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer border border-white/25"
             >
               <span>Lancer mon cockpit gratuit</span>
-              <ArrowRight size={16} />
+              <ArrowRight size={15} />
             </button>
 
             <button
               onClick={handleExpressAdminAccess}
               disabled={isSubmitting}
-              className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-white/[0.08] hover:bg-white/[0.15] border border-white/20 text-white font-bold text-sm shadow-sm backdrop-blur-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+              className="w-full sm:w-auto px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl bg-white/[0.08] hover:bg-white/[0.15] border border-white/20 text-white font-bold text-xs sm:text-sm shadow-sm backdrop-blur-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
             >
-              <Zap size={16} className="text-cyan-400" />
+              <Zap size={15} className="text-cyan-400" />
               <span>⚡ Démo Express (Direct)</span>
             </button>
           </div>
 
           {/* Bouton d'Installation PWA Mobile & PC au centre de la Landing Page */}
-          <div className="pt-2 flex justify-center">
+          <div className="pt-1 sm:pt-2 flex justify-center">
             <InstallPWAButton variant="hero" />
           </div>
 
           {/* Google 1-Click option */}
-          <div className="pt-2 flex items-center justify-center">
+          <div className="pt-1 flex items-center justify-center">
             <button
               onClick={handleGoogleSignIn}
               disabled={isSubmitting}
@@ -740,7 +747,7 @@ export const LandingPage: React.FC = () => {
             className="absolute inset-0 bg-[#070a14]/80 backdrop-blur-xl cursor-pointer"
           />
 
-          <div className="relative w-full max-w-md rounded-[2.5rem] bg-[#0b0f1e]/95 backdrop-blur-2xl border border-white/20 p-6 sm:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.7)] space-y-5 text-slate-100 z-10 animate-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-md max-h-[92dvh] overflow-y-auto no-scrollbar rounded-[2rem] sm:rounded-[2.5rem] bg-[#0b0f1e]/95 backdrop-blur-2xl border border-white/20 p-5 sm:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.7)] space-y-4 sm:space-y-5 text-slate-100 z-10 animate-in zoom-in-95 duration-200">
             
             {/* Header Modale */}
             <div className="flex items-center justify-between pb-2 border-b border-white/10">

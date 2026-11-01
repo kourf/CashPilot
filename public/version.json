@@ -1,5 +1,5 @@
 {
-  "version": "2026.11.01-v2.5",
-  "buildTime": "2026-11-01T06:30:00Z",
-  "changelog": "Multi-browser PWA install & WebAPK enhancements (Samsung Internet, Safari iOS, Opera, Firefox)"
+  "version": "2026.11.01-v2.6",
+  "buildTime": "2026-11-01T07:20:00Z",
+  "changelog": "Samsung Internet Play Protect guidance and WebAPK installation optimization"
 }

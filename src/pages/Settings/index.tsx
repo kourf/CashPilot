@@ -1387,7 +1387,7 @@ export const Settings: React.FC = () => {
 
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-cyan-500/20">
                 <span className="text-xs text-slate-300 max-w-lg leading-relaxed">
-                  Version active : <strong className="text-cyan-300">v2.4 (01 Nov 2026)</strong>. Si des modifications récentes ne s'affichent pas sur votre téléphone, ce bouton purge instantanément le stockage hors-ligne et télécharge la dernière version déployée.
+                  Version active : <strong className="text-cyan-300">v2.5 (01 Nov 2026)</strong>. Si des modifications récentes ne s'affichent pas sur votre téléphone, ce bouton purge instantanément le stockage hors-ligne et télécharge la dernière version déployée.
                 </span>
                 <button
                   type="button"
