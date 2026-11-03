@@ -25,13 +25,10 @@ import {
   Search, 
   Trash2, 
   TrendingUp, 
-  TrendingDown, 
-  Tag, 
   ChevronDown, 
   ChevronUp, 
   Package, 
-  Zap,
-  Navigation
+  Zap
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -55,7 +52,6 @@ import { ReceiptValidationModal } from './components/ReceiptValidationModal';
 import { ManualReceiptModal } from './components/ManualReceiptModal';
 import { PriceEvolutionModal } from './components/PriceEvolutionModal';
 import { DeleteConfirmDialog } from './components/DeleteConfirmDialog';
-import { OptimalCartModal } from './components/OptimalCartModal';
 import { getProductEmoji } from '../../lib/productEmojiMapper';
 import { TARGET_PHYSICAL_STORES, resolvePhysicalStore } from '../../lib/storeRegistry';
 import { AISLE_CONFIGS, normalizeStoreName } from '../../lib/receiptClassifier';
@@ -142,7 +138,6 @@ export default function Receipts() {
   const [isValidationModalOpen, setIsValidationModalOpen] = useState(true);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const [selectedProductForEvolution, setSelectedProductForEvolution] = useState<ProductComparisonRow | null>(null);
-  const [isOptimalCartModalOpen, setIsOptimalCartModalOpen] = useState(false);
 
   // Filtres de la Matrice Comparative
   const [hideUncomparable, setHideUncomparable] = useState(false);
@@ -571,12 +566,6 @@ export default function Receipts() {
       return true;
     });
   }, [crossTableRows, showPromosOnly, selectedStoreFilter, hideUncomparable, selectedAisleFilter, searchTerm]);
-
-  // Calcul dynamique de l'économie globale détectée sur les courses
-  const totalDetectedSavings = useMemo(() => {
-    const comparableRows = crossTableRows.filter(r => r.isComparable && r.priceDiff > 0);
-    return Number(comparableRows.reduce((acc, r) => acc + r.priceDiff, 0).toFixed(2));
-  }, [crossTableRows]);
 
   // Couleur du point indicateur pour chaque enseigne
   const getStoreDotColor = (storeName: string): string => {
@@ -1354,45 +1343,6 @@ export default function Receipts() {
               </div>
             </div>
 
-          {/* ========================================================================= */}
-          {/* BARRE FLOTTANTE INFÉRIEURE STITCH (TOTAL ÉCONOMIES & PANIER OPTIMAL)      */}
-          {/* ========================================================================= */}
-          {filteredRows.length > 0 && (
-            <div className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-4xl p-2 sm:p-3 rounded-2xl bg-[#0c1222]/95 backdrop-blur-2xl border border-white/20 shadow-2xl shadow-cyan-950/40 flex items-center justify-between gap-2 sm:gap-3 text-xs">
-              {/* Économies potentielles détectées */}
-              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-                  <TrendingDown size={15} />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <div className="flex items-baseline gap-1 sm:gap-1.5 truncate">
-                    <span className="font-black text-emerald-400 font-mono text-xs sm:text-base">
-                      -{formatCurrency(totalDetectedSavings, { showSign: false })}
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-300 hidden sm:inline">
-                      d'économies potentielles
-                    </span>
-                  </div>
-                  <span className="text-[9px] text-slate-400 hidden sm:inline">
-                    Sur l'ensemble des articles comparables
-                  </span>
-                </div>
-              </div>
-
-
-
-              {/* Bouton Panier Optimal CTA */}
-              <Button
-                onClick={() => setIsOptimalCartModalOpen(true)}
-                className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black text-[11px] sm:text-xs gap-1.5 rounded-xl shadow-lg shadow-emerald-500/25 h-8 sm:h-9 px-2.5 sm:px-4 cursor-pointer shrink-0"
-              >
-                <Navigation size={13} className="fill-slate-950 shrink-0" />
-                <span className="hidden sm:inline">Créer mon panier optimal</span>
-                <span className="sm:hidden">Panier optimal</span>
-              </Button>
-            </div>
-          )}
-
         </div>
       )}
 
@@ -1502,13 +1452,6 @@ export default function Receipts() {
           <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#0c1222]/95" />
         </div>
       )}
-
-      {/* MODALE DU PANIER OPTIMAL (MULTI-ENSEIGNES & ÉCONOMIES MAXIMALES) */}
-      <OptimalCartModal
-        isOpen={isOptimalCartModalOpen}
-        onClose={() => setIsOptimalCartModalOpen(false)}
-        rows={crossTableRows}
-      />
 
       {/* MODALE DE VALIDATION DE TICKET */}
       {pendingValidationReceipt && (
