@@ -29,12 +29,8 @@ import {
   Tag, 
   ChevronDown, 
   ChevronUp, 
-  ChevronLeft,
-  ChevronRight,
   Package, 
   Zap,
-  LayoutGrid,
-  MoreHorizontal,
   Navigation
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
@@ -148,21 +144,12 @@ export default function Receipts() {
   const [selectedProductForEvolution, setSelectedProductForEvolution] = useState<ProductComparisonRow | null>(null);
   const [isOptimalCartModalOpen, setIsOptimalCartModalOpen] = useState(false);
 
-  // Mode d'affichage Stitch : Cartes Horizontales Déstructurées (Défaut) vs Tableau Croisé
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
-
-  // Filtres
+  // Filtres de la Matrice Comparative
   const [hideUncomparable, setHideUncomparable] = useState(false);
   const [showPromosOnly, setShowPromosOnly] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAisleFilter, setSelectedAisleFilter] = useState<string>('ALL');
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('ALL');
-
-  // Pagination pour la vue Cartes Stitch
-  const [currentPage, setCurrentPage] = useState(1);
-
-  // Menu d'options actif (...) sur chaque carte
-  const [activeMenuProduct, setActiveMenuProduct] = useState<string | null>(null);
 
   // L'INFOBULLE FLOTTANTE (TOOLTIP) AU SURVOL DU PRIX (RÈGLE 3 & STITCH DESIGN DNA)
   const [floatingTooltip, setFloatingTooltip] = useState<{
@@ -183,19 +170,6 @@ export default function Receipts() {
       window.removeEventListener('resize', handleDismiss);
     };
   }, [floatingTooltip]);
-
-  // Fermeture du menu contextuel au clic extérieur
-  useEffect(() => {
-    if (!activeMenuProduct) return;
-    const handleDismissMenu = () => setActiveMenuProduct(null);
-    window.addEventListener('click', handleDismissMenu);
-    return () => window.removeEventListener('click', handleDismissMenu);
-  }, [activeMenuProduct]);
-
-  // Réinitialiser la pagination lors d'un changement de filtre
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, selectedAisleFilter, selectedStoreFilter, showPromosOnly, hideUncomparable]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -598,14 +572,6 @@ export default function Receipts() {
     });
   }, [crossTableRows, showPromosOnly, selectedStoreFilter, hideUncomparable, selectedAisleFilter, searchTerm]);
 
-  // Pagination pour la vue Cartes Stitch
-  const ITEMS_PER_PAGE = 12;
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / ITEMS_PER_PAGE));
-  const paginatedRows = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredRows.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredRows, currentPage]);
-
   // Calcul dynamique de l'économie globale détectée sur les courses
   const totalDetectedSavings = useMemo(() => {
     const comparableRows = crossTableRows.filter(r => r.isComparable && r.priceDiff > 0);
@@ -624,29 +590,6 @@ export default function Receipts() {
     if (s.includes('auchan')) return 'bg-emerald-400';
     return 'bg-indigo-400';
   };
-
-  // RÈGLE 2 : REGROUPEMENT PAR EN-TÊTES DE SECTION TRANSVERSAUX (RAYONS EN MAJUSCULES)
-  const groupedAisles = useMemo(() => {
-    const map: Record<string, typeof filteredRows> = {};
-    SUPERMARKET_AISLES.forEach(a => {
-      map[a] = [];
-    });
-
-    filteredRows.forEach(row => {
-      const aisle = row.rayon || 'Autres / Divers';
-      if (!map[aisle]) {
-        map[aisle] = [];
-      }
-      map[aisle].push(row);
-    });
-
-    return SUPERMARKET_AISLES
-      .filter(aisle => map[aisle] && map[aisle].length > 0)
-      .map(aisle => ({
-        aisle,
-        rows: map[aisle].sort((a, b) => a.nomGenerique.localeCompare(b.nomGenerique, 'fr', { sensitivity: 'base' }))
-      }));
-  }, [filteredRows]);
 
   return (
     <div className="min-h-full text-slate-100 pb-52 sm:pb-40 md:pb-24 p-3 sm:p-6 md:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto relative select-none">
@@ -1032,40 +975,6 @@ export default function Receipts() {
             <span>Historique des Tickets ({receipts.length})</span>
           </button>
         </div>
-
-        {/* View Switcher: Cartes Liquid Glass vs Tableau Croisé */}
-        {activeTab === 'matrix' && (
-          <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-md self-start sm:self-auto shrink-0">
-            <button
-              onClick={() => setViewMode('cards')}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
-                viewMode === 'cards'
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
-                  : "text-slate-400 hover:text-white hover:bg-white/5"
-              )}
-              title="Vue Cartes Liquid Glass (Google Stitch)"
-            >
-              <LayoutGrid size={13} />
-              <span className="hidden sm:inline">Cartes Stitch</span>
-              <span className="sm:hidden">Cartes</span>
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
-                viewMode === 'table'
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
-                  : "text-slate-400 hover:text-white hover:bg-white/5"
-              )}
-              title="Vue Tableau Croisé classique"
-            >
-              <Table size={13} />
-              <span className="hidden sm:inline">Tableau Croisé</span>
-              <span className="sm:hidden">Tableau</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {/* ========================================================================= */}
@@ -1224,236 +1133,24 @@ export default function Receipts() {
             </div>
           )}
 
-          {/* ========================================================================= */}
-          {/* OPTION 1 : VUE EN CARTES HORIZONTALES LIQUID GLASS (STITCH DÉFAUT)          */}
-          {/* ========================================================================= */}
-          {viewMode === 'cards' && (
-            <div className="space-y-3">
-              {paginatedRows.length === 0 ? (
-                <div className="glass-surface rounded-3xl p-12 text-center text-slate-400 border border-white/10">
-                  <Package size={36} className="mx-auto mb-3 opacity-40 text-cyan-400" />
-                  <p className="font-bold text-white text-base">Aucun produit ne correspond à vos filtres.</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {hideUncomparable
-                      ? "Désactivez 'Comparer uniquement' pour réafficher tous les articles uniques."
-                      : "Importez d'autres tickets ou ajustez vos critères de recherche."}
-                  </p>
-                </div>
-              ) : (
-                paginatedRows.map((row) => (
-                  <div
-                    key={row.cleBesoin || row.nomGenerique}
-                    className="glass-surface rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:border-cyan-400/40 relative border border-white/10 shadow-lg group"
-                  >
-                    {/* COLONNE GAUCHE : EMOJI INTELLIGENT, NOM GÉNÉRIQUE & BADGES */}
-                    <div className="flex items-start gap-3.5 min-w-0">
-                      <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-2xl shrink-0 shadow-inner group-hover:scale-105 transition-transform">
-                        {getProductEmoji(row.nomGenerique, row.rayon)}
-                      </div>
 
-                      <div className="space-y-1.5 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-extrabold text-white text-sm sm:text-base tracking-tight leading-snug">
-                            {correctFrenchSpelling(row.nomGenerique)}
-                          </h4>
-                          <span className="glass-pill text-[10px] text-cyan-300 font-mono font-bold">
-                            {row.dominantUnit || 'Format standard'}
-                          </span>
-                          <span className="glass-pill text-[10px] text-slate-300 font-medium">
-                            {row.rayon}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {row.isComparable ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
-                              <span>{row.storeCount} enseignes comparées</span>
-                              {row.priceDiff > 0 && (
-                                <span>• Écart : -{row.priceDiffPercent}% (+{formatCurrency(row.priceDiff, { showSign: false })})</span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10 font-mono">
-                              1 enseigne (Unique)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* COLONNE CENTRALE / DROITE : PILLULES DE PRIX PAR MAGASIN */}
-                    <div className="flex items-center gap-3 self-stretch lg:self-auto justify-between lg:justify-end">
-                      <div className="flex flex-wrap items-center gap-2 justify-start lg:justify-end flex-1">
-                        {allStores.map(st => {
-                          const offer = row.storeOffers[st.displayName];
-                          if (!offer) {
-                            return (
-                              <div
-                                key={st.displayName}
-                                className="flex flex-col items-center justify-center px-2.5 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] text-slate-500 opacity-40 text-center select-none"
-                              >
-                                <div className="flex items-center gap-1 text-[9px] font-bold">
-                                  <span className={cn("w-1.5 h-1.5 rounded-full", getStoreDotColor(st.displayName))} />
-                                  <span>{st.displayName}</span>
-                                </div>
-                                <span className="font-mono text-xs mt-0.5">—</span>
-                              </div>
-                            );
-                          }
-
-                          const isCheapestInRow = row.isComparable && offer.prixUnitaire === row.lowestPrice;
-
-                          return (
-                            <div
-                              key={st.displayName}
-                              className={cn(
-                                "flex flex-col items-center justify-center px-3 py-1.5 rounded-xl border transition-all cursor-pointer group/pill text-center select-none relative",
-                                isCheapestInRow
-                                  ? "glass-glow-emerald border-emerald-500/50 bg-emerald-500/15 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)] ring-1 ring-emerald-400/40"
-                                  : "glass-pill text-slate-200 border-white/15 hover:border-white/30"
-                              )}
-                              onMouseEnter={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setFloatingTooltip({
-                                  offer,
-                                  storeName: st.displayName,
-                                  isCheapest: isCheapestInRow,
-                                  x: rect.left + rect.width / 2,
-                                  y: rect.top
-                                });
-                              }}
-                              onMouseLeave={() => setFloatingTooltip(null)}
-                              onClick={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setFloatingTooltip(prev => prev ? null : {
-                                  offer,
-                                  storeName: st.displayName,
-                                  isCheapest: isCheapestInRow,
-                                  x: rect.left + rect.width / 2,
-                                  y: rect.top
-                                });
-                              }}
-                              role="button"
-                              tabIndex={0}
-                              title="Survolez ou touchez pour afficher l'infobulle détaillée"
-                            >
-                              {/* Nom enseigne */}
-                              <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold mb-0.5">
-                                <span className={cn("w-1.5 h-1.5 rounded-full", getStoreDotColor(st.displayName))} />
-                                <span>{st.displayName}</span>
-                              </div>
-
-                              {/* Prix d'origine barré si promo */}
-                              {offer.isPromo && offer.initialUnitPrice && offer.initialUnitPrice > offer.prixUnitaire && (
-                                <span className="text-[9px] font-mono text-slate-400 line-through leading-none">
-                                  {formatCurrency(offer.initialUnitPrice, { showSign: false })}
-                                </span>
-                              )}
-
-                              {/* Prix unitaire (€/kg ou €/L) en grand */}
-                              <div className={cn(
-                                "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight",
-                                isCheapestInRow ? "text-emerald-300 font-extrabold" : "text-white"
-                              )}>
-                                <span>{formatCurrency(offer.prixUnitaire, { showSign: false })}</span>
-                                <span className="text-[10px] font-bold text-slate-400">
-                                  /{offer.unite}
-                                </span>
-                              </div>
-
-                              {/* Prix payé du pack en discret */}
-                              <span className="text-[10px] text-slate-400 font-mono leading-none">
-                                ({formatCurrency(offer.prixPaye, { showSign: false })})
-                              </span>
-
-                              {/* Badges Promo & Moins cher */}
-                              <div className="flex items-center gap-1 mt-1">
-                                {offer.isPromo && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.2 rounded-md bg-amber-500/25 text-amber-300 border border-amber-500/40">
-                                    <Zap size={7} className="fill-amber-400" />
-                                    -{offer.discountRate || Math.round(((offer.discountAmount || 0) / (offer.initialPrice || 1)) * 100)}%
-                                  </span>
-                                )}
-                                {isCheapestInRow && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.2 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">
-                                    <Check size={8} className="stroke-[3]" />
-                                    Moins cher
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* MENU D'OPTIONS (...) */}
-                      <div className="relative shrink-0">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveMenuProduct(activeMenuProduct === row.nomGenerique ? null : row.nomGenerique);
-                          }}
-                          className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                          title="Options de l'article"
-                        >
-                          <MoreHorizontal size={16} />
-                        </button>
-
-                        {activeMenuProduct === row.nomGenerique && (
-                          <div className="absolute right-0 top-12 z-30 w-52 p-1.5 rounded-2xl bg-slate-900/95 backdrop-blur-xl border border-white/15 shadow-2xl space-y-1">
-                            {row.sampleRawRow && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedProductForEvolution(row.sampleRawRow || null);
-                                  setActiveMenuProduct(null);
-                                }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-cyan-300 hover:bg-cyan-500/15 transition-colors text-left cursor-pointer"
-                              >
-                                <TrendingUp size={14} className="text-cyan-400" />
-                                <span>Courbe d'évolution</span>
-                              </button>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setProductToDelete(row.nomGenerique);
-                                setActiveMenuProduct(null);
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:text-rose-200 hover:bg-rose-500/15 transition-colors text-left cursor-pointer"
-                            >
-                              <Trash2 size={14} className="text-rose-400" />
-                              <span>Masquer du comparatif</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
 
           {/* ========================================================================= */}
-          {/* OPTION 2 : VUE EN TABLEAU CROISÉ AVANCÉ (AVEC GROUPES DE RAYONS)          */}
+          {/* TABLEAU CROISÉ COMPARATIF MULTI-ENSEIGNES LIQUID GLASS                   */}
           {/* ========================================================================= */}
-          {viewMode === 'table' && (
-            <div className="rounded-2xl border border-white/15 bg-slate-900/60 overflow-hidden shadow-xl backdrop-blur-md">
-              <div className="overflow-x-auto touch-scroll">
-                {/* Indicateur de défilement horizontal sur mobile */}
-                <div className="sm:hidden px-3 py-1.5 text-[10px] font-medium text-cyan-300/80 bg-cyan-950/40 border-b border-white/10 flex items-center justify-between">
-                  <span>👉 Faites glisser pour comparer les enseignes</span>
-                  <span className="font-bold">{allStores.length} magasins</span>
-                </div>
-                <table className="w-full text-left border-collapse min-w-[550px] sm:min-w-[700px] text-xs">
-                  <thead>
-                    <tr className="border-b border-white/10 bg-white/5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      <th className="py-2.5 px-3 sm:py-3 sm:px-4 w-[28%] min-w-[130px] sm:min-w-[180px] font-bold">
-                        Produit (Besoin & Rayon) ({filteredRows.length})
-                      </th>
+          <div className="rounded-2xl border border-white/15 bg-slate-900/60 overflow-hidden shadow-xl backdrop-blur-md">
+            <div className="overflow-x-auto touch-scroll">
+              {/* Indicateur de défilement horizontal sur mobile */}
+              <div className="sm:hidden px-3 py-1.5 text-[10px] font-medium text-cyan-300/80 bg-cyan-950/40 border-b border-white/10 flex items-center justify-between">
+                <span>👉 Faites glisser pour comparer les enseignes</span>
+                <span className="font-bold">{allStores.length} magasins</span>
+              </div>
+              <table className="w-full text-left border-collapse min-w-[550px] sm:min-w-[700px] text-xs">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="py-2.5 px-3 sm:py-3 sm:px-4 w-[28%] min-w-[130px] sm:min-w-[180px] font-bold">
+                      Produit & Rayon ({filteredRows.length})
+                    </th>
 
                       {allStores.map(st => (
                         <th key={st.displayName} className="py-2.5 px-2 sm:py-3 sm:px-3 text-center min-w-[110px] sm:min-w-[130px] font-bold text-white">
@@ -1492,7 +1189,7 @@ export default function Receipts() {
                   </thead>
 
                   <tbody className="divide-y divide-white/5 text-xs">
-                    {groupedAisles.length === 0 ? (
+                    {filteredRows.length === 0 ? (
                       <tr>
                         <td colSpan={allStores.length + 3} className="py-12 text-center text-slate-400">
                           <Package size={28} className="mx-auto mb-2 opacity-40 text-cyan-400" />
@@ -1503,173 +1200,159 @@ export default function Receipts() {
                         </td>
                       </tr>
                     ) : (
-                      groupedAisles.map(group => (
-                        <React.Fragment key={`aisle-group-${group.aisle}`}>
-                          <tr className="bg-white/5 border-y border-white/10 sticky top-0 z-10 backdrop-blur-md">
-                            <td colSpan={allStores.length + 3} className="py-2.5 px-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 rounded-full bg-cyan-400 shrink-0" />
-                                  <span className="font-black text-xs uppercase tracking-wider text-cyan-300">
-                                    {group.aisle}
-                                  </span>
-                                </div>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-slate-300 font-mono">
-                                  {group.rows.length} article{group.rows.length > 1 ? 's' : ''}
+                      filteredRows.map(row => (
+                        <tr key={row.cleBesoin || row.nomGenerique} className="hover:bg-white/[0.03] transition-colors group">
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-4 sticky left-0 bg-[#0c1222]/95 backdrop-blur-md z-1 border-r border-white/10 max-w-[140px] sm:max-w-[220px] align-middle">
+                            <div className="flex flex-col gap-1 min-w-0">
+                              <div className="flex items-center gap-1.5 sm:gap-2">
+                                <span className="text-sm sm:text-base shrink-0">{getProductEmoji(row.nomGenerique, row.rayon)}</span>
+                                <span className="font-bold sm:font-extrabold text-white text-[11px] sm:text-xs tracking-tight leading-snug line-clamp-2">
+                                  {correctFrenchSpelling(row.nomGenerique)}
                                 </span>
                               </div>
-                            </td>
-                          </tr>
+                              <div className="flex items-center gap-1 pl-5 sm:pl-6">
+                                <span className="text-[9px] font-medium text-slate-400 bg-white/[0.05] border border-white/[0.08] px-1.5 py-0.2 rounded-md truncate max-w-[140px]" title={row.rayon}>
+                                  {row.rayon}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
 
-                          {group.rows.map(row => (
-                            <tr key={row.cleBesoin || row.nomGenerique} className="hover:bg-white/[0.03] transition-colors group">
-                              <td className="py-2.5 px-3 sm:py-3 sm:px-4 sticky left-0 bg-[#0c1222]/95 backdrop-blur-md z-1 border-r border-white/10 max-w-[130px] sm:max-w-[220px] align-middle">
-                                <div className="flex items-center gap-1.5 sm:gap-2">
-                                  <span className="text-sm sm:text-base shrink-0">{getProductEmoji(row.nomGenerique, row.rayon)}</span>
-                                  <span className="font-bold sm:font-extrabold text-white text-[11px] sm:text-xs tracking-tight leading-snug line-clamp-2">
-                                    {correctFrenchSpelling(row.nomGenerique)}
-                                  </span>
-                                </div>
-                              </td>
+                          {allStores.map(st => {
+                            const offer = row.storeOffers[st.displayName];
+                            if (!offer) {
+                              return (
+                                <td key={st.displayName} className="py-3 px-3 text-center text-slate-600 font-mono text-xs align-middle">
+                                  —
+                                </td>
+                              );
+                            }
 
-                              {allStores.map(st => {
-                                const offer = row.storeOffers[st.displayName];
-                                if (!offer) {
-                                  return (
-                                    <td key={st.displayName} className="py-3 px-3 text-center text-slate-600 font-mono text-xs align-middle">
-                                      —
-                                    </td>
-                                  );
-                                }
+                            const isCheapestInRow = row.isComparable && offer.prixUnitaire === row.lowestPrice;
 
-                                const isCheapestInRow = row.isComparable && offer.prixUnitaire === row.lowestPrice;
-
-                                return (
-                                  <td 
-                                    key={st.displayName}
-                                    className={cn(
-                                      "py-3 px-3 text-center transition-colors align-middle",
-                                      isCheapestInRow && "bg-emerald-500/10"
-                                    )}
-                                  >
-                                    <div
-                                      className="flex flex-col items-center justify-center cursor-pointer py-1.5 px-2 rounded-xl transition-all hover:bg-white/5 select-none group/cell"
-                                      onMouseEnter={(e) => {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setFloatingTooltip({
-                                          offer,
-                                          storeName: st.displayName,
-                                          isCheapest: isCheapestInRow,
-                                          x: rect.left + rect.width / 2,
-                                          y: rect.top
-                                        });
-                                      }}
-                                      onMouseLeave={() => setFloatingTooltip(null)}
-                                      onClick={(e) => {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setFloatingTooltip(prev => prev ? null : {
-                                          offer,
-                                          storeName: st.displayName,
-                                          isCheapest: isCheapestInRow,
-                                          x: rect.left + rect.width / 2,
-                                          y: rect.top
-                                        });
-                                      }}
-                                      role="button"
-                                      tabIndex={0}
-                                    >
-                                      {offer.isPromo && offer.initialUnitPrice && offer.initialUnitPrice > offer.prixUnitaire && (
-                                        <span className="text-[10px] font-mono text-slate-400 line-through block leading-none mb-0.5">
-                                          {formatCurrency(offer.initialUnitPrice, { showSign: false })}
-                                        </span>
-                                      )}
-
-                                      <div className={cn(
-                                        "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight transition-transform duration-150 group-hover/cell:scale-105",
-                                        isCheapestInRow ? "text-emerald-300 font-extrabold" : "text-white"
-                                      )}>
-                                        <span>{formatCurrency(offer.prixUnitaire, { showSign: false })}</span>
-                                        <span className="text-[11px] font-bold text-slate-400">
-                                          /{offer.unite}
-                                        </span>
-                                      </div>
-
-                                      <div className="flex flex-wrap items-center justify-center gap-1 mt-0.5">
-                                        {offer.isPromo && (
-                                          <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                            <Zap size={8} className="fill-amber-400" />
-                                            -{offer.discountRate || Math.round(((offer.discountAmount || 0) / (offer.initialPrice || 1)) * 100)}%
-                                          </span>
-                                        )}
-
-                                        {isCheapestInRow && (
-                                          <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                            <Check size={9} className="stroke-[3]" />
-                                            Moins cher
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </td>
-                                );
-                              })}
-
-                              <td className="py-3 px-3 text-right align-top">
-                                {row.isComparable ? (
-                                  <div className="flex flex-col items-end">
-                                    <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
-                                      {row.storeCount} magasins
+                            return (
+                              <td 
+                                key={st.displayName}
+                                className={cn(
+                                  "py-3 px-3 text-center transition-colors align-middle",
+                                  isCheapestInRow && "bg-emerald-500/10"
+                                )}
+                              >
+                                <div
+                                  className="flex flex-col items-center justify-center cursor-pointer py-1.5 px-2 rounded-xl transition-all hover:bg-white/5 select-none group/cell"
+                                  onMouseEnter={(e) => {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setFloatingTooltip({
+                                      offer,
+                                      storeName: st.displayName,
+                                      isCheapest: isCheapestInRow,
+                                      x: rect.left + rect.width / 2,
+                                      y: rect.top
+                                    });
+                                  }}
+                                  onMouseLeave={() => setFloatingTooltip(null)}
+                                  onClick={(e) => {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setFloatingTooltip(prev => prev ? null : {
+                                      offer,
+                                      storeName: st.displayName,
+                                      isCheapest: isCheapestInRow,
+                                      x: rect.left + rect.width / 2,
+                                      y: rect.top
+                                    });
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  {offer.isPromo && offer.initialUnitPrice && offer.initialUnitPrice > offer.prixUnitaire && (
+                                    <span className="text-[10px] font-mono text-slate-400 line-through block leading-none mb-0.5">
+                                      {formatCurrency(offer.initialUnitPrice, { showSign: false })}
                                     </span>
-                                    {row.priceDiff > 0 && (
-                                      <span className="text-[10px] font-bold text-emerald-300 font-mono mt-1">
-                                        -{row.priceDiffPercent}% (+{formatCurrency(row.priceDiff, { showSign: false })})
+                                  )}
+
+                                  <div className={cn(
+                                    "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight transition-transform duration-150 group-hover/cell:scale-105",
+                                    isCheapestInRow ? "text-emerald-300 font-extrabold" : "text-white"
+                                  )}>
+                                    <span>{formatCurrency(offer.prixUnitaire, { showSign: false })}</span>
+                                    <span className="text-[11px] font-bold text-slate-400">
+                                      /{offer.unite}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center justify-center gap-1 mt-0.5">
+                                    {offer.isPromo && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                        <Zap size={8} className="fill-amber-400" />
+                                        -{offer.discountRate || Math.round(((offer.discountAmount || 0) / (offer.initialPrice || 1)) * 100)}%
+                                      </span>
+                                    )}
+
+                                    {isCheapestInRow && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                        <Check size={9} className="stroke-[3]" />
+                                        Moins cher
                                       </span>
                                     )}
                                   </div>
-                                ) : (
-                                  <div className="flex flex-col items-end">
-                                    <span className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10">
-                                      1 magasin
-                                    </span>
-                                    <span className="text-[9px] text-slate-400 mt-0.5">
-                                      Unique
-                                    </span>
-                                  </div>
-                                )}
-                              </td>
-
-                              <td className="py-3 px-2 text-center align-top">
-                                <div className="flex items-center justify-center gap-1">
-                                  {row.sampleRawRow && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedProductForEvolution(row.sampleRawRow || null)}
-                                      className="p-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/15 transition-colors"
-                                      title="Voir la courbe d'évolution du prix"
-                                    >
-                                      <TrendingUp size={13} />
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => setProductToDelete(row.nomGenerique)}
-                                    className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
-                                    title="Masquer ce produit du tableau comparatif"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
                                 </div>
                               </td>
-                            </tr>
-                          ))}
-                        </React.Fragment>
+                            );
+                          })}
+
+                          <td className="py-3 px-3 text-right align-middle">
+                            {row.isComparable ? (
+                              <div className="flex flex-col items-end">
+                                <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
+                                  {row.storeCount} magasins
+                                </span>
+                                {row.priceDiff > 0 && (
+                                  <span className="text-[10px] font-bold text-emerald-300 font-mono mt-1">
+                                    -{row.priceDiffPercent}% (+{formatCurrency(row.priceDiff, { showSign: false })})
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-end">
+                                <span className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10">
+                                  1 magasin
+                                </span>
+                                <span className="text-[9px] text-slate-400 mt-0.5">
+                                  Unique
+                                </span>
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-2 text-center align-middle">
+                            <div className="flex items-center justify-center gap-1">
+                              {row.sampleRawRow && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedProductForEvolution(row.sampleRawRow || null)}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/15 transition-colors"
+                                  title="Voir la courbe d'évolution du prix"
+                                >
+                                  <TrendingUp size={13} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setProductToDelete(row.nomGenerique)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
+                                title="Masquer ce produit du tableau comparatif"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       ))
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
-          )}
 
           {/* ========================================================================= */}
           {/* BARRE FLOTTANTE INFÉRIEURE STITCH (TOTAL ÉCONOMIES & PANIER OPTIMAL)      */}
@@ -1696,32 +1379,7 @@ export default function Receipts() {
                 </div>
               </div>
 
-              {/* Pagination minimalist Stitch */}
-              {viewMode === 'cards' && totalPages > 1 && (
-                <div className="flex items-center gap-1 sm:gap-2 bg-white/5 border border-white/10 px-2 sm:px-2.5 py-1 rounded-xl shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="p-0.5 sm:p-1 text-slate-300 hover:text-white disabled:opacity-30 cursor-pointer"
-                    title="Page précédente"
-                  >
-                    <ChevronLeft size={13} />
-                  </button>
-                  <span className="font-mono text-[10px] sm:text-[11px] font-bold text-slate-200">
-                    {currentPage} / {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="p-0.5 sm:p-1 text-slate-300 hover:text-white disabled:opacity-30 cursor-pointer"
-                    title="Page suivante"
-                  >
-                    <ChevronRight size={13} />
-                  </button>
-                </div>
-              )}
+
 
               {/* Bouton Panier Optimal CTA */}
               <Button
