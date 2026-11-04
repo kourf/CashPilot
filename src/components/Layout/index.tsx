@@ -84,194 +84,119 @@ export default function Layout() {
   const pageInfo = getPageTitle();
 
   return (
-    <div className="flex h-screen overflow-hidden flex-col md:flex-row antialiased liquid-mesh text-slate-100 selection:bg-cyan-500/20 selection:text-cyan-400 transition-colors duration-300">
+    <div className="flex h-screen overflow-hidden flex-col antialiased liquid-mesh text-slate-100 selection:bg-cyan-500/20 selection:text-cyan-400 transition-colors duration-300">
       
-      {/* Desktop Sidebar (Apple VisionOS / Liquid Glass aesthetic) */}
-      <aside className="hidden md:flex flex-col w-64 border-r border-white/10 backdrop-blur-2xl p-4 justify-between z-30 bg-slate-950/25 text-slate-100 shadow-[4px_0_24px_rgba(0,0,0,0.3)]">
-        <div className="space-y-6">
-          {/* Brand Header */}
-          <Link to="/" className="flex items-center gap-3 px-2 group">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-transform duration-300 border border-white/20">
-              <Landmark size={20} className="stroke-[2.5]" />
+      {/* Top Sticky Header avec Logo CashPilot, Navigation Info & Profil Apple VisionOS */}
+      <header className="h-16 px-4 md:px-8 border-b border-white/10 backdrop-blur-xl flex items-center justify-between z-30 shrink-0 bg-slate-950/40 text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
+        {/* Gauche : Logo CashPilot PRO & Titre de page */}
+        <div className="flex items-center gap-3 sm:gap-6">
+          <Link to="/" className="flex items-center gap-2.5 sm:gap-3 group">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-transform duration-300 border border-white/20 shrink-0">
+              <Landmark size={18} className="stroke-[2.5]" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+                <span className="text-base sm:text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
                   CashPilot
                 </span>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
                   PRO
                 </span>
               </div>
-              <p className="text-[11px] font-medium text-slate-400">Finance & Patrimoine</p>
+              <p className="text-[10px] sm:text-[11px] font-medium text-slate-400">Finance & Patrimoine</p>
             </div>
           </Link>
 
-          {/* Navigation Links */}
-          <nav className="space-y-1.5 pt-2">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path || 
-                (item.path !== '/' && location.pathname.startsWith(item.path));
-              const isCoachTab = item.path === '/coach';
-                
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={cn(
-                    "flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative cursor-pointer",
-                    isActive 
-                      ? "bg-white/[0.14] text-white shadow-[0_2px_14px_rgba(56,189,248,0.25)] border border-white/20 font-semibold" 
-                      : "text-slate-300 hover:text-white hover:bg-white/[0.07] border border-transparent"
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <item.icon 
-                      size={18} 
-                      className={cn(
-                        "transition-transform duration-200 group-hover:scale-110",
-                        isActive ? "text-cyan-400 stroke-[2.5]" : "text-slate-400 group-hover:text-slate-200"
-                      )} 
-                    />
-                    <span>{item.label}</span>
-                  </div>
+          <div className="hidden lg:block h-6 w-px bg-white/10" />
 
-                  {item.badge && (
-                    <span className={cn(
-                      "text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1",
-                      isActive ? "bg-white/20 text-white" : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
-                    )}>
-                      {isCoachTab && isCoachLoading ? (
-                        <Loader2 size={10} className="animate-spin text-cyan-400" />
-                      ) : (
-                        <Sparkles size={10} />
-                      )}
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
+          <div className="hidden lg:block">
+            <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+              {pageInfo.title}
+            </h2>
+            <p className="text-xs text-slate-400">
+              {pageInfo.subtitle}
+            </p>
+          </div>
         </div>
 
-        {/* Sidebar Footer */}
-        <div className="space-y-3 pt-4 border-t border-white/10">
-          <ThemeToggle variant="expanded" />
+        {/* Droite : Outils, Mode Sombre & Profil Utilisateur */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Badge UID Chiffré discret */}
+          <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-slate-300 text-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+            <span className="text-[11px] font-medium">UID Chiffré</span>
+            <ShieldCheck size={13} className="text-emerald-400 ml-0.5" />
+          </div>
 
-          {userProfile && (
-            <div className="px-3 py-2.5 rounded-xl border border-white/10 bg-white/[0.05] flex items-center justify-between gap-2 transition-colors">
-              <div className="flex items-center gap-2.5 min-w-0">
+          {/* Bouton de mise à jour instantanée & purge cache */}
+          <button
+            onClick={handleForceRefresh}
+            title="Vider le cache et charger la dernière version"
+            disabled={isRefreshingApp}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-300 hover:text-cyan-300 hover:bg-white/[0.08] border border-white/10 flex items-center gap-1.5 text-xs transition-all active:scale-95 cursor-pointer bg-white/[0.04]"
+          >
+            <RefreshCw size={14} className={cn("text-cyan-400 shrink-0", isRefreshingApp && "animate-spin")} />
+            <span className="text-[11px] font-bold text-cyan-300 sm:inline">v2.5</span>
+          </button>
+
+          <ThemeToggle variant="compact" />
+
+          {/* Profil utilisateur & Déconnexion */}
+          <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-white/10">
+            {userProfile && (
+              <div className="flex items-center gap-2">
                 {userProfile.photoURL ? (
                   <img
                     src={userProfile.photoURL}
                     alt={userProfile.displayName || 'Profil'}
-                    className="w-7 h-7 rounded-full object-cover border border-cyan-500/30 shrink-0"
+                    className="w-8 h-8 rounded-full object-cover border border-cyan-500/30"
                   />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-cyan-500/20 to-primary/20 border border-cyan-500/30 flex items-center justify-center text-[10px] font-bold text-cyan-300 shrink-0">
+                  <div
+                    title={userProfile?.email || 'Compte connecté'}
+                    className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500/20 to-primary/20 border border-cyan-500/30 flex items-center justify-center text-xs font-bold text-cyan-300"
+                  >
                     {userInitials}
                   </div>
                 )}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-bold truncate text-white">
+
+                <div className="hidden sm:block text-left min-w-0 max-w-[130px]">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold truncate text-white block">
                       {userProfile.displayName || 'Utilisateur'}
-                    </p>
+                    </span>
                     {userProfile.isAdmin && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/25">
+                      <span className="text-[8px] font-bold px-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                         Admin
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] truncate text-slate-400">
+                  <span className="text-[10px] truncate text-slate-400 block">
                     {userProfile.activeWorkspace ? `Espace : ${userProfile.activeWorkspace}` : userProfile.email}
-                  </p>
+                  </span>
                 </div>
               </div>
-              <button
-                onClick={handleLogout}
-                title="Se déconnecter"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0 cursor-pointer"
-              >
-                <LogOut size={14} />
-              </button>
-            </div>
-          )}
+            )}
 
-          <div className="px-3 py-2 rounded-xl border border-white/[0.08] bg-white/[0.03] flex items-center justify-between transition-colors">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
-              <span className="text-[11px] font-medium text-slate-300">UID Isolé & Chiffré</span>
-            </div>
-            <ShieldCheck size={14} className="text-emerald-400" />
+            <button
+              onClick={handleLogout}
+              title="Se déconnecter"
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
         </div>
-      </aside>
+      </header>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        
-        {/* Top Sticky Header */}
-        <header className="h-16 px-4 md:px-8 border-b border-white/10 backdrop-blur-xl flex items-center justify-between z-20 shrink-0 bg-slate-950/20 text-white shadow-[0_4px_20px_rgba(0,0,0,0.2)]">
-          <div>
-            <h2 className="text-base md:text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              {pageInfo.title}
-            </h2>
-            <p className="hidden sm:block text-xs text-slate-400">
-              {pageInfo.subtitle}
-            </p>
-          </div>
+      {/* Main Content Area (Full width, expansive canvas) */}
+      <main className="flex-1 overflow-y-auto pb-32 sm:pb-36 relative touch-scroll">
+        <Outlet />
+      </main>
 
-          <div className="flex items-center gap-2">
-            {/* Bouton de mise à jour instantanée & purge cache (idéal pour PWA smartphone) */}
-            <button
-              onClick={handleForceRefresh}
-              title="Vider le cache et charger la dernière version"
-              disabled={isRefreshingApp}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-300 hover:text-cyan-300 hover:bg-white/[0.08] border border-white/10 flex items-center gap-1.5 text-xs transition-all active:scale-95 cursor-pointer bg-white/[0.04]"
-            >
-              <RefreshCw size={14} className={cn("text-cyan-400 shrink-0", isRefreshingApp && "animate-spin")} />
-              <span className="text-[11px] font-bold text-cyan-300 sm:inline">v2.5</span>
-            </button>
-
-            <ThemeToggle variant="compact" />
-
-            <div className="flex items-center gap-2 pl-3 border-l border-white/10">
-              {userProfile?.photoURL ? (
-                <img
-                  src={userProfile.photoURL}
-                  alt={userProfile.displayName || 'Profil'}
-                  className="w-8 h-8 rounded-full object-cover border border-cyan-500/30"
-                />
-              ) : (
-                <div
-                  title={userProfile?.email || 'Compte connecté'}
-                  className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500/20 to-primary/20 border border-cyan-500/30 flex items-center justify-center text-xs font-bold text-cyan-300"
-                >
-                  {userInitials}
-                </div>
-              )}
-              <button
-                onClick={handleLogout}
-                title="Se déconnecter"
-                className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-              >
-                <LogOut size={16} />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* Page Container */}
-        <main className="flex-1 overflow-y-auto pb-36 sm:pb-32 md:pb-8 relative touch-scroll">
-          <Outlet />
-        </main>
-      </div>
-
-      {/* Bottom Navigation for Mobile (Apple VisionOS / iOS 26 Floating Liquid Glass) */}
-      <nav className="md:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] inset-x-3 max-w-lg mx-auto z-50 pointer-events-none select-none">
-        <div className="pointer-events-auto rounded-[26px] bg-[#0c101d]/90 dark:bg-[#07090e]/90 backdrop-blur-2xl border border-white/20 dark:border-white/15 shadow-[0_16px_40px_-8px_rgba(0,0,0,0.7),inset_0_1px_1.5px_0_rgba(255,255,255,0.35)] p-1.5 flex items-center justify-between gap-1">
+      {/* Barre Flottante Apple visionOS / macOS Liquid Glass en Bas (Desktop & Mobile Unifié) */}
+      <nav className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-50 pointer-events-none select-none max-w-lg sm:max-w-2xl w-full sm:w-auto">
+        <div className="pointer-events-auto rounded-[28px] apple-glass bg-[#080a14]/90 backdrop-blur-2xl border border-white/20 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8),inset_0_1px_1.5px_0_rgba(255,255,255,0.4)] px-2 sm:px-3 py-1.5 flex items-center justify-between sm:justify-center gap-1 sm:gap-2">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path || 
               (item.path !== '/' && location.pathname.startsWith(item.path));
@@ -282,25 +207,25 @@ export default function Layout() {
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  "flex-1 relative flex flex-col items-center justify-center py-2 px-1 rounded-2xl transition-all duration-300 group cursor-pointer active:scale-95",
+                  "flex-1 sm:flex-initial sm:min-w-[84px] relative flex flex-col items-center justify-center py-2 px-2 sm:px-3 rounded-2xl transition-all duration-300 group cursor-pointer active:scale-95",
                   isActive
-                    ? "bg-white/[0.14] dark:bg-white/[0.10] text-white shadow-[0_2px_12px_rgba(56,189,248,0.25)] border border-white/25 dark:border-white/20"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] border border-transparent"
+                    ? "apple-glass-active text-white shadow-[0_2px_14px_rgba(56,189,248,0.3)] border border-white/30"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.08] border border-transparent"
                 )}
               >
                 {/* Active Indicator Top Specular Glow */}
                 {isActive && (
-                  <span className="absolute -top-[1px] inset-x-3 h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_8px_rgba(56,189,248,0.9)] rounded-full" />
+                  <span className="absolute -top-[1px] inset-x-3 sm:inset-x-4 h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_8px_rgba(56,189,248,0.9)] rounded-full" />
                 )}
 
                 <div className="relative flex items-center justify-center">
                   <item.icon 
-                    size={19} 
+                    size={20} 
                     className={cn(
                       "transition-all duration-300",
                       isActive 
-                        ? "text-cyan-400 dark:text-cyan-300 scale-110 stroke-[2.4] drop-shadow-[0_0_8px_rgba(56,189,248,0.5)]" 
-                        : "text-slate-400 group-hover:text-slate-200 stroke-[1.8]"
+                        ? "text-cyan-400 scale-110 stroke-[2.4] drop-shadow-[0_0_8px_rgba(56,189,248,0.6)]" 
+                        : "text-slate-400 group-hover:text-slate-200 stroke-[1.8] group-hover:scale-105"
                     )} 
                   />
                   {isCoachTab && isCoachLoading && (
@@ -308,7 +233,7 @@ export default function Layout() {
                   )}
                   {item.badge && !isCoachLoading && (
                     <span className={cn(
-                      "absolute -top-1.5 -right-2.5 text-[8px] font-black px-1 py-0.2 rounded-full uppercase leading-none tracking-wider",
+                      "absolute -top-1.5 -right-3 text-[8px] font-black px-1 py-0.2 rounded-full uppercase leading-none tracking-wider",
                       isActive 
                         ? "bg-gradient-to-r from-cyan-500 to-indigo-500 text-white shadow-[0_0_6px_rgba(56,189,248,0.6)]" 
                         : "bg-white/15 text-slate-300 border border-white/10"
@@ -319,17 +244,17 @@ export default function Layout() {
                 </div>
 
                 <span className={cn(
-                  "text-[10px] mt-1 transition-colors duration-200 leading-tight",
+                  "text-[10px] mt-1 transition-colors duration-200 leading-tight whitespace-nowrap",
                   isActive 
                     ? "font-bold text-white tracking-tight" 
                     : "font-medium text-slate-400 group-hover:text-slate-200"
                 )}>
-                  {item.shortLabel || item.label}
+                  {item.label}
                 </span>
 
                 {/* Subtile Active Pill Dot */}
                 {isActive && (
-                  <span className="absolute bottom-1 w-3.5 h-0.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(56,189,248,0.8)]" />
+                  <span className="absolute bottom-1 w-4 h-0.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(56,189,248,0.8)]" />
                 )}
               </Link>
             );

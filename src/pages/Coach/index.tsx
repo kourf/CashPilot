@@ -949,8 +949,8 @@ export default function Coach() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Zone de Saisie Flottante Pinned en Bas (au-dessus de la nav mobile sur téléphone) */}
-            <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-2 left-0 right-0 md:left-64 z-40 p-2.5 sm:p-4 bg-gradient-to-t from-[#070a14] via-[#070a14]/85 to-transparent backdrop-blur-xl">
+            {/* Zone de Saisie Flottante Pinned en Bas (au-dessus du Dock flottant Apple) */}
+            <div className="fixed bottom-[calc(4.85rem+env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 px-3 sm:px-6 py-2 bg-gradient-to-t from-[#080a14] via-[#080a14]/90 to-transparent backdrop-blur-md">
               <div className="max-w-3xl mx-auto space-y-2">
                 
                 {/* Pilules d'audit rapide horizontales */}
