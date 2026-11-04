@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BanknoteCanvas, type BanknoteCanvasRef } from '../../components/BanknoteAnimation/BanknoteCanvas';
-import { Atm3DTerminal } from '../../components/BanknoteAnimation/Atm3DTerminal';
+import { VaultDoor } from '../../components/Vault3D/VaultDoor';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { cn } from '../../lib/utils';
 
@@ -40,23 +40,23 @@ export const AuthPage: React.FC = () => {
     clearError,
   } = useAuth();
 
-  // État d'insertion de la carte bancaire dans le DAB (déverrouille le formulaire et lance la pluie de billets)
-  const [isCardInserted, setIsCardInserted] = useState<boolean>(false);
+  // État d'ouverture du coffre-fort 3D
+  const [isVaultOpen, setIsVaultOpen] = useState<boolean>(false);
 
-  // Contrôle des effets sonores
+  // Contrôle audio
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
-  // Compteur d'argent collecté au tap/clic sur les billets flottants
+  // Compteur ludique de devises collectées en cliquant sur les billets
   const [collectedCash, setCollectedCash] = useState<number>(0);
   const [lastCollectedLabel, setLastCollectedLabel] = useState<string | null>(null);
 
-  // Référence vers le canvas de billets pour déclencher la pluie de cash
+  // Référence vers le canvas de billets pour déclencher la cascade de billets
   const canvasRef = useRef<BanknoteCanvasRef | null>(null);
 
   // Onglet courant : 'login', 'register' ou 'reset'
   const [activeTab, setActiveTab] = useState<AuthTab>('login');
 
-  // Champs du formulaire
+  // Champs de saisie
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -85,8 +85,8 @@ export const AuthPage: React.FC = () => {
     } else if (modeParam === 'reset') {
       setActiveTab('reset');
     }
-    if (params.get('unlocked') === 'true' || params.get('inserted') === 'true') {
-      setIsCardInserted(true);
+    if (params.get('unlocked') === 'true' || params.get('open') === 'true') {
+      setIsVaultOpen(true);
     }
   }, [location.search]);
 
@@ -104,11 +104,19 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  // Callback quand l'utilisateur clique sur un billet en plein vol
+  // Callback au clic sur un billet flottant
   const handleCollectCash = (amount: number, _currency: 'EUR' | 'CHF', label: string) => {
     setCollectedCash((prev) => prev + amount);
     setLastCollectedLabel(label);
     setTimeout(() => setLastCollectedLabel(null), 2500);
+  };
+
+  // Bascule de la porte du coffre-fort
+  const handleToggleVault = (open: boolean) => {
+    setIsVaultOpen(open);
+    if (open) {
+      handleMakeItRain();
+    }
   };
 
   // Connexion Google
@@ -121,7 +129,7 @@ export const AuthPage: React.FC = () => {
       await loginWithGoogle();
       navigate('/', { replace: true });
     } catch {
-      // Erreur gérée par AuthContext
+      // Erreur capturée par AuthContext
     } finally {
       setIsSubmitting(false);
     }
@@ -193,35 +201,35 @@ export const AuthPage: React.FC = () => {
     <div
       className={cn(
         'relative min-h-screen w-full flex flex-col items-center justify-between transition-colors duration-700 font-sans select-none overflow-x-hidden',
-        isCardInserted ? 'bg-[#080d1a]' : 'bg-[#04060c]'
+        isVaultOpen ? 'bg-[#080d1a]' : 'bg-[#03050a]'
       )}
     >
       {/* =========================================================================
-          1. PLUIE DE VRAIS BILLETS EUROS (€) & FRANCS SUISSES (CHF) EN ARRIÈRE-PLAN
+          1. PLUIE CONTINUE DE VRAIS BILLETS EUROS (€) & FRANCS SUISSES (CHF) EN 3D
           ========================================================================= */}
       <BanknoteCanvas
         ref={canvasRef}
         className="fixed inset-0 w-full h-full pointer-events-auto z-0"
-        intensity={isCardInserted ? 'normal' : 'subtle'}
+        intensity={isVaultOpen ? 'normal' : 'subtle'}
         interactive={true}
         soundEnabled={soundEnabled}
         onCollectCash={handleCollectCash}
       />
 
-      {/* Halo lumineux d'ambiance visionOS */}
+      {/* Halos lumineux d'ambiance visionOS */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden z-0">
         <div
           className={cn(
             'absolute top-1/4 left-1/2 -translate-x-1/2 w-[700px] h-[360px] rounded-full blur-[140px] transition-opacity duration-1000',
-            isCardInserted
-              ? 'bg-gradient-to-tr from-emerald-500/20 via-cyan-500/25 to-indigo-600/20 opacity-100'
+            isVaultOpen
+              ? 'bg-gradient-to-tr from-amber-400/20 via-emerald-500/20 to-cyan-500/20 opacity-100'
               : 'opacity-10'
           )}
         />
       </div>
 
       {/* =========================================================================
-          2. BARRE SUPÉRIEURE : NAVIGATION, AUDIT & CONTRÔLE DE LA PLUIE DE DEVISES
+          2. BARRE SUPÉRIEURE : NAVIGATION, AUDIT & COMMANDES
           ========================================================================= */}
       <header className="relative z-30 w-full max-w-5xl px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between gap-2">
         <Link
@@ -240,7 +248,7 @@ export const AuthPage: React.FC = () => {
             type="button"
             onClick={handleMakeItRain}
             className="px-3 py-1.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 backdrop-blur-md cursor-pointer active:scale-95 shadow-sm"
-            title="Déclencher une pluie de billets EUR & CHF"
+            title="Faire pleuvoir des vrais billets EUR & CHF"
           >
             <Coins size={13} className="text-emerald-400 animate-spin" />
             <span className="hidden sm:inline">Pluie EUR & CHF</span>
@@ -270,45 +278,44 @@ export const AuthPage: React.FC = () => {
       </header>
 
       {/* =========================================================================
-          3. ZONE CENTRALE : DISTRIBUTEUR AUTOMATIQUE 3D ET CARTE RÉVÉLÉE
+          3. ZONE CENTRALE : PORTE DE COFFRE-FORT 3D ET COCKPIT D'AUTHENTIFICATION
           ========================================================================= */}
       <main className="relative z-20 w-full max-w-md px-4 flex flex-col items-center my-auto pb-8">
-        {/* LE DISTRIBUTEUR DE BANQUE EN 3D AVEC CARTE BANCAIRE INSERTIBLE */}
+        {/* LA PORTE DE COFFRE-FORT DE BANQUE PRIVÉE EN 3D RÉALISTE */}
         <div className="relative mb-3 sm:mb-5 w-full flex justify-center">
-          <Atm3DTerminal
-            isCardInserted={isCardInserted}
-            onToggleCard={(inserted) => setIsCardInserted(inserted)}
-            onTriggerRain={handleMakeItRain}
+          <VaultDoor
+            isOpen={isVaultOpen}
+            onToggleOpen={handleToggleVault}
           />
         </div>
 
-        {/* Notification flottante au clic sur un billet */}
+        {/* Notification flottante au clic sur un billet en plein vol */}
         {lastCollectedLabel && (
           <div className="absolute top-12 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold shadow-lg backdrop-blur-md animate-bounce pointer-events-none z-40">
             {lastCollectedLabel}
           </div>
         )}
 
-        {/* CARTE DU FORMULAIRE D'AUTHENTIFICATION RÉVÉLÉE APRÈS INSERTION DE LA CB */}
+        {/* CARTE DU FORMULAIRE RÉVÉLÉE À L'OUVERTURE DE LA CHAMBRE FORTE */}
         <div
           className={cn(
             'w-full rounded-3xl p-6 sm:p-8 transition-all duration-700 ease-out border backdrop-blur-2xl shadow-2xl relative',
-            isCardInserted
-              ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto bg-[#0d1222]/90 border-emerald-400/30 shadow-[0_20px_60px_rgba(0,0,0,0.7),0_0_40px_rgba(16,185,129,0.15)]'
+            isVaultOpen
+              ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto bg-[#0d1222]/90 border-amber-400/35 shadow-[0_25px_60px_rgba(0,0,0,0.7),0_0_40px_rgba(245,158,11,0.15)]'
               : 'opacity-0 translate-y-8 scale-95 pointer-events-none max-h-0 overflow-hidden py-0 my-0 border-transparent shadow-none'
           )}
         >
-          {/* Liseré de réflexion spéculaire supérieur */}
-          <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
+          {/* Liseré de réflexion spéculaire doré */}
+          <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/60 to-transparent" />
 
           {/* En-tête de la carte */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-xs font-semibold mb-3">
-              <Sparkles size={13} className="text-emerald-400" />
-              <span>Session Bancaire Déverrouillée</span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/25 text-amber-400 text-xs font-semibold mb-3">
+              <Sparkles size={13} className="text-amber-400" />
+              <span>Chambre Forte CashPilot Ouverte</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Bienvenue sur <span className="bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">CashPilot</span>
+              Bienvenue sur <span className="bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 bg-clip-text text-transparent">CashPilot</span>
             </h1>
             <p className="text-xs text-slate-400 mt-1">
               Pilotez vos relevés, tickets et flux financiers en toute sérénité.
@@ -324,7 +331,7 @@ export const AuthPage: React.FC = () => {
                 className={cn(
                   'py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer',
                   activeTab === 'login'
-                    ? 'bg-gradient-to-r from-emerald-500 to-cyan-600 text-white shadow-md'
+                    ? 'bg-gradient-to-r from-amber-500 via-emerald-500 to-cyan-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white'
                 )}
               >
@@ -336,7 +343,7 @@ export const AuthPage: React.FC = () => {
                 className={cn(
                   'py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer',
                   activeTab === 'register'
-                    ? 'bg-gradient-to-r from-emerald-500 to-cyan-600 text-white shadow-md'
+                    ? 'bg-gradient-to-r from-amber-500 via-emerald-500 to-cyan-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white'
                 )}
               >
@@ -416,7 +423,7 @@ export const AuthPage: React.FC = () => {
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="Alexandre"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                   />
                 </div>
               </div>
@@ -438,7 +445,7 @@ export const AuthPage: React.FC = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="vous@exemple.com"
                   autoComplete="email"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                 />
               </div>
             </div>
@@ -453,7 +460,7 @@ export const AuthPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => switchTab('reset')}
-                      className="text-[10px] font-semibold text-emerald-400 hover:underline cursor-pointer"
+                      className="text-[10px] font-semibold text-amber-400 hover:underline cursor-pointer"
                     >
                       Mot de passe oublié ?
                     </button>
@@ -472,7 +479,7 @@ export const AuthPage: React.FC = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     autoComplete={activeTab === 'login' ? 'current-password' : 'new-password'}
-                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                   />
                   <button
                     type="button"
@@ -509,7 +516,7 @@ export const AuthPage: React.FC = () => {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
                     autoComplete="new-password"
-                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                   />
                   <button
                     type="button"
@@ -526,18 +533,18 @@ export const AuthPage: React.FC = () => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-cyan-500 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95 border border-white/20 mt-2"
+              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-emerald-500 to-cyan-500 hover:from-amber-400 hover:to-cyan-400 text-slate-950 font-bold text-xs sm:text-sm shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95 border border-white/20 mt-2"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 size={15} className="animate-spin" />
-                  <span>Traitement en cours...</span>
+                  <Loader2 size={15} className="animate-spin text-slate-950" />
+                  <span>Accès au coffre en cours...</span>
                 </>
               ) : (
                 <>
                   <span>
-                    {activeTab === 'login' && 'Accéder au Cockpit CashPilot'}
-                    {activeTab === 'register' && 'Créer mon compte VIP gratuit'}
+                    {activeTab === 'login' && 'Entrer dans mon espace CashPilot'}
+                    {activeTab === 'register' && 'Créer mon coffre gratuit'}
                     {activeTab === 'reset' && 'Envoyer le lien de récupération'}
                   </span>
                   <ArrowRight size={15} />
@@ -565,14 +572,14 @@ export const AuthPage: React.FC = () => {
                 type="button"
                 onClick={handleExpressAdminAccess}
                 disabled={isSubmitting}
-                className="w-full py-2.5 px-3 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                className="w-full py-2.5 px-3 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
               >
-                <Zap size={14} className="text-emerald-400" />
+                <Zap size={14} className="text-amber-400" />
                 <span>⚡ Accès Express Administrateur</span>
               </button>
               <div className="flex items-center justify-between text-[10px] text-slate-500 px-1">
-                <span>Espace : <strong className="text-emerald-400/90 font-mono">cashpilot_main_user</strong></span>
-                <span className="text-emerald-400 font-semibold">Actif • 0 latence</span>
+                <span>Espace : <strong className="text-amber-400/90 font-mono">cashpilot_main_user</strong></span>
+                <span className="text-emerald-400 font-semibold">Chambre forte active</span>
               </div>
             </div>
           )}
@@ -583,7 +590,7 @@ export const AuthPage: React.FC = () => {
           4. PIED DE PAGE DISCRET
           ========================================================================= */}
       <footer className="relative z-20 py-4 text-center text-[11px] text-slate-500">
-        <p>CashPilot © {new Date().getFullYear()} • Gestion Financière & Intelligence Artificielle • Données Chiffrées</p>
+        <p>CashPilot © {new Date().getFullYear()} • Chambre Forte Chiffrée & Intelligence Artificielle</p>
       </footer>
     </div>
   );
