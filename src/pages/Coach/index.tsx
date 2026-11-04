@@ -438,7 +438,7 @@ export default function Coach() {
               title="Créer une nouvelle discussion"
             >
               <Plus size={14} className="shrink-0" />
-              <span>+ Nouvelle Discussion</span>
+              <span>Nouvelle Discussion</span>
             </button>
           </div>
         </div>
