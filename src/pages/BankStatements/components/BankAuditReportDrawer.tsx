@@ -137,26 +137,26 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
       />
 
       {/* Main Drawer Container */}
-      <div className="bg-[#0b0f1e]/95 backdrop-blur-2xl w-full sm:max-w-4xl sm:rounded-[2.5rem] rounded-t-[2.2rem] shadow-[0_25px_60px_rgba(0,0,0,0.8)] relative z-10 flex flex-col max-h-[92vh] sm:max-h-[88vh] overflow-hidden border border-white/15 animate-in slide-in-from-bottom duration-300 text-slate-100">
+      <div className="apple-glass bg-[#080d1e]/85 backdrop-blur-3xl w-full sm:max-w-4xl sm:rounded-[2.5rem] rounded-t-[2.2rem] shadow-[0_30px_90px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.35)] relative z-10 flex flex-col max-h-[92vh] sm:max-h-[88vh] overflow-hidden border border-white/20 animate-in slide-in-from-bottom duration-300 text-slate-100 coach-liquid-aura">
         
         {/* Mobile Drag Indicator */}
         <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mt-2.5 sm:hidden flex-shrink-0" />
 
         {/* Sticky Header */}
-        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-white/[0.03] backdrop-blur-xl flex-shrink-0">
+        <div className="apple-glass border-b border-white/15 px-6 py-5 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3 min-w-0">
             {onBack && (
               <button
                 type="button"
                 onClick={onBack}
-                className="p-2.5 -ml-1 rounded-2xl bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white border border-white/10 transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
+                className="apple-glass-pill hover:bg-white/20 px-3.5 py-2 rounded-2xl text-xs font-bold text-white flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
                 title="Retour à la liste des outils"
               >
                 <ArrowLeft size={16} />
                 <span className="hidden sm:inline">Retour</span>
               </button>
             )}
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 flex-shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.35)] ring-1 ring-white/30 flex-shrink-0">
               <Sparkles size={20} />
             </div>
             <div className="min-w-0">
@@ -204,7 +204,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
 
             <button 
               onClick={onClose}
-              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white border border-white/10 flex items-center justify-center transition-all cursor-pointer shadow-sm"
+              className="w-10 h-10 rounded-full apple-glass-pill hover:bg-white/20 text-slate-300 hover:text-white border border-white/20 flex items-center justify-center transition-all cursor-pointer shadow-sm"
             >
               <X size={18} />
             </button>
@@ -212,13 +212,13 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
         </div>
 
         {/* --- NAVIGATION DES 3 TEMPS (Onglets Épurés & Explicites) --- */}
-        <div className="flex px-4 pt-2.5 border-b border-white/10 space-x-2 overflow-x-auto hide-scrollbar bg-black/40 flex-shrink-0">
+        <div className="apple-glass flex px-5 pt-3 border-b border-white/15 space-x-2 overflow-x-auto hide-scrollbar flex-shrink-0">
           <button
             onClick={() => setActiveTab('revenues')}
             className={`px-4 py-2 text-xs font-bold whitespace-nowrap rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'revenues'
-                ? 'border-emerald-400 text-emerald-300 bg-white/15 shadow-sm font-bold border-b-2 rounded-t-xl'
-                : 'border-transparent text-slate-400 hover:text-white'
+                ? 'apple-glass-active text-emerald-300 border-b-2 border-emerald-400 shadow-md font-bold rounded-t-xl'
+                : 'apple-glass-pill text-slate-300 hover:text-white rounded-t-xl'
             }`}
           >
             <ArrowDownLeft size={15} className="text-emerald-500" />
@@ -229,8 +229,8 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
             onClick={() => setActiveTab('expenses')}
             className={`px-4 py-2 text-xs font-bold whitespace-nowrap rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'expenses'
-                ? 'border-rose-400 text-rose-300 bg-white/15 shadow-sm font-bold border-b-2 rounded-t-xl'
-                : 'border-transparent text-slate-400 hover:text-white'
+                ? 'apple-glass-active text-rose-300 border-b-2 border-rose-400 shadow-md font-bold rounded-t-xl'
+                : 'apple-glass-pill text-slate-300 hover:text-white rounded-t-xl'
             }`}
           >
             <ArrowUpRight size={15} className="text-rose-500" />
@@ -241,8 +241,8 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
             onClick={() => setActiveTab('coverage')}
             className={`px-4 py-2 text-xs font-bold whitespace-nowrap rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'coverage'
-                ? 'border-indigo-400 text-indigo-300 bg-white/15 shadow-sm font-bold border-b-2 rounded-t-xl'
-                : 'border-transparent text-slate-400 hover:text-white'
+                ? 'apple-glass-active text-indigo-300 border-b-2 border-indigo-400 shadow-md font-bold rounded-t-xl'
+                : 'apple-glass-pill text-slate-300 hover:text-white rounded-t-xl'
             }`}
           >
             <Scale size={15} className="text-indigo-500" />

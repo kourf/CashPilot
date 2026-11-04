@@ -474,24 +474,24 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
       />
 
       {/* Drawer Panel Premium */}
-      <div className="relative z-10 w-full max-w-3xl bg-[#0b0f1e]/95 backdrop-blur-2xl border-l border-white/10 shadow-[0_25px_60px_rgba(0,0,0,0.8)] flex flex-col h-full animate-in slide-in-from-right duration-300 text-slate-100 overflow-hidden">
+      <div className="relative z-10 w-full max-w-3xl apple-glass bg-[#080d1e]/85 backdrop-blur-3xl border-l border-white/20 shadow-[0_0_80px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.35)] flex flex-col h-full animate-in slide-in-from-right duration-300 text-slate-100 overflow-hidden coach-liquid-aura">
         
         {/* Header Unifié avec Bascule par Sous-Onglets */}
-        <div className="p-4 sm:p-5 border-b border-white/10 bg-white/[0.03] backdrop-blur-xl shrink-0 space-y-3.5">
+        <div className="apple-glass border-b border-white/15 p-5 shrink-0 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               {onBack && (
                 <button
                   type="button"
                   onClick={onBack}
-                  className="p-2.5 -ml-1 rounded-2xl bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white border border-white/10 transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
+                  className="apple-glass-pill hover:bg-white/20 px-3.5 py-2 rounded-2xl text-xs font-bold text-white flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
                   title="Retour à la liste des outils"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span className="hidden sm:inline">Retour</span>
                 </button>
               )}
-              <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shadow-md shrink-0 mt-0.5">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-400 text-white flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.35)] ring-1 ring-white/30 shrink-0 mt-0.5">
                 {activeTab === 'cost_of_living' ? <Calculator className="w-5 h-5" /> : <PiggyBank className="w-5 h-5" />}
               </div>
               <div>
@@ -507,7 +507,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
             </div>
             <button
               onClick={onClose}
-              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white border border-white/10 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-sm"
+              className="w-10 h-10 rounded-full apple-glass-pill hover:bg-white/20 text-slate-300 hover:text-white border border-white/20 flex items-center justify-center transition-all shadow-sm cursor-pointer"
               title="Fermer"
             >
               <X className="w-5 h-5" />
@@ -515,14 +515,14 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
           </div>
 
           {/* Sélecteur de sous-onglets ergonomique en 1 clic */}
-          <div className="p-1.5 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner flex items-center gap-1.5">
+          <div className="apple-glass rounded-full p-1.5 flex items-center gap-2">
             <button
               type="button"
               onClick={() => setActiveTab('cost_of_living')}
               className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 activeTab === 'cost_of_living'
-                  ? 'bg-white/15 text-white shadow-lg backdrop-blur-md border border-white/20'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  ? 'apple-glass-active rounded-full py-2 px-4 text-xs font-bold text-white shadow-lg'
+                  : 'apple-glass-pill rounded-full py-2 px-4 text-xs font-semibold text-slate-300 hover:text-white'
               }`}
             >
               <Calculator className={`w-4 h-4 ${activeTab === 'cost_of_living' ? 'text-emerald-400' : 'text-muted-foreground'}`} />
@@ -533,8 +533,8 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
               onClick={() => setActiveTab('budget_tracking')}
               className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 activeTab === 'budget_tracking'
-                  ? 'bg-white/15 text-white shadow-lg backdrop-blur-md border border-white/20'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  ? 'apple-glass-active rounded-full py-2 px-4 text-xs font-bold text-white shadow-lg'
+                  : 'apple-glass-pill rounded-full py-2 px-4 text-xs font-semibold text-slate-300 hover:text-white'
               }`}
             >
               <PiggyBank className={`w-4 h-4 ${activeTab === 'budget_tracking' ? 'text-teal-400' : 'text-muted-foreground'}`} />
@@ -590,7 +590,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                 const groupMedian = categoryGroupMedians[group.id] || 0;
 
                 return (
-                  <div key={group.id} className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl overflow-hidden shadow-sm hover:border-white/20 transition-all mb-3">
+                  <div key={group.id} className="apple-glass-card rounded-3xl border-white/15 overflow-hidden shadow-md mb-3.5">
                     <div className="px-4 py-3 bg-white/[0.04] border-b border-white/10 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className={`p-1.5 rounded-xl ${group.bg} ${group.color}`}>
@@ -821,7 +821,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
         {activeTab === 'budget_tracking' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {/* Bannière explicative : Origine du Budget Alloué */}
-            <div className="p-3.5 sm:px-5 border-b border-white/10 bg-teal-500/10 backdrop-blur-xl flex items-center justify-between gap-3 shrink-0">
+            <div className="apple-glass-card rounded-2xl p-4 border-teal-500/30 flex items-center justify-between gap-3 m-4 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <HelpCircle className="w-4 h-4 text-teal-400 shrink-0" />
                 <p className="text-xs text-slate-300 leading-snug">
@@ -838,7 +838,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
               <button
                 type="button"
                 onClick={() => setActiveTab('cost_of_living')}
-                className="px-3 py-1.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 font-bold text-[11px] shrink-0 border border-teal-500/30 transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                className="apple-glass-pill px-3.5 py-1.5 rounded-xl text-teal-300 border-teal-400/40 hover:bg-teal-500/20 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
               >
                 <Edit2 className="w-3 h-3" />
                 <span>Ajuster le Coût de la vie</span>
@@ -886,7 +886,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
 
               {/* Cartes métriques */}
               <div className="grid grid-cols-3 gap-2 pt-1 text-center">
-                <div className="p-3 rounded-2xl bg-white/[0.035] border border-white/10 relative group backdrop-blur-xl shadow-sm">
+                <div className="apple-glass-card rounded-3xl p-4 text-center shadow-lg border-white/20 relative group">
                   <span className="text-[10px] uppercase font-bold text-slate-400 block">
                     Budget Alloué
                   </span>
@@ -898,7 +898,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                   </span>
                 </div>
 
-                <div className="p-3 rounded-2xl bg-white/[0.035] border border-white/10 backdrop-blur-xl shadow-sm">
+                <div className="apple-glass-card rounded-3xl p-4 text-center shadow-lg border-white/20">
                   <span className="text-[10px] uppercase font-bold text-muted-foreground block">Dépense Réelle</span>
                   <span className="text-sm sm:text-base font-black font-mono text-foreground">
                     {formatCurrency(totalRealSpent, { showSign: false })}
@@ -909,7 +909,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                 </div>
 
                 <div className={`p-2.5 rounded-xl border ${
-                  totalRemaining >= 0 ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 backdrop-blur-xl shadow-sm' : 'bg-rose-500/15 border-rose-500/30 text-rose-300 backdrop-blur-xl shadow-sm'
+                  totalRemaining >= 0 ? 'apple-glass-card rounded-3xl p-4 text-center border-emerald-500/35 text-emerald-300 shadow-lg' : 'apple-glass-card rounded-3xl p-4 text-center border-rose-500/35 text-rose-300 shadow-lg'
                 }`}>
                   <span className="text-[10px] uppercase font-bold block opacity-80">Écart Net</span>
                   <span className="text-sm sm:text-base font-black font-mono">
@@ -955,7 +955,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                   return (
                     <div 
                       key={row.id}
-                      className="rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 transition-all duration-200 overflow-hidden backdrop-blur-xl shadow-sm mb-2"
+                      className="apple-glass-card rounded-2xl border-white/15 hover:border-white/30 transition-all duration-200 overflow-hidden shadow-sm mb-2.5"
                     >
                       <div 
                         onClick={() => setExpandedRowId(isExpanded ? null : row.id)}
@@ -1113,7 +1113,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
         )}
 
         {/* Footer */}
-        <div className="p-4 border-t border-white/10 bg-[#0b0f1e]/90 backdrop-blur-xl shrink-0 flex items-center justify-between">
+        <div className="apple-glass border-t border-white/15 p-4 sm:p-5 shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             <span>Synchronisation immédiate entre Coût de la vie et Fixation du budget</span>
@@ -1121,7 +1121,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all cursor-pointer shadow-sm active:scale-95"
+            className="apple-glass-pill hover:bg-white/20 px-6 py-2.5 rounded-2xl text-xs font-bold text-white shadow-md active:scale-95 cursor-pointer"
           >
             Fermer
           </button>

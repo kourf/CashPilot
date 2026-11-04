@@ -2811,34 +2811,37 @@ export const BankStatements: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200">
            {/* Backdrop avec flou haut de gamme */}
            <div 
-             className="absolute inset-0 bg-[#070a14]/80 backdrop-blur-xl transition-opacity" 
+             className="absolute inset-0 bg-black/60 backdrop-blur-xl transition-opacity" 
              onClick={() => setIsToolsSheetOpen(false)}
            />
 
-           {/* Boîte Modale / Hub Bento Réactif */}
-           <div className="bg-[#0b0f1e]/95 backdrop-blur-2xl w-full sm:max-w-4xl lg:max-w-5xl rounded-t-[2.2rem] sm:rounded-[2.5rem] shadow-[0_25px_60px_rgba(0,0,0,0.7)] border border-white/15 relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden text-slate-100 z-10">
-             
-             {/* Poignée mobile Apple VisionOS */}
+           {/* Boîte Modale / Hub Bento Spatial Apple VisionOS Liquid Glass */}
+           <div className="apple-glass bg-[#080d1e]/85 backdrop-blur-3xl w-full sm:max-w-4xl lg:max-w-5xl rounded-t-[2.5rem] sm:rounded-[3rem] shadow-[0_30px_90px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.35)] border border-white/20 relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden text-slate-100 z-10 coach-liquid-aura">
+              
+              {/* Reflet spéculaire supérieur Apple */}
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent z-30 pointer-events-none" />
+
+              {/* Poignée mobile Apple VisionOS */}
               <div className="pt-3 pb-1 flex justify-center sm:hidden shrink-0">
-                <div className="w-12 h-1.5 bg-white/20 rounded-full" />
+                <div className="w-12 h-1.5 bg-white/30 rounded-full" />
               </div>
 
               {/* En-tête de Hub Apple VisionOS Liquid Glass */}
-              <div className="sticky top-0 bg-[#0b0f1e]/90 backdrop-blur-xl z-20 px-5 sm:px-7 py-4 sm:py-5 border-b border-white/10 flex justify-between items-center shrink-0">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-cyan-500/25 ring-2 ring-white/20 shrink-0">
-                    <Sparkles size={20} className="text-cyan-200" />
+              <div className="sticky top-0 apple-glass border-b border-white/15 z-20 px-6 sm:px-8 py-5 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-[0_0_25px_rgba(56,189,248,0.4)] ring-2 ring-white/30 shrink-0">
+                    <Sparkles size={22} className="text-cyan-100 animate-pulse" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-extrabold text-lg sm:text-xl text-white tracking-tight">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="font-extrabold text-xl sm:text-2xl text-white tracking-tight">
                         Centre d'Analyses & Outils
                       </h3>
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 uppercase tracking-wider">
+                      <span className="apple-glass-pill px-3 py-1 rounded-full text-[10px] font-extrabold text-cyan-300 border border-cyan-400/40 uppercase tracking-wider shadow-sm">
                         8 Modules Experts
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-slate-300/80 mt-0.5 leading-relaxed font-medium">
                       Audits IA, projections prédictives, suivi des charges et contrôle de vos comptes
                     </p>
                   </div>
@@ -2846,64 +2849,67 @@ export const BankStatements: React.FC = () => {
 
                 <button 
                   onClick={() => setIsToolsSheetOpen(false)} 
-                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white border border-white/10 flex items-center justify-center active:scale-90 transition-all cursor-pointer shadow-sm"
+                  className="w-10 h-10 rounded-full apple-glass-pill hover:bg-white/20 text-slate-300 hover:text-white border border-white/20 flex items-center justify-center active:scale-90 transition-all cursor-pointer shadow-lg"
                   title="Fermer"
                 >
-                  <X size={18}/>
+                  <X size={20}/>
                 </button>
               </div>
 
               {/* Contenu Défilant Bento Grid */}
-              <div className="p-4 sm:p-6 overflow-y-auto space-y-6 overscroll-contain">
+              <div className="p-5 sm:p-7 overflow-y-auto space-y-6 overscroll-contain">
                  
                  {/* 1. SECTION IA & AUDITS STRATÉGIQUES (HERO BENTO) */}
-                 <div className="space-y-3">
+                 <div className="space-y-3.5">
                    <div className="flex items-center justify-between px-1">
-                     <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-cyan-400 uppercase">
-                       <Sparkles size={14} className="text-amber-400" />
+                     <div className="apple-glass-pill px-3 py-1 rounded-full text-[11px] font-extrabold tracking-wider text-cyan-300 border border-cyan-400/30 uppercase flex items-center gap-2">
+                       <Sparkles size={14} className="text-amber-300" />
                        <span>Audits Stratégiques & Intelligence Artificielle</span>
                      </div>
                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:inline">Piliers d'analyse</span>
                    </div>
 
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                      {/* Outil Frise Chronologique & Rapprochement */}
                      <button 
                        onClick={() => {
                          setIsToolsSheetOpen(false); 
                          setActiveViewMode('timeline');
                        }} 
-                       className="relative p-5 rounded-[1.8rem] bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/30 hover:border-emerald-400/70 hover:shadow-[0_0_25px_-5px_rgba(16,185,129,0.3)] shadow-lg backdrop-blur-xl transition-all duration-300 group cursor-pointer text-left flex flex-col justify-between active:scale-[0.98]"
+                       className="apple-glass-card rounded-[2rem] p-6 border-emerald-500/30 hover:border-emerald-400/60 shadow-[0_16px_40px_rgba(0,0,0,0.4)] group relative overflow-hidden transition-all duration-300 text-left flex flex-col justify-between active:scale-[0.98] cursor-pointer"
                      >
+                       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent" />
                        <div>
-                         <div className="flex items-center justify-between gap-2 mb-3">
-                           <span className="text-[10px] px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold font-mono border border-emerald-500/30 uppercase tracking-wider">
+                         <div className="flex items-center justify-between gap-2 mb-4">
+                           <span className="apple-glass-pill px-3 py-1 rounded-full text-emerald-300 font-extrabold font-mono text-[10px] border border-emerald-400/30 uppercase tracking-wider">
                              Moteur NoSQL
                            </span>
-                           <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
-                             <CheckCircle2 size={12} />
+                           <span className="text-[11px] font-bold text-emerald-300 flex items-center gap-1.5">
+                             <CheckCircle2 size={13} className="text-emerald-400" />
                              Source vérifiée
                            </span>
                          </div>
 
-                         <div className="flex items-start gap-3.5">
-                           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/25 group-hover:scale-105 transition-transform shrink-0">
-                             <Clock size={22} />
+                         <div className="flex items-start gap-4">
+                           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center shadow-[0_8px_25px_rgba(16,185,129,0.4)] ring-1 ring-white/30 group-hover:scale-105 transition-transform shrink-0">
+                             <Clock size={26} />
                            </div>
                            <div>
-                             <h4 className="font-extrabold text-base text-white group-hover:text-emerald-300 transition-colors">
+                             <h4 className="font-bold text-base sm:text-lg text-white group-hover:text-emerald-300 transition-colors">
                                Frise Chronologique & Rapprochement
                              </h4>
-                             <p className="text-xs font-medium text-slate-400 mt-1 leading-relaxed">
+                             <p className="text-xs text-slate-300/80 mt-1 leading-relaxed font-medium">
                                Rapprochement continu PDF vs CSV, validation des soldes officiels et détection automatique des ruptures temporelles ou écarts.
                              </p>
                            </div>
                          </div>
                        </div>
 
-                       <div className="mt-4 pt-3 border-t border-emerald-500/20 flex items-center justify-between text-xs font-bold text-emerald-300">
+                       <div className="mt-5 pt-3.5 border-t border-white/10 flex items-center justify-between text-xs font-bold text-emerald-300">
                          <span>Explorer la timeline continue</span>
-                         <ChevronDown className="rotate-[-90deg] group-hover:translate-x-1 transition-transform" size={16}/>
+                         <div className="w-7 h-7 rounded-full apple-glass-pill flex items-center justify-center text-emerald-300 group-hover:translate-x-1 transition-transform">
+                           <ChevronDown className="rotate-[-90deg]" size={15}/>
+                         </div>
                        </div>
                      </button>
 
@@ -2913,77 +2919,82 @@ export const BankStatements: React.FC = () => {
                          setIsToolsSheetOpen(false); 
                          handleOpenDeepAudit();
                        }} 
-                       className="relative p-5 rounded-[1.8rem] bg-gradient-to-br from-indigo-500/15 via-purple-500/10 to-pink-500/5 border border-indigo-500/35 hover:border-indigo-400/70 hover:shadow-[0_0_25px_-5px_rgba(99,102,241,0.35)] shadow-lg backdrop-blur-xl transition-all duration-300 group cursor-pointer text-left flex flex-col justify-between active:scale-[0.98]"
+                       className="apple-glass-card rounded-[2rem] p-6 border-indigo-500/35 hover:border-indigo-400/60 shadow-[0_16px_40px_rgba(0,0,0,0.4)] group relative overflow-hidden transition-all duration-300 text-left flex flex-col justify-between active:scale-[0.98] cursor-pointer"
                      >
+                       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-400/60 to-transparent" />
                        <div>
-                         <div className="flex items-center justify-between gap-2 mb-3">
-                           <span className="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-extrabold font-mono border border-indigo-500/30 uppercase tracking-wider">
+                         <div className="flex items-center justify-between gap-2 mb-4">
+                           <span className="apple-glass-pill px-3 py-1 rounded-full text-indigo-300 font-extrabold font-mono text-[10px] border border-indigo-400/30 uppercase tracking-wider">
                              Gemini 2.5 Flash
                            </span>
-                           <span className="text-[10px] font-bold text-indigo-400 flex items-center gap-1">
-                             <Zap size={12} className="text-amber-400" />
+                           <span className="text-[11px] font-bold text-indigo-300 flex items-center gap-1.5">
+                             <Zap size={13} className="text-amber-300" />
                              Diagnostic 360°
                            </span>
                          </div>
 
-                         <div className="flex items-start gap-3.5">
-                           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform shrink-0">
-                             {isGeneratingDeepAudit ? <Loader2 size={22} className="animate-spin" /> : <Sparkles size={22} className="text-amber-300" />}
+                         <div className="flex items-start gap-4">
+                           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-[0_8px_25px_rgba(99,102,241,0.4)] ring-1 ring-white/30 group-hover:scale-105 transition-transform shrink-0">
+                             {isGeneratingDeepAudit ? <Loader2 size={26} className="animate-spin" /> : <Sparkles size={26} className="text-cyan-100" />}
                            </div>
                            <div>
-                             <h4 className="font-extrabold text-base text-white group-hover:text-indigo-300 transition-colors">
+                             <h4 className="font-bold text-base sm:text-lg text-white group-hover:text-indigo-300 transition-colors">
                                Rapport d'Audit Approfondi IA
                              </h4>
-                             <p className="text-xs font-medium text-slate-400 mt-1 leading-relaxed">
+                             <p className="text-xs text-slate-300/80 mt-1 leading-relaxed font-medium">
                                {isGeneratingDeepAudit ? "Génération en cours par l'intelligence artificielle..." : "Synthèse financière en 6 volets : analyse du biais bancaire, flux nets réels, 7 alertes prédictives & stratégie de trésorerie."}
                              </p>
                            </div>
                          </div>
                        </div>
 
-                       <div className="mt-4 pt-3 border-t border-indigo-500/20 flex items-center justify-between text-xs font-bold text-indigo-300">
+                       <div className="mt-5 pt-3.5 border-t border-white/10 flex items-center justify-between text-xs font-bold text-indigo-300">
                          <span>{isGeneratingDeepAudit ? "Génération..." : "Consulter le rapport d'audit"}</span>
-                         <ChevronDown className="rotate-[-90deg] group-hover:translate-x-1 transition-transform" size={16}/>
+                         <div className="w-7 h-7 rounded-full apple-glass-pill flex items-center justify-center text-indigo-300 group-hover:translate-x-1 transition-transform">
+                           <ChevronDown className="rotate-[-90deg]" size={15}/>
+                         </div>
                        </div>
                      </button>
                    </div>
                  </div>
 
                  {/* 2. SECTION CHARGES & MAÎTRISE BUDGÉTAIRE */}
-                 <div className="space-y-3">
-                   <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-amber-400 uppercase px-1">
+                 <div className="space-y-3.5">
+                   <div className="apple-glass-pill px-3 py-1 rounded-full text-[11px] font-extrabold tracking-wider text-amber-300 border border-amber-400/30 uppercase inline-flex items-center gap-2">
                      <Layers size={14} />
                      <span>Maîtrise des Charges & Optimisation Budgétaire</span>
                    </div>
 
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                      {/* Abonnements & Prélèvements */}
                      <button 
                        onClick={() => {
                          setIsToolsSheetOpen(false); 
                          handleOpenSubscriptionsAudit();
                        }} 
-                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-blue-500/20 hover:border-blue-400/50 hover:shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                       className="apple-glass-card rounded-[1.75rem] p-5 border-white/15 hover:border-sky-400/40 shadow-[0_10px_30px_rgba(0,0,0,0.35)] group relative overflow-hidden transition-all duration-300 text-left flex items-start justify-between gap-3 active:scale-[0.98] cursor-pointer"
                      >
                        <div className="flex items-start gap-3.5 min-w-0">
-                         <div className="w-11 h-11 rounded-2xl bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                           <Calendar size={20}/>
+                         <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 text-white flex items-center justify-center shadow-[0_6px_20px_rgba(37,99,235,0.4)] ring-1 ring-white/30 shrink-0 group-hover:scale-105 transition-transform">
+                           <Calendar size={22}/>
                          </div>
                          <div className="min-w-0">
                            <div className="flex items-center gap-2 flex-wrap">
-                             <h4 className="font-bold text-sm text-white truncate">
+                             <h4 className="font-bold text-sm sm:text-base text-white leading-snug group-hover:text-sky-300 transition-colors">
                                Abonnements & Prélèvements
                              </h4>
-                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 font-extrabold uppercase">
+                             <span className="apple-glass-pill px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase text-sky-300 border border-sky-400/30">
                                Anti-Hausse
                              </span>
                            </div>
-                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                           <p className="text-xs text-slate-300/80 mt-1 leading-relaxed font-medium">
                              Détection d'augmentations de tarif, suivi chronologique et assistant de résiliation.
                            </p>
                          </div>
                        </div>
-                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-blue-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                       <div className="w-8 h-8 rounded-full apple-glass-pill flex items-center justify-center text-slate-400 group-hover:text-white group-hover:bg-white/20 transition-all shrink-0 mt-1">
+                         <ChevronDown className="rotate-[-90deg]" size={16}/>
+                       </div>
                      </button>
 
                      {/* Budget & Coût de la vie (Unifié : Objectif & Réel) */}
@@ -2992,27 +3003,29 @@ export const BankStatements: React.FC = () => {
                          setIsToolsSheetOpen(false); 
                          setIsBudgetTrackingDrawerOpen(true);
                        }} 
-                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-emerald-500/20 hover:border-emerald-400/50 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                       className="apple-glass-card rounded-[1.75rem] p-5 border-white/15 hover:border-emerald-400/40 shadow-[0_10px_30px_rgba(0,0,0,0.35)] group relative overflow-hidden transition-all duration-300 text-left flex items-start justify-between gap-3 active:scale-[0.98] cursor-pointer"
                      >
                        <div className="flex items-start gap-3.5 min-w-0">
-                         <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                           <PiggyBank size={20}/>
+                         <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-cyan-400 text-white flex items-center justify-center shadow-[0_6px_20px_rgba(16,185,129,0.4)] ring-1 ring-white/30 shrink-0 group-hover:scale-105 transition-transform">
+                           <PiggyBank size={22}/>
                          </div>
                          <div className="min-w-0">
                            <div className="flex items-center gap-2 flex-wrap">
-                             <h4 className="font-bold text-sm text-white truncate">
+                             <h4 className="font-bold text-sm sm:text-base text-white leading-snug group-hover:text-emerald-300 transition-colors">
                                Budget & Coût de la vie
                              </h4>
-                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-extrabold uppercase">
+                             <span className="apple-glass-pill px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase text-emerald-300 border border-emerald-400/30">
                                Objectif & Réel
                              </span>
                            </div>
-                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                           <p className="text-xs text-slate-300/80 mt-1 leading-relaxed font-medium">
                              Fixez vos charges cibles (courses, loyer, factures) et comparez-les en direct avec vos vraies dépenses bancaires.
                            </p>
                          </div>
                        </div>
-                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                       <div className="w-8 h-8 rounded-full apple-glass-pill flex items-center justify-center text-slate-400 group-hover:text-white group-hover:bg-white/20 transition-all shrink-0 mt-1">
+                         <ChevronDown className="rotate-[-90deg]" size={16}/>
+                       </div>
                      </button>
 
                      {/* Habitudes de Dépenses */}
@@ -3021,66 +3034,70 @@ export const BankStatements: React.FC = () => {
                          setIsToolsSheetOpen(false); 
                          setIsSpendingHabitsDrawerOpen(true);
                        }} 
-                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-purple-500/20 hover:border-purple-400/50 hover:shadow-[0_0_20px_-5px_rgba(168,85,247,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                       className="apple-glass-card rounded-[1.75rem] p-5 border-white/15 hover:border-purple-400/40 shadow-[0_10px_30px_rgba(0,0,0,0.35)] group relative overflow-hidden transition-all duration-300 text-left flex items-start justify-between gap-3 active:scale-[0.98] cursor-pointer"
                      >
                        <div className="flex items-start gap-3.5 min-w-0">
-                         <div className="w-11 h-11 rounded-2xl bg-purple-500/15 text-purple-400 border border-purple-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                           <Clock size={20}/>
+                         <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 via-violet-600 to-pink-500 text-white flex items-center justify-center shadow-[0_6px_20px_rgba(147,51,234,0.4)] ring-1 ring-white/30 shrink-0 group-hover:scale-105 transition-transform">
+                           <Clock size={22}/>
                          </div>
                          <div className="min-w-0">
                            <div className="flex items-center gap-2 flex-wrap">
-                             <h4 className="font-bold text-sm text-white truncate">
+                             <h4 className="font-bold text-sm sm:text-base text-white leading-snug group-hover:text-purple-300 transition-colors">
                                Habitudes de Dépenses
                              </h4>
-                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30 font-extrabold uppercase">
+                             <span className="apple-glass-pill px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase text-purple-300 border border-purple-400/30">
                                Temporalité
                              </span>
                            </div>
-                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                           <p className="text-xs text-slate-300/80 mt-1 leading-relaxed font-medium">
                              Analyse chronologique des jours et périodes d'achats les plus intenses.
                            </p>
                          </div>
                        </div>
-                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-purple-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                       <div className="w-8 h-8 rounded-full apple-glass-pill flex items-center justify-center text-slate-400 group-hover:text-white group-hover:bg-white/20 transition-all shrink-0 mt-1">
+                         <ChevronDown className="rotate-[-90deg]" size={16}/>
+                       </div>
                      </button>
                    </div>
                  </div>
 
                  {/* 3. SECTION FLUX & SOLIDARITÉ */}
-                 <div className="space-y-3">
-                   <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-rose-400 uppercase px-1">
+                 <div className="space-y-3.5">
+                   <div className="apple-glass-pill px-3 py-1 rounded-full text-[11px] font-extrabold tracking-wider text-rose-300 border border-rose-400/30 uppercase inline-flex items-center gap-2">
                      <Users size={14} />
                      <span>Flux Internes & Rapprochements Tiers</span>
                    </div>
 
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      {/* Mouvements Inter-comptes */}
                      <button 
                        onClick={() => {
                          setIsToolsSheetOpen(false); 
                          handleOpenInterAccountsAudit();
                        }} 
-                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-indigo-500/20 hover:border-indigo-400/50 hover:shadow-[0_0_20px_-5px_rgba(99,102,241,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                       className="apple-glass-card rounded-[1.75rem] p-5 border-white/15 hover:border-indigo-400/40 shadow-[0_10px_30px_rgba(0,0,0,0.35)] group relative overflow-hidden transition-all duration-300 text-left flex items-start justify-between gap-3 active:scale-[0.98] cursor-pointer"
                      >
                        <div className="flex items-start gap-3.5 min-w-0">
-                         <div className="w-11 h-11 rounded-2xl bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                           <ArrowLeftRight size={20}/>
+                         <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-sky-600 to-cyan-400 text-white flex items-center justify-center shadow-[0_6px_20px_rgba(79,70,229,0.4)] ring-1 ring-white/30 shrink-0 group-hover:scale-105 transition-transform">
+                           <ArrowLeftRight size={22}/>
                          </div>
                          <div className="min-w-0">
                            <div className="flex items-center gap-2 flex-wrap">
-                             <h4 className="font-bold text-sm text-white truncate">
+                             <h4 className="font-bold text-sm sm:text-base text-white leading-snug group-hover:text-indigo-300 transition-colors">
                                Mouvements Inter-comptes
                              </h4>
-                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 font-extrabold uppercase">
+                             <span className="apple-glass-pill px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase text-indigo-300 border border-indigo-400/30">
                                Neutre au Bilan
                              </span>
                            </div>
-                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                           <p className="text-xs text-slate-300/80 mt-1 leading-relaxed font-medium">
                              Rapprochement et compensation des transferts entre vos différents comptes.
                            </p>
                          </div>
                        </div>
-                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                       <div className="w-8 h-8 rounded-full apple-glass-pill flex items-center justify-center text-slate-400 group-hover:text-white group-hover:bg-white/20 transition-all shrink-0 mt-1">
+                         <ChevronDown className="rotate-[-90deg]" size={16}/>
+                       </div>
                      </button>
 
                      {/* Échanges Famille & Amis */}
@@ -3089,41 +3106,43 @@ export const BankStatements: React.FC = () => {
                          setIsToolsSheetOpen(false); 
                          handleOpenPeerTransfersAudit();
                        }} 
-                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-pink-500/20 hover:border-pink-400/50 hover:shadow-[0_0_20px_-5px_rgba(236,72,153,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                       className="apple-glass-card rounded-[1.75rem] p-5 border-white/15 hover:border-rose-400/40 shadow-[0_10px_30px_rgba(0,0,0,0.35)] group relative overflow-hidden transition-all duration-300 text-left flex items-start justify-between gap-3 active:scale-[0.98] cursor-pointer"
                      >
                        <div className="flex items-start gap-3.5 min-w-0">
-                         <div className="w-11 h-11 rounded-2xl bg-pink-500/15 text-pink-400 border border-pink-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                           <Users size={20}/>
+                         <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-600 via-pink-600 to-amber-400 text-white flex items-center justify-center shadow-[0_6px_20px_rgba(225,29,72,0.4)] ring-1 ring-white/30 shrink-0 group-hover:scale-105 transition-transform">
+                           <Users size={22}/>
                          </div>
                          <div className="min-w-0">
                            <div className="flex items-center gap-2 flex-wrap">
-                             <h4 className="font-bold text-sm text-white truncate">
+                             <h4 className="font-bold text-sm sm:text-base text-white leading-snug group-hover:text-rose-300 transition-colors">
                                Échanges Famille & Amis
                              </h4>
-                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-400/30 font-extrabold uppercase">
+                             <span className="apple-glass-pill px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase text-rose-300 border border-rose-400/30">
                                Balance Tiers
                              </span>
                            </div>
-                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                           <p className="text-xs text-slate-300/80 mt-1 leading-relaxed font-medium">
                              Position débitrice/créditrice et solde des remboursements avec vos proches.
                            </p>
                          </div>
                        </div>
-                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-pink-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                       <div className="w-8 h-8 rounded-full apple-glass-pill flex items-center justify-center text-slate-400 group-hover:text-white group-hover:bg-white/20 transition-all shrink-0 mt-1">
+                         <ChevronDown className="rotate-[-90deg]" size={16}/>
+                       </div>
                      </button>
                    </div>
                  </div>
 
                  {/* 4. PARAMÈTRES AVANCÉS & ACTION DESTRUCTIVE (ZONE SÉCURISÉE) */}
                  <div className="pt-2">
-                   <div className="p-4 sm:p-5 rounded-2xl bg-rose-500/10 border border-rose-500/25 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                     <div className="flex items-center gap-3">
-                       <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center justify-center shrink-0">
-                         <AlertTriangle size={17} />
+                   <div className="apple-glass-card rounded-[1.75rem] p-5 border-rose-500/30 bg-rose-500/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
+                     <div className="flex items-center gap-3.5">
+                       <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-rose-600 to-red-500 text-white flex items-center justify-center shadow-[0_4px_15px_rgba(239,68,68,0.4)] ring-1 ring-white/30 shrink-0">
+                         <AlertTriangle size={20} />
                        </div>
                        <div>
-                         <div className="text-xs font-bold text-white">Zone de Réinitialisation</div>
-                         <div className="text-[11px] text-slate-400">Supprimer définitivement ce relevé et toutes ses opérations du périmètre actif</div>
+                         <div className="text-sm font-bold text-white">Zone de Réinitialisation</div>
+                         <div className="text-xs text-slate-300/80 mt-0.5">Supprimer définitivement ce relevé et toutes ses opérations du périmètre actif</div>
                        </div>
                      </div>
                      <button 
@@ -3131,9 +3150,9 @@ export const BankStatements: React.FC = () => {
                          setIsToolsSheetOpen(false); 
                          handlePurgeScope();
                        }} 
-                       className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                       className="apple-glass-pill px-5 py-2.5 rounded-2xl bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95 shrink-0"
                      >
-                       <Trash2 size={14}/>
+                       <Trash2 size={15}/>
                        <span>Supprimer ce relevé</span>
                      </button>
                    </div>

@@ -793,17 +793,17 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
       />
 
       {/* Slide-over Drawer Panel */}
-      <div className="relative z-10 w-full max-w-2xl bg-[#0b0f1e]/95 backdrop-blur-2xl border-l border-white/15 shadow-[0_25px_60px_rgba(0,0,0,0.8)] flex flex-col h-full animate-in slide-in-from-right duration-300 text-slate-100 overflow-hidden">
+      <div className="relative z-10 w-full max-w-2xl apple-glass bg-[#080d1e]/85 backdrop-blur-3xl border-l border-white/20 shadow-[0_0_80px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.35)] flex flex-col h-full animate-in slide-in-from-right duration-300 text-slate-100 overflow-hidden coach-liquid-aura">
         
         {/* --- HEADER --- */}
-        <div className="p-4 sm:p-5 border-b border-white/10 bg-white/[0.03] backdrop-blur-xl shrink-0">
+        <div className="apple-glass border-b border-white/15 p-5 shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               {onBack && (
                 <button
                   type="button"
                   onClick={onBack}
-                  className="p-2.5 -ml-1 rounded-2xl bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white border border-white/10 transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
+                  className="apple-glass-pill hover:bg-white/20 px-3.5 py-2 rounded-2xl text-xs font-bold text-white flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
                   title="Retour à la liste des outils"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -935,7 +935,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
             <button
               onClick={onClose}
-              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white border border-white/10 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-sm"
+              className="w-10 h-10 rounded-full apple-glass-pill hover:bg-white/20 text-slate-300 hover:text-white border border-white/20 flex items-center justify-center transition-all shadow-sm cursor-pointer"
               title="Fermer"
             >
               <X className="w-5 h-5" />
@@ -1325,7 +1325,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
           {/* CAS 5 : Synthèse Épurée pour Abonnements & Prélèvements (Google Stitch DNA) */}
           {auditType === 'subscriptions' && (
-            <div className="p-4 sm:p-5 rounded-3xl bg-white/[0.035] hover:bg-white/[0.05] border border-blue-500/25 shadow-lg backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 transition-all">
+            <div className="apple-glass-card rounded-3xl p-5 border-blue-400/30 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 transition-all relative overflow-hidden">
               <div className="flex items-baseline gap-3">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
@@ -1381,7 +1381,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
         </div>
 
                 {/* --- BARRE D'OUTILS ET RECHERCHE --- */}
-        <div className="p-3 sm:p-4 border-b border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0 bg-[#0b0f1e]/80 backdrop-blur-md">
+        <div className="p-3 sm:p-4 border-b border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0 bg-[#080d1e]/80 backdrop-blur-md">
           <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -1389,7 +1389,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={auditType === 'subscriptions' ? "Rechercher un abonnement (Netflix, EDF, Orange, 10.99...)" : "Rechercher par libellé, mot-clé ou montant..."}
-              className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-white/[0.04] border border-white/10 focus:outline-none focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40 text-white placeholder:text-slate-400 font-medium"
+              className="apple-glass-pill w-full pl-9 pr-8 py-2.5 text-xs rounded-2xl text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40 font-medium"
             />
             {searchQuery && (
               <button 
@@ -1438,7 +1438,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
           {auditType === 'subscriptions' && (
             <div className="flex items-center justify-between gap-2 flex-wrap self-start sm:self-auto">
-              <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl overflow-x-auto border border-white/10">
+              <div className="flex items-center gap-1 apple-glass p-1 rounded-xl overflow-x-auto border border-white/15">
                 <button
                   type="button"
                   onClick={() => setSubscriptionSortMode('logical')}
@@ -1563,7 +1563,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
         </div>
 
         {/* --- FOOTER : CONCILIATION ARITHMÉTIQUE STRICTE --- */}
-        <div className="p-4 border-t border-white/10 bg-[#0b0f1e]/90 backdrop-blur-xl flex items-center justify-between text-xs shrink-0">
+        <div className="apple-glass border-t border-white/15 p-4 sm:p-5 flex items-center justify-between text-xs shrink-0">
           <div className="flex items-center gap-1.5 text-slate-400">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
             <span>

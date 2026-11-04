@@ -10,16 +10,17 @@ interface BanknoteCanvasProps {
   intensity?: 'subtle' | 'normal' | 'rich';
   interactive?: boolean;
   soundEnabled?: boolean;
-  onCollectCash?: (amount: number, label: string) => void;
+  onCollectCash?: (amount: number, currency: 'EUR' | 'CHF', label: string) => void;
 }
 
 interface FloatingBill {
   id: number;
+  currency: 'EUR' | 'CHF';
+  value: 50 | 100 | 200;
   x: number;
   y: number;
   vx: number;
   vy: number;
-  value: 50 | 100 | 200 | 500;
   width: number;
   height: number;
   rotation: number;
@@ -28,7 +29,7 @@ interface FloatingBill {
   vFlip: number;
   scale: number;
   opacity: number;
-  depth: number; // 0 (fond) à 1 (premier plan)
+  depth: number;
   colorBg: string;
   colorBorder: string;
   colorAccent: string;
@@ -57,11 +58,17 @@ interface FloatingLabel {
   color: string;
 }
 
-const BILL_PALETTES = {
-  50: { bg: '#b45309', border: '#f59e0b', text: '#fef3c7', label: '50 € Épargné !' },
-  100: { bg: '#047857', border: '#10b981', text: '#a7f3d0', label: '100 € Cash Flow !' },
-  200: { bg: '#a16207', border: '#eab308', text: '#fef08a', label: '200 € Investi !' },
-  500: { bg: '#4338ca', border: '#818cf8', text: '#e0e7ff', label: '500 € Patrimoine !' },
+const CURRENCY_CONFIGS = {
+  EUR: {
+    50: { bg: '#b45309', border: '#f59e0b', text: '#fef3c7', label: '50 € Épargné !' },
+    100: { bg: '#047857', border: '#10b981', text: '#a7f3d0', label: '100 € Cash Flow !' },
+    200: { bg: '#a16207', border: '#eab308', text: '#fef08a', label: '200 € Investi !' },
+  },
+  CHF: {
+    50: { bg: '#15803d', border: '#4ade80', text: '#bbf7d0', label: '50 CHF Épargne Suisse !' },
+    100: { bg: '#1d4ed8', border: '#60a5fa', text: '#dbeafe', label: '100 CHF Rendement Valais !' },
+    200: { bg: '#78350f', border: '#b45309', text: '#fed7aa', label: '200 CHF Patrimoine CERN !' },
+  },
 };
 
 export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>(({
@@ -85,7 +92,7 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
   });
   const animFrameRef = useRef<number | null>(null);
 
-  // Synthèse audio native pour le carillon de devises
+  // Synthèse audio d'un carillon de monnaie
   const playCashSound = useCallback(() => {
     if (!soundEnabled) return;
     try {
@@ -93,7 +100,6 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
 
-      // Fréquence carillon cloche / pièce dorée
       const osc1 = ctx.createOscillator();
       const gain1 = ctx.createGain();
       osc1.type = 'sine';
@@ -119,22 +125,27 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
     } catch {}
   }, [soundEnabled]);
 
-  // Génération d'un billet individuel
+  // Génération d'un billet EUR (horizontal) ou CHF (vertical)
   const createBill = useCallback((canvasWidth: number, canvasHeight: number, startFromTop = false): FloatingBill => {
-    const values: (50 | 100 | 200 | 500)[] = [50, 100, 100, 200, 500];
+    const isChf = Math.random() < 0.5;
+    const currency: 'EUR' | 'CHF' = isChf ? 'CHF' : 'EUR';
+    const values: (50 | 100 | 200)[] = [50, 100, 200];
     const val = values[Math.floor(Math.random() * values.length)];
-    const p = BILL_PALETTES[val];
-    const depth = Math.random() * 0.7 + 0.3; // 0.3 (lointain) à 1.0 (proche)
-    const baseW = 105 * depth;
-    const baseH = 55 * depth;
+    const p = CURRENCY_CONFIGS[currency][val];
+    const depth = Math.random() * 0.7 + 0.3; // 0.3 (fond) à 1.0 (premier plan)
+
+    // Dimensions : Euro horizontal (105x56), Franc suisse vertical (54x98)
+    const baseW = isChf ? 54 * depth : 105 * depth;
+    const baseH = isChf ? 98 * depth : 56 * depth;
 
     return {
       id: Math.random(),
+      currency,
+      value: val,
       x: Math.random() * canvasWidth,
       y: startFromTop ? -baseH - Math.random() * 120 : Math.random() * canvasHeight,
-      vx: (Math.random() - 0.5) * 1.2,
-      vy: Math.random() * 0.8 + 0.6 * depth,
-      value: val,
+      vx: (Math.random() - 0.5) * 1.3,
+      vy: Math.random() * 0.8 + 0.65 * depth,
       width: baseW,
       height: baseH,
       rotation: (Math.random() - 0.5) * 0.8,
@@ -152,22 +163,20 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
     };
   }, []);
 
-  // Déclenchement de la pluie de billets
-  const makeItRain = useCallback((count = 28) => {
+  const makeItRain = useCallback((count = 32) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     playCashSound();
     for (let i = 0; i < count; i++) {
       const bill = createBill(canvas.width, canvas.height, true);
-      bill.vy += Math.random() * 2 + 1.5;
+      bill.vy += Math.random() * 2.2 + 1.6;
       bill.vx += (Math.random() - 0.5) * 3;
       billsRef.current.push(bill);
     }
   }, [createBill, playCashSound]);
 
-  // Explosion d'étincelles dorées
   const explodeAt = useCallback((x: number, y: number) => {
-    for (let i = 0; i < 22; i++) {
+    for (let i = 0; i < 24; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = Math.random() * 4 + 1.5;
       sparksRef.current.push({
@@ -176,7 +185,7 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed - 1.2,
         size: Math.random() * 3 + 1.5,
-        color: ['#fbbf24', '#f59e0b', '#34d399', '#38bdf8', '#ffffff'][Math.floor(Math.random() * 5)],
+        color: ['#fbbf24', '#4ade80', '#60a5fa', '#f59e0b', '#ffffff', '#dc2626'][Math.floor(Math.random() * 6)],
         alpha: 1,
         life: 0,
         maxLife: Math.random() * 30 + 20,
@@ -189,7 +198,6 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
     explodeAt,
   }), [makeItRain, explodeAt]);
 
-  // Initialisation et boucle de rendu Canvas 60 FPS
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -206,21 +214,24 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
     };
     window.addEventListener('resize', handleResize);
 
-    // Population initiale de billets selon l'intensité
-    const initialCounts = { subtle: 8, normal: 16, rich: 26 };
-    const count = initialCounts[intensity] || 16;
+    const initialCounts = { subtle: 10, normal: 18, rich: 28 };
+    const count = initialCounts[intensity] || 18;
     billsRef.current = Array.from({ length: count }).map(() => createBill(width, height, false));
 
-    // Dessin vectoriel ultra-performant d'un billet sur le canvas
     const drawBill = (bill: FloatingBill) => {
       ctx.save();
       ctx.translate(bill.x, bill.y);
       ctx.rotate(bill.rotation);
 
-      // Simulation de l'inclinaison 3D / feuille qui vole
       const cosFlip = Math.cos(bill.flipAngle);
-      const flipScaleY = Math.abs(cosFlip);
-      ctx.scale(1, Math.max(0.08, flipScaleY));
+      const flipScale = Math.abs(cosFlip);
+
+      // Simulation du retournement 3D
+      if (bill.currency === 'CHF') {
+        ctx.scale(Math.max(0.08, flipScale), 1);
+      } else {
+        ctx.scale(1, Math.max(0.08, flipScale));
+      }
 
       ctx.globalAlpha = bill.opacity;
 
@@ -228,7 +239,7 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
       const h = bill.height;
       const r = 4;
 
-      // Ombre portée sous le billet
+      // Ombre portée
       ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
       ctx.shadowBlur = 10 * bill.depth;
       ctx.shadowOffsetY = 4 * bill.depth;
@@ -239,68 +250,97 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
       ctx.roundRect(-w / 2, -h / 2, w, h, r);
       ctx.fill();
 
-      // Bordure fine lumineuse
+      // Bordure
       ctx.shadowColor = 'transparent';
       ctx.strokeStyle = bill.colorBorder;
       ctx.lineWidth = 1.2 * bill.depth;
       ctx.stroke();
 
-      // Bande holographique verticale
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-      ctx.fillRect(w * 0.22, -h / 2 + 1, w * 0.14, h - 2);
+      if (bill.currency === 'CHF') {
+        // ==================== DESIGN BILLET SUISSE (CHF) ====================
+        // Bande holographique suisse verticale
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.fillRect(-w * 0.3, -h / 2 + 2, w * 0.22, h - 4);
 
-      // Filigrane central discret
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.lineWidth = 0.8;
-      ctx.beginPath();
-      ctx.arc(0, 0, h * 0.32, 0, Math.PI * 2);
-      ctx.stroke();
+        // Croix Suisse miniature en haut à droite
+        const crossSize = 10 * bill.depth;
+        const crossX = w / 2 - crossSize - 3;
+        const crossY = -h / 2 + 4;
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath();
+        ctx.roundRect(crossX, crossY, crossSize, crossSize, 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(crossX + crossSize * 0.35, crossY + 1.5, crossSize * 0.3, crossSize - 3);
+        ctx.fillRect(crossX + 1.5, crossY + crossSize * 0.35, crossSize - 3, crossSize * 0.3);
 
-      // Valeur faciale au centre/gauche
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${Math.round(18 * bill.depth)}px system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${bill.value} €`, -w * 0.16, 0);
+        // Valeur faciale verticale
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.round(18 * bill.depth)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${bill.value}`, 0, h * 0.18);
 
-      // Mini mention "CASHPILOT"
-      ctx.fillStyle = bill.colorAccent;
-      ctx.font = `bold ${Math.round(6.5 * bill.depth)}px system-ui, sans-serif`;
-      ctx.fillText('CASHPILOT', 0, -h * 0.34);
+        ctx.fillStyle = bill.colorAccent;
+        ctx.font = `bold ${Math.round(7 * bill.depth)}px system-ui, sans-serif`;
+        ctx.fillText('CHF', 0, h * 0.35);
+
+        ctx.font = `bold ${Math.round(5.5 * bill.depth)}px system-ui, sans-serif`;
+        ctx.fillText('BNS • SNB', 0, -h * 0.38);
+      } else {
+        // ==================== DESIGN BILLET EURO (EUR) ====================
+        // Bande holographique verticale
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.fillRect(w * 0.22, -h / 2 + 1, w * 0.14, h - 2);
+
+        // Filigrane circulaire
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, h * 0.32, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Valeur faciale
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.round(18 * bill.depth)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${bill.value} €`, -w * 0.16, 0);
+
+        // Mention BCE
+        ctx.fillStyle = bill.colorAccent;
+        ctx.font = `bold ${Math.round(6.5 * bill.depth)}px system-ui, sans-serif`;
+        ctx.fillText('BCE ECB 2026', 0, -h * 0.34);
+      }
 
       ctx.restore();
     };
 
-    // Boucle d'animation principale
     let lastTime = performance.now();
 
     const animate = (currentTime: number) => {
-      const dt = Math.min(32, currentTime - lastTime);
       lastTime = currentTime;
 
       ctx.clearRect(0, 0, width, height);
 
       const mouse = mousePosRef.current;
-      // Calcul de la vélocité du curseur pour l'effet de souffle aérodynamique
       mouse.vx = mouse.x - mouse.lastX;
       mouse.vy = mouse.y - mouse.lastY;
       mouse.lastX = mouse.x;
       mouse.lastY = mouse.y;
 
-      // 1. Mise à jour et affichage des billets
       const bills = billsRef.current;
       for (let i = bills.length - 1; i >= 0; i--) {
         const b = bills[i];
 
-        // Oscillation aérodynamique (papillonnement sinusoïdal)
         b.flutterPhase += b.flutterSpeed;
-        const flutterX = Math.sin(b.flutterPhase) * 0.6;
+        const flutterX = Math.sin(b.flutterPhase) * 0.65;
         b.x += b.vx + flutterX;
         b.y += b.vy;
         b.rotation += b.vRot;
         b.flipAngle += b.vFlip;
 
-        // Interaction avec le curseur de souris / doigt tactile
+        // Interaction avec le curseur
         if (interactive && mouse.x > 0 && mouse.y > 0) {
           const dx = b.x - mouse.x;
           const dy = b.y - mouse.y;
@@ -316,24 +356,23 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
           }
         }
 
-        // Recyclage lorsqu'un billet dépasse le bas de l'écran
-        if (b.y > height + 80) {
-          b.y = -80;
+        if (b.y > height + 90) {
+          b.y = -90;
           b.x = Math.random() * width;
         }
-        if (b.x < -80) b.x = width + 60;
-        if (b.x > width + 80) b.x = -60;
+        if (b.x < -90) b.x = width + 70;
+        if (b.x > width + 90) b.x = -70;
 
         drawBill(b);
       }
 
-      // 2. Particules d'étincelles dorées
+      // Particules d'étincelles
       const sparks = sparksRef.current;
       for (let i = sparks.length - 1; i >= 0; i--) {
         const s = sparks[i];
         s.x += s.vx;
         s.y += s.vy;
-        s.vy += 0.08; // gravité
+        s.vy += 0.08;
         s.life++;
         s.alpha = Math.max(0, 1 - s.life / s.maxLife);
 
@@ -352,7 +391,7 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
         }
       }
 
-      // 3. Libellés financiers flottants (+100 € Épargné !)
+      // Libellés flottants
       const labels = labelsRef.current;
       for (let i = labels.length - 1; i >= 0; i--) {
         const l = labels[i];
@@ -387,7 +426,6 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
     };
   }, [createBill, intensity, interactive]);
 
-  // Événements souris et touch pour l'effet de vent et le clic sur les billets
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     mousePosRef.current.x = e.clientX;
     mousePosRef.current.y = e.clientY;
@@ -410,14 +448,12 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
     mousePosRef.current.y = -1000;
   };
 
-  // Clic ou tap sur un billet pour le collecter
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // Trouver le billet sous le clic
     const bills = billsRef.current;
     let hitBill: FloatingBill | null = null;
 
@@ -432,15 +468,14 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
     }
 
     if (hitBill) {
-      // Rotation rapide et projection
-      hitBill.vFlip += 0.2;
-      hitBill.vRot += (Math.random() - 0.5) * 0.15;
-      hitBill.vy -= 4;
+      hitBill.vFlip += 0.25;
+      hitBill.vRot += (Math.random() - 0.5) * 0.2;
+      hitBill.vy -= 4.5;
 
       explodeAt(clickX, clickY);
       playCashSound();
 
-      const p = BILL_PALETTES[hitBill.value];
+      const p = CURRENCY_CONFIGS[hitBill.currency][hitBill.value];
       labelsRef.current.push({
         id: Math.random(),
         x: clickX,
@@ -451,10 +486,9 @@ export const BanknoteCanvas = forwardRef<BanknoteCanvasRef, BanknoteCanvasProps>
       });
 
       if (onCollectCash) {
-        onCollectCash(hitBill.value, p.label);
+        onCollectCash(hitBill.value, hitBill.currency, p.label);
       }
     } else {
-      // Émission d'une étincelle même en cliquant dans le vide
       explodeAt(clickX, clickY);
     }
   };
