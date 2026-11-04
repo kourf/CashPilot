@@ -137,19 +137,19 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
       />
 
       {/* Main Drawer Container */}
-      <div className="bg-white dark:bg-gray-900 w-full sm:max-w-3xl sm:rounded-[2rem] rounded-t-[2.2rem] shadow-2xl relative z-10 flex flex-col max-h-[92vh] sm:max-h-[88vh] overflow-hidden border border-gray-100 dark:border-gray-800 animate-in slide-in-from-bottom duration-300">
+      <div className="bg-[#0b0f1e]/95 backdrop-blur-2xl w-full sm:max-w-4xl sm:rounded-[2.5rem] rounded-t-[2.2rem] shadow-[0_25px_60px_rgba(0,0,0,0.8)] relative z-10 flex flex-col max-h-[92vh] sm:max-h-[88vh] overflow-hidden border border-white/15 animate-in slide-in-from-bottom duration-300 text-slate-100">
         
         {/* Mobile Drag Indicator */}
-        <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mt-2.5 sm:hidden flex-shrink-0" />
+        <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mt-2.5 sm:hidden flex-shrink-0" />
 
         {/* Sticky Header */}
-        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white/95 dark:bg-gray-900/95 backdrop-blur-md flex-shrink-0">
+        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-white/[0.03] backdrop-blur-xl flex-shrink-0">
           <div className="flex items-center space-x-3 min-w-0">
             {onBack && (
               <button
                 type="button"
                 onClick={onBack}
-                className="p-2 -ml-1 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 transition flex items-center gap-1.5 text-xs font-bold shrink-0 active:scale-95 cursor-pointer"
+                className="p-2.5 -ml-1 rounded-2xl bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white border border-white/10 transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
                 title="Retour à la liste des outils"
               >
                 <ArrowLeft size={16} />
@@ -161,14 +161,14 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <h3 className="font-extrabold text-gray-900 dark:text-white text-base sm:text-lg truncate">
+                <h3 className="font-extrabold text-white text-base sm:text-lg truncate">
                   Rapport d'Audit Financier
                 </h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                   Analyse en 3 Temps
                 </span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+              <p className="text-xs text-slate-400 truncate">
                 {report.periodLabel} • {report.totalTransactions} opérations analysées
               </p>
             </div>
@@ -204,7 +204,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
 
             <button 
               onClick={onClose}
-              className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition active:scale-95 cursor-pointer"
+              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white border border-white/10 flex items-center justify-center transition-all cursor-pointer shadow-sm"
             >
               <X size={18} />
             </button>
@@ -212,13 +212,13 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
         </div>
 
         {/* --- NAVIGATION DES 3 TEMPS (Onglets Épurés & Explicites) --- */}
-        <div className="flex px-4 pt-2.5 border-b border-gray-100 dark:border-gray-800 space-x-2 overflow-x-auto hide-scrollbar bg-gray-50/70 dark:bg-gray-850/50 flex-shrink-0">
+        <div className="flex px-4 pt-2.5 border-b border-white/10 space-x-2 overflow-x-auto hide-scrollbar bg-black/40 flex-shrink-0">
           <button
             onClick={() => setActiveTab('revenues')}
             className={`px-4 py-2 text-xs font-bold whitespace-nowrap rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'revenues'
-                ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-white dark:bg-gray-900 shadow-xs'
-                : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400'
+                ? 'border-emerald-400 text-emerald-300 bg-white/15 shadow-sm font-bold border-b-2 rounded-t-xl'
+                : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
             <ArrowDownLeft size={15} className="text-emerald-500" />
@@ -229,8 +229,8 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
             onClick={() => setActiveTab('expenses')}
             className={`px-4 py-2 text-xs font-bold whitespace-nowrap rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'expenses'
-                ? 'border-rose-500 text-rose-600 dark:text-rose-400 bg-white dark:bg-gray-900 shadow-xs'
-                : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400'
+                ? 'border-rose-400 text-rose-300 bg-white/15 shadow-sm font-bold border-b-2 rounded-t-xl'
+                : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
             <ArrowUpRight size={15} className="text-rose-500" />
@@ -241,8 +241,8 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
             onClick={() => setActiveTab('coverage')}
             className={`px-4 py-2 text-xs font-bold whitespace-nowrap rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'coverage'
-                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-gray-900 shadow-xs'
-                : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400'
+                ? 'border-indigo-400 text-indigo-300 bg-white/15 shadow-sm font-bold border-b-2 rounded-t-xl'
+                : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
             <Scale size={15} className="text-indigo-500" />
@@ -261,7 +261,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
               
               {/* Synthèse Chiffrée du TEMPS 1 */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-4 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-900/40">
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 backdrop-blur-xl rounded-2xl shadow-sm">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 block">
                     Total Encaissé
                   </span>
@@ -273,36 +273,36 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                   </span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-2xs">
+                <div className="p-4 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-2xl backdrop-blur-xl shadow-sm text-slate-100 transition-all">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                       Revenus Réguliers (Socle)
                     </span>
                     <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                       {recurringInflowsPct}% du total
                     </span>
                   </div>
-                  <span className="text-xl sm:text-2xl font-black font-mono text-gray-900 dark:text-white mt-1 block">
+                  <span className="text-xl sm:text-2xl font-black font-mono text-white mt-1 block">
                     +{formatCurrency(totalRecurringInflows, { currency, showSign: false })}
                   </span>
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-0.5 block truncate">
+                  <span className="text-[11px] text-slate-400 font-medium mt-0.5 block truncate">
                     Salaires, indemnités chômage & CAF
                   </span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-2xs">
+                <div className="p-4 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-2xl backdrop-blur-xl shadow-sm text-slate-100 transition-all">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                       Revenus Ponctuels
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                       {100 - recurringInflowsPct}% du total
                     </span>
                   </div>
-                  <span className="text-xl sm:text-2xl font-black font-mono text-gray-900 dark:text-white mt-1 block">
+                  <span className="text-xl sm:text-2xl font-black font-mono text-white mt-1 block">
                     +{formatCurrency(totalOneOffInflows, { currency, showSign: false })}
                   </span>
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 font-medium mt-0.5 block truncate">
+                  <span className="text-[11px] text-slate-400 font-medium mt-0.5 block truncate">
                     Virements de proches & remboursements
                   </span>
                 </div>
@@ -320,7 +320,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                   <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                 )}
                 <div>
-                  <h4 className="font-extrabold text-sm text-gray-900 dark:text-white">
+                  <h4 className="font-extrabold text-sm text-white">
                     {isIncomeStable 
                       ? 'Socle de revenus fiable et stable' 
                       : 'Attention : Forte dépendance aux encaissements ponctuels'}
@@ -336,7 +336,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
               {/* Liste détaillée des sources de revenus */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between px-1">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
                     Détail des sources & part sur le revenu total
                   </h4>
                   <span className="text-[11px] text-gray-400">Pourcentage / Total</span>
@@ -348,12 +348,12 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                     return (
                       <div 
                         key={idx}
-                        className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-2xs space-y-2 hover:border-gray-200 dark:hover:border-gray-700 transition"
+                        className="p-3.5 sm:p-4 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-2xl backdrop-blur-xl shadow-sm text-slate-100 transition-all space-y-2 hover:border-gray-200 dark:hover:border-gray-700 transition"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                              <span className="font-bold text-sm text-white truncate">
                                 {item.source}
                               </span>
                               <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
@@ -365,7 +365,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                               </span>
                             </div>
                             {item.details && (
-                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              <p className="text-xs text-slate-400 mt-0.5">
                                 {item.details} • {item.count} versement{item.count > 1 ? 's' : ''}
                               </p>
                             )}
@@ -404,7 +404,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
             <div className="space-y-6 animate-in fade-in duration-200">
               
               {/* Entête Dépenses Totales */}
-              <div className="p-4 rounded-2xl bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 backdrop-blur-xl rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300 block">
                     Total des Dépenses Réelles
@@ -418,13 +418,13 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                 </div>
 
                 <div className="text-left sm:text-right">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                     Poids sur les Revenus
                   </span>
-                  <span className={`text-xl font-black font-mono ${totalOutflow > totalInflow ? 'text-rose-600' : 'text-gray-900 dark:text-white'}`}>
+                  <span className={`text-xl font-black font-mono ${totalOutflow > totalInflow ? 'text-rose-600' : 'text-white'}`}>
                     {totalInflow > 0 ? Math.round((totalOutflow / totalInflow) * 100) : 100}%
                   </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 font-medium block">
+                  <span className="text-xs text-slate-400 font-medium block">
                     {totalOutflow > totalInflow ? '⚠️ Dépassement des revenus' : '✅ Inférieur aux revenus'}
                   </span>
                 </div>
@@ -434,7 +434,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Award className="w-4 h-4 text-amber-500" />
-                  <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-white">
                     Top 3 des postes de dépenses (Principaux pôles de coûts)
                   </h4>
                 </div>
@@ -452,7 +452,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                     return (
                       <div 
                         key={exp.id}
-                        className="p-4 rounded-2xl bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-800 shadow-2xs space-y-2.5 relative overflow-hidden flex flex-col justify-between"
+                        className="p-4 rounded-2xl bg-white dark:bg-gray-800 border-2 border-white/10 shadow-2xs space-y-2.5 relative overflow-hidden flex flex-col justify-between"
                       >
                         <div>
                           <div className="flex items-center justify-between mb-2">
@@ -462,7 +462,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                             </span>
                           </div>
 
-                          <h5 className="font-extrabold text-sm text-gray-900 dark:text-white line-clamp-2" title={exp.title}>
+                          <h5 className="font-extrabold text-sm text-white line-clamp-2" title={exp.title}>
                             {exp.title}
                           </h5>
                           
@@ -472,10 +472,10 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                         </div>
 
                         {/* Ratios : % dépenses et % revenus */}
-                        <div className="pt-2 border-t border-gray-100 dark:border-gray-750 space-y-1 text-xs">
+                        <div className="pt-2 border-t border-white/10 space-y-1 text-xs">
                           <div className="flex justify-between items-center text-gray-600 dark:text-gray-300">
                             <span className="text-[11px]">Part des dépenses :</span>
-                            <strong className="font-mono text-gray-900 dark:text-white">{exp.pctOfOutflow}%</strong>
+                            <strong className="font-mono text-white">{exp.pctOfOutflow}%</strong>
                           </div>
                           <div className="flex justify-between items-center text-gray-600 dark:text-gray-300">
                             <span className="text-[11px]">Part des revenus :</span>
@@ -491,7 +491,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
               {/* Liste exhaustive des dépenses */}
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between px-1">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
                     Ventilation détaillée de toutes les dépenses
                   </h4>
                   <span className="text-[11px] text-gray-400">% Dépenses • % Revenus</span>
@@ -501,11 +501,11 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                   {allOutflowItems.map((item, idx) => (
                     <div 
                       key={item.id || idx}
-                      className="p-3.5 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-2xs flex items-center justify-between gap-3 text-xs"
+                      className="p-3.5 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-2xl backdrop-blur-xl shadow-sm text-slate-100 transition-all flex items-center justify-between gap-3 text-xs"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-gray-900 dark:text-white text-sm truncate">
+                          <span className="font-bold text-white text-sm truncate">
                             {item.title}
                           </span>
                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
@@ -532,7 +532,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                         <span className="text-sm font-black font-mono text-rose-600 dark:text-rose-400 block">
                           −{formatCurrency(item.total, { currency, showSign: false })}
                         </span>
-                        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">
+                        <span className="text-[10px] text-slate-400 font-mono">
                           {item.pctOfOutflow}% des dépenses • {item.pctOfInflow}% des revenus
                         </span>
                       </div>
@@ -559,7 +559,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                   </span>
                 </div>
 
-                <h4 className="text-base sm:text-lg font-black text-gray-900 dark:text-white leading-snug">
+                <h4 className="text-base sm:text-lg font-black text-white leading-snug">
                   Vos revenus permettent-ils de couvrir l'intégralité de vos dépenses ?
                 </h4>
 
@@ -597,7 +597,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                   </div>
                   <div className="flex justify-between items-center text-[10px] text-gray-500 font-bold uppercase tracking-wider">
                     <span>0 % (Aucune couverture)</span>
-                    <span className="font-extrabold text-gray-900 dark:text-white">Seuil d'équilibre (100 %)</span>
+                    <span className="font-extrabold text-white">Seuil d'équilibre (100 %)</span>
                   </div>
                 </div>
 
@@ -610,14 +610,14 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
 
               {/* Bilan à 3 Colonnes : Revenus, Dépenses, Solde Net */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-2xs">
+                <div className="p-4 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-2xl backdrop-blur-xl shadow-sm text-slate-100 transition-all">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Total Revenus (+)</span>
                   <span className="text-lg font-black font-mono text-emerald-600 dark:text-emerald-400 mt-1 block">
                     +{formatCurrency(totalInflow, { currency, showSign: false })}
                   </span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-2xs">
+                <div className="p-4 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-2xl backdrop-blur-xl shadow-sm text-slate-100 transition-all">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Total Dépenses (−)</span>
                   <span className="text-lg font-black font-mono text-rose-600 dark:text-rose-400 mt-1 block">
                     −{formatCurrency(totalOutflow, { currency, showSign: false })}
@@ -629,7 +629,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                     ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40' 
                     : 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40'
                 }`}>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                     {isSurplus ? 'Capacité d\'Épargne Réelle' : 'Déficit Net à Combler'}
                   </span>
                   <span className={`text-lg font-black font-mono mt-1 block ${
@@ -644,7 +644,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
               <div className="space-y-3 pt-2">
                 <div className="flex items-center gap-2">
                   <Lightbulb className="w-4 h-4 text-purple-500" />
-                  <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-white">
                     Recommandations d'optimisation budgétaire
                   </h4>
                 </div>
@@ -653,13 +653,13 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
                   {report.recommendations.map(rec => (
                     <div 
                       key={rec.num}
-                      className="p-3.5 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-800 shadow-2xs flex items-start gap-3 text-xs"
+                      className="p-3.5 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-2xl backdrop-blur-xl shadow-sm text-slate-100 transition-all flex items-start gap-3 text-xs"
                     >
                       <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 flex items-center justify-center font-bold shrink-0 mt-0.5">
                         {rec.num}
                       </div>
                       <div>
-                        <h5 className="font-bold text-gray-900 dark:text-white">
+                        <h5 className="font-bold text-white">
                           {rec.title}
                         </h5>
                         <p className="text-gray-600 dark:text-gray-300 mt-0.5 leading-relaxed">
@@ -680,7 +680,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
           {activeTab === 'markdown' && (
             <div className="space-y-3 animate-in fade-in duration-200">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-500 dark:text-gray-400">
+                <span className="text-xs text-slate-400">
                   Rapport textuel complet généré par l'IA (prêt à copier ou archiver) :
                 </span>
                 <button
@@ -701,7 +701,7 @@ export const BankAuditReportDrawer: React.FC<BankAuditReportDrawerProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 flex items-center justify-between gap-3 flex-shrink-0">
+        <div className="p-4 border-t border-white/10 bg-white/95 dark:bg-gray-900/95 flex items-center justify-between gap-3 flex-shrink-0">
           <button
             onClick={handleCopyReport}
             className="flex-1 py-3 px-4 rounded-2xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-750 font-bold text-xs text-gray-800 dark:text-gray-200 flex items-center justify-center gap-2 active:scale-95 transition cursor-pointer"

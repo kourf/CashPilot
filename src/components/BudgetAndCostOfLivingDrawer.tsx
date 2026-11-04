@@ -469,22 +469,22 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
     <div className="fixed inset-0 z-[100] flex justify-end">
       {/* Backdrop sombre et flouté */}
       <div 
-        className="fixed inset-0 bg-background/80 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/80 backdrop-blur-xl transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
       />
 
       {/* Drawer Panel Premium */}
-      <div className="relative z-10 w-full max-w-3xl bg-card border-l border-border/80 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300 text-foreground overflow-hidden">
+      <div className="relative z-10 w-full max-w-3xl bg-[#0b0f1e]/95 backdrop-blur-2xl border-l border-white/10 shadow-[0_25px_60px_rgba(0,0,0,0.8)] flex flex-col h-full animate-in slide-in-from-right duration-300 text-slate-100 overflow-hidden">
         
         {/* Header Unifié avec Bascule par Sous-Onglets */}
-        <div className="p-4 sm:p-5 border-b border-border/60 bg-secondary/30 shrink-0 space-y-3.5">
+        <div className="p-4 sm:p-5 border-b border-white/10 bg-white/[0.03] backdrop-blur-xl shrink-0 space-y-3.5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               {onBack && (
                 <button
                   type="button"
                   onClick={onBack}
-                  className="p-2.5 -ml-1 rounded-2xl bg-secondary/80 hover:bg-secondary text-foreground transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
+                  className="p-2.5 -ml-1 rounded-2xl bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white border border-white/10 transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
                   title="Retour à la liste des outils"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -495,10 +495,10 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                 {activeTab === 'cost_of_living' ? <Calculator className="w-5 h-5" /> : <PiggyBank className="w-5 h-5" />}
               </div>
               <div>
-                <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-foreground flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
                   {activeTab === 'cost_of_living' ? 'Simulateur : Coût de la vie' : 'Fixation & Suivi du Budget'}
                 </h2>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
                   {activeTab === 'cost_of_living' 
                     ? 'Définissez vos charges incompressibles cibles (Budget Alloué) avec l\'aide des médianes IA.' 
                     : 'Confrontez vos débits réels du relevé avec le Budget Alloué fixé dans le Coût de la vie.'}
@@ -507,7 +507,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors shrink-0 cursor-pointer"
+              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white border border-white/10 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-sm"
               title="Fermer"
             >
               <X className="w-5 h-5" />
@@ -515,14 +515,14 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
           </div>
 
           {/* Sélecteur de sous-onglets ergonomique en 1 clic */}
-          <div className="p-1 bg-secondary/80 rounded-2xl border border-border/60 shadow-inner flex items-center gap-1">
+          <div className="p-1.5 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setActiveTab('cost_of_living')}
               className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 activeTab === 'cost_of_living'
-                  ? 'bg-background text-foreground shadow-sm ring-1 ring-border/50'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-background/40'
+                  ? 'bg-white/15 text-white shadow-lg backdrop-blur-md border border-white/20'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
               <Calculator className={`w-4 h-4 ${activeTab === 'cost_of_living' ? 'text-emerald-400' : 'text-muted-foreground'}`} />
@@ -533,8 +533,8 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
               onClick={() => setActiveTab('budget_tracking')}
               className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 activeTab === 'budget_tracking'
-                  ? 'bg-background text-foreground shadow-sm ring-1 ring-border/50'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-background/40'
+                  ? 'bg-white/15 text-white shadow-lg backdrop-blur-md border border-white/20'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
               <PiggyBank className={`w-4 h-4 ${activeTab === 'budget_tracking' ? 'text-teal-400' : 'text-muted-foreground'}`} />
@@ -547,15 +547,15 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
         {activeTab === 'cost_of_living' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {/* KPI Card Coût de la vie */}
-            <div className="p-4 sm:p-5 border-b border-border/60 bg-emerald-500/5 shrink-0 flex items-center justify-between flex-wrap gap-4">
+            <div className="p-4 sm:p-5 border-b border-white/10 bg-emerald-500/10 backdrop-blur-xl shrink-0 flex items-center justify-between flex-wrap gap-4">
               <div>
-                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                   Budget Alloué Mensuel Estimé (Coût de la vie)
                 </span>
                 <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-500 tracking-tight block mt-0.5">
                   {formatCurrency(totalCostOfLivingAllocated, { showSign: false })}
                 </span>
-                <span className="text-[11px] text-muted-foreground block mt-0.5">
+                <span className="text-[11px] text-slate-400 block mt-0.5">
                   Ces montants constituent le <strong className="text-foreground">Budget Alloué</strong> pour le suivi réel.
                 </span>
               </div>
@@ -563,7 +563,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                 <button
                   type="button"
                   onClick={handleResetToZero}
-                  className="px-3 py-1.5 rounded-xl border border-border/80 bg-background/80 hover:bg-secondary text-xs font-bold text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 transition-all cursor-pointer"
                   title="Remettre tous les montants à 0 € sans supprimer les postes par défaut"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
@@ -590,8 +590,8 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                 const groupMedian = categoryGroupMedians[group.id] || 0;
 
                 return (
-                  <div key={group.id} className="rounded-2xl border border-border/60 bg-card overflow-hidden shadow-xs">
-                    <div className="px-4 py-3 bg-secondary/40 border-b border-border/50 flex items-center justify-between">
+                  <div key={group.id} className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl overflow-hidden shadow-sm hover:border-white/20 transition-all mb-3">
+                    <div className="px-4 py-3 bg-white/[0.04] border-b border-white/10 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className={`p-1.5 rounded-xl ${group.bg} ${group.color}`}>
                           <Icon className="w-4 h-4" />
@@ -821,10 +821,10 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
         {activeTab === 'budget_tracking' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {/* Bannière explicative : Origine du Budget Alloué */}
-            <div className="p-3.5 sm:px-5 border-b border-border/60 bg-teal-500/10 flex items-center justify-between gap-3 shrink-0">
+            <div className="p-3.5 sm:px-5 border-b border-white/10 bg-teal-500/10 backdrop-blur-xl flex items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <HelpCircle className="w-4 h-4 text-teal-400 shrink-0" />
-                <p className="text-xs text-muted-foreground leading-snug">
+                <p className="text-xs text-slate-300 leading-snug">
                   <strong className="text-foreground">Comprendre le Budget Alloué :</strong> Ce montant correspond strictement à vos charges prévisionnelles configurées dans l'onglet{' '}
                   <button 
                     type="button" 
@@ -838,7 +838,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
               <button
                 type="button"
                 onClick={() => setActiveTab('cost_of_living')}
-                className="px-2.5 py-1.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 font-bold text-[11px] shrink-0 border border-teal-500/30 transition-colors flex items-center gap-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 font-bold text-[11px] shrink-0 border border-teal-500/30 transition-all flex items-center gap-1 cursor-pointer shadow-sm"
               >
                 <Edit2 className="w-3 h-3" />
                 <span>Ajuster le Coût de la vie</span>
@@ -846,17 +846,17 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
             </div>
 
             {/* Synthèse Métriques Réel vs Alloué */}
-            <div className="p-4 sm:p-5 border-b border-border/60 bg-secondary/15 shrink-0 space-y-3">
+            <div className="p-4 sm:p-5 border-b border-white/10 bg-white/[0.025] backdrop-blur-xl shrink-0 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 {isGlobalOverBudget ? (
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-400">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 shadow-sm">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
                     <span className="text-xs font-extrabold">
                       Budget dépassé de {formatCurrency(Math.abs(totalRemaining), { showSign: false })} sur ce relevé
                     </span>
                   </div>
                 ) : (
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 shadow-sm">
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
                     <span className="text-xs font-extrabold">
                       Il vous reste {formatCurrency(totalRemaining, { showSign: false })} sur votre budget de ce mois.
@@ -875,7 +875,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
               </div>
 
               {/* Jauge globale */}
-              <div className="w-full h-2.5 rounded-full bg-secondary/80 overflow-hidden shadow-inner">
+              <div className="w-full h-2.5 rounded-full bg-white/10 overflow-hidden shadow-inner">
                 <div 
                   className={`h-full rounded-full transition-all duration-700 ease-out ${
                     globalPercentage > 100 ? 'bg-rose-500' : (globalPercentage >= 85 ? 'bg-amber-500' : 'bg-emerald-500')
@@ -886,11 +886,11 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
 
               {/* Cartes métriques */}
               <div className="grid grid-cols-3 gap-2 pt-1 text-center">
-                <div className="p-2.5 rounded-xl bg-card border border-border/70 relative group">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block">
+                <div className="p-3 rounded-2xl bg-white/[0.035] border border-white/10 relative group backdrop-blur-xl shadow-sm">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">
                     Budget Alloué
                   </span>
-                  <span className="text-sm sm:text-base font-black font-mono text-foreground">
+                  <span className="text-sm sm:text-base font-black font-mono text-white">
                     {formatCurrency(totalAllocated, { showSign: false })}
                   </span>
                   <span className="text-[9px] text-teal-400 block mt-0.5 font-medium">
@@ -898,7 +898,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                   </span>
                 </div>
 
-                <div className="p-2.5 rounded-xl bg-card border border-border/70">
+                <div className="p-3 rounded-2xl bg-white/[0.035] border border-white/10 backdrop-blur-xl shadow-sm">
                   <span className="text-[10px] uppercase font-bold text-muted-foreground block">Dépense Réelle</span>
                   <span className="text-sm sm:text-base font-black font-mono text-foreground">
                     {formatCurrency(totalRealSpent, { showSign: false })}
@@ -909,7 +909,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                 </div>
 
                 <div className={`p-2.5 rounded-xl border ${
-                  totalRemaining >= 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                  totalRemaining >= 0 ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 backdrop-blur-xl shadow-sm' : 'bg-rose-500/15 border-rose-500/30 text-rose-300 backdrop-blur-xl shadow-sm'
                 }`}>
                   <span className="text-[10px] uppercase font-bold block opacity-80">Écart Net</span>
                   <span className="text-sm sm:text-base font-black font-mono">
@@ -925,17 +925,17 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
             {/* Ventilation Ligne par Ligne */}
             <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 overscroll-contain">
               <div className="flex items-center justify-between pb-1">
-                <h3 className="text-xs uppercase font-extrabold text-muted-foreground tracking-wider">
+                <h3 className="text-[11px] uppercase font-extrabold text-slate-400 tracking-wider">
                   Ventilation par poste et catégorie réelle du relevé
                 </h3>
-                <span className="text-[11px] text-muted-foreground font-medium">
+                <span className="text-[11px] text-slate-400 font-medium">
                   {budgetRows.length} postes audités
                 </span>
               </div>
 
               <div className="space-y-2">
                 {/* Entête du tableau sur grand écran */}
-                <div className="hidden sm:grid sm:grid-cols-12 gap-3 px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border/40">
+                <div className="hidden sm:grid sm:grid-cols-12 gap-3 px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-white/10">
                   <div className="col-span-4">Poste / Catégorie Relevé</div>
                   <div className="col-span-2 text-right">Budget Alloué</div>
                   <div className="col-span-2 text-right">Dépense Réelle</div>
@@ -949,17 +949,17 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                   const isAmber = row.percentage >= 85 && row.percentage <= 100;
                   const progressWidth = Math.min(row.percentage, 100);
                   const barColor = isOver ? 'bg-rose-500' : (isAmber ? 'bg-amber-500' : 'bg-emerald-500');
-                  const badgeBg = isOver ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                  const badgeBg = isOver ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
                   const isExpanded = expandedRowId === row.id;
 
                   return (
                     <div 
                       key={row.id}
-                      className="rounded-xl bg-card border border-border/70 hover:border-border transition-all overflow-hidden"
+                      className="rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 transition-all duration-200 overflow-hidden backdrop-blur-xl shadow-sm mb-2"
                     >
                       <div 
                         onClick={() => setExpandedRowId(isExpanded ? null : row.id)}
-                        className="p-3 sm:px-3 sm:py-2.5 flex flex-col sm:grid sm:grid-cols-12 sm:items-center gap-2.5 cursor-pointer select-none hover:bg-secondary/20 transition-colors"
+                        className="p-3 sm:px-3 sm:py-2.5 flex flex-col sm:grid sm:grid-cols-12 sm:items-center gap-2.5 cursor-pointer select-none hover:bg-white/[0.03] transition-colors"
                       >
                         {/* Colonne Poste */}
                         <div className="col-span-4 flex items-center gap-2.5 min-w-0">
@@ -970,7 +970,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-xs sm:text-sm text-foreground truncate block">
+                              <span className="font-bold text-xs sm:text-sm text-white truncate block">
                                 {row.name}
                               </span>
                               {row.isFromRB && (
@@ -1053,7 +1053,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
 
                         {/* Colonne Jauge (Desktop) */}
                         <div className="hidden sm:flex col-span-2 items-center justify-center gap-1.5">
-                          <div className="flex-1 h-2 rounded-full bg-secondary/80 overflow-hidden shadow-inner max-w-[60px]">
+                          <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden shadow-inner max-w-[60px]">
                             <div 
                               className={`h-full rounded-full ${barColor} transition-all duration-500`}
                               style={{ width: `${progressWidth}%` }}
@@ -1113,15 +1113,15 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
         )}
 
         {/* Footer */}
-        <div className="p-3 sm:p-4 border-t border-border/60 bg-secondary/30 shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="p-4 border-t border-white/10 bg-[#0b0f1e]/90 backdrop-blur-xl shrink-0 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             <span>Synchronisation immédiate entre Coût de la vie et Fixation du budget</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground font-bold text-xs transition-colors cursor-pointer"
+            className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all cursor-pointer shadow-sm active:scale-95"
           >
             Fermer
           </button>

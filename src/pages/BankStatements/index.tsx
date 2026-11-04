@@ -2818,328 +2818,328 @@ export const BankStatements: React.FC = () => {
            {/* Boîte Modale / Hub Bento Réactif */}
            <div className="bg-[#0b0f1e]/95 backdrop-blur-2xl w-full sm:max-w-4xl lg:max-w-5xl rounded-t-[2.2rem] sm:rounded-[2.5rem] shadow-[0_25px_60px_rgba(0,0,0,0.7)] border border-white/15 relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden text-slate-100 z-10">
              
-             {/* Poignée mobile */}
-             <div className="pt-3 pb-1 flex justify-center sm:hidden shrink-0">
-               <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full" />
-             </div>
+             {/* Poignée mobile Apple VisionOS */}
+              <div className="pt-3 pb-1 flex justify-center sm:hidden shrink-0">
+                <div className="w-12 h-1.5 bg-white/20 rounded-full" />
+              </div>
 
-             {/* En-tête de Hub Premium */}
-             <div className="sticky top-0 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md z-20 px-5 sm:px-7 py-4 sm:py-5 border-b border-gray-100 dark:border-gray-800/80 flex justify-between items-center shrink-0">
-               <div className="flex items-center gap-3.5">
-                 <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-500/10 shrink-0">
-                   <Sparkles size={20} className="text-amber-300" />
-                 </div>
-                 <div>
-                   <div className="flex items-center gap-2 flex-wrap">
-                     <h3 className="font-extrabold text-lg sm:text-xl text-gray-900 dark:text-white tracking-tight">
-                       Centre d'Analyses & Outils
-                     </h3>
-                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                       8 Modules Experts
-                     </span>
+              {/* En-tête de Hub Apple VisionOS Liquid Glass */}
+              <div className="sticky top-0 bg-[#0b0f1e]/90 backdrop-blur-xl z-20 px-5 sm:px-7 py-4 sm:py-5 border-b border-white/10 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-cyan-500/25 ring-2 ring-white/20 shrink-0">
+                    <Sparkles size={20} className="text-cyan-200" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-extrabold text-lg sm:text-xl text-white tracking-tight">
+                        Centre d'Analyses & Outils
+                      </h3>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 uppercase tracking-wider">
+                        8 Modules Experts
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                      Audits IA, projections prédictives, suivi des charges et contrôle de vos comptes
+                    </p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => setIsToolsSheetOpen(false)} 
+                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white border border-white/10 flex items-center justify-center active:scale-90 transition-all cursor-pointer shadow-sm"
+                  title="Fermer"
+                >
+                  <X size={18}/>
+                </button>
+              </div>
+
+              {/* Contenu Défilant Bento Grid */}
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-6 overscroll-contain">
+                 
+                 {/* 1. SECTION IA & AUDITS STRATÉGIQUES (HERO BENTO) */}
+                 <div className="space-y-3">
+                   <div className="flex items-center justify-between px-1">
+                     <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-cyan-400 uppercase">
+                       <Sparkles size={14} className="text-amber-400" />
+                       <span>Audits Stratégiques & Intelligence Artificielle</span>
+                     </div>
+                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:inline">Piliers d'analyse</span>
                    </div>
-                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                     Audits IA, projections prédictives, suivi des charges et contrôle de vos comptes
-                   </p>
+
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     {/* Outil Frise Chronologique & Rapprochement */}
+                     <button 
+                       onClick={() => {
+                         setIsToolsSheetOpen(false); 
+                         setActiveViewMode('timeline');
+                       }} 
+                       className="relative p-5 rounded-[1.8rem] bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/30 hover:border-emerald-400/70 hover:shadow-[0_0_25px_-5px_rgba(16,185,129,0.3)] shadow-lg backdrop-blur-xl transition-all duration-300 group cursor-pointer text-left flex flex-col justify-between active:scale-[0.98]"
+                     >
+                       <div>
+                         <div className="flex items-center justify-between gap-2 mb-3">
+                           <span className="text-[10px] px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold font-mono border border-emerald-500/30 uppercase tracking-wider">
+                             Moteur NoSQL
+                           </span>
+                           <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                             <CheckCircle2 size={12} />
+                             Source vérifiée
+                           </span>
+                         </div>
+
+                         <div className="flex items-start gap-3.5">
+                           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/25 group-hover:scale-105 transition-transform shrink-0">
+                             <Clock size={22} />
+                           </div>
+                           <div>
+                             <h4 className="font-extrabold text-base text-white group-hover:text-emerald-300 transition-colors">
+                               Frise Chronologique & Rapprochement
+                             </h4>
+                             <p className="text-xs font-medium text-slate-400 mt-1 leading-relaxed">
+                               Rapprochement continu PDF vs CSV, validation des soldes officiels et détection automatique des ruptures temporelles ou écarts.
+                             </p>
+                           </div>
+                         </div>
+                       </div>
+
+                       <div className="mt-4 pt-3 border-t border-emerald-500/20 flex items-center justify-between text-xs font-bold text-emerald-300">
+                         <span>Explorer la timeline continue</span>
+                         <ChevronDown className="rotate-[-90deg] group-hover:translate-x-1 transition-transform" size={16}/>
+                       </div>
+                     </button>
+
+                     {/* 1. Rapport d'Audit Approfondi IA */}
+                     <button 
+                       onClick={() => {
+                         setIsToolsSheetOpen(false); 
+                         handleOpenDeepAudit();
+                       }} 
+                       className="relative p-5 rounded-[1.8rem] bg-gradient-to-br from-indigo-500/15 via-purple-500/10 to-pink-500/5 border border-indigo-500/35 hover:border-indigo-400/70 hover:shadow-[0_0_25px_-5px_rgba(99,102,241,0.35)] shadow-lg backdrop-blur-xl transition-all duration-300 group cursor-pointer text-left flex flex-col justify-between active:scale-[0.98]"
+                     >
+                       <div>
+                         <div className="flex items-center justify-between gap-2 mb-3">
+                           <span className="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-extrabold font-mono border border-indigo-500/30 uppercase tracking-wider">
+                             Gemini 2.5 Flash
+                           </span>
+                           <span className="text-[10px] font-bold text-indigo-400 flex items-center gap-1">
+                             <Zap size={12} className="text-amber-400" />
+                             Diagnostic 360°
+                           </span>
+                         </div>
+
+                         <div className="flex items-start gap-3.5">
+                           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform shrink-0">
+                             {isGeneratingDeepAudit ? <Loader2 size={22} className="animate-spin" /> : <Sparkles size={22} className="text-amber-300" />}
+                           </div>
+                           <div>
+                             <h4 className="font-extrabold text-base text-white group-hover:text-indigo-300 transition-colors">
+                               Rapport d'Audit Approfondi IA
+                             </h4>
+                             <p className="text-xs font-medium text-slate-400 mt-1 leading-relaxed">
+                               {isGeneratingDeepAudit ? "Génération en cours par l'intelligence artificielle..." : "Synthèse financière en 6 volets : analyse du biais bancaire, flux nets réels, 7 alertes prédictives & stratégie de trésorerie."}
+                             </p>
+                           </div>
+                         </div>
+                       </div>
+
+                       <div className="mt-4 pt-3 border-t border-indigo-500/20 flex items-center justify-between text-xs font-bold text-indigo-300">
+                         <span>{isGeneratingDeepAudit ? "Génération..." : "Consulter le rapport d'audit"}</span>
+                         <ChevronDown className="rotate-[-90deg] group-hover:translate-x-1 transition-transform" size={16}/>
+                       </div>
+                     </button>
+                   </div>
                  </div>
-               </div>
 
-               <button 
-                 onClick={() => setIsToolsSheetOpen(false)} 
-                 className="p-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-2xl active:scale-90 transition-all cursor-pointer shadow-sm"
-                 title="Fermer"
-               >
-                 <X size={18}/>
-               </button>
-             </div>
+                 {/* 2. SECTION CHARGES & MAÎTRISE BUDGÉTAIRE */}
+                 <div className="space-y-3">
+                   <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-amber-400 uppercase px-1">
+                     <Layers size={14} />
+                     <span>Maîtrise des Charges & Optimisation Budgétaire</span>
+                   </div>
 
-             {/* Contenu Défilant Bento Grid */}
-             <div className="p-4 sm:p-6 overflow-y-auto space-y-6 overscroll-contain">
-                
-                {/* 1. SECTION IA & AUDITS STRATÉGIQUES (HERO BENTO) */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between px-1">
-                    <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-indigo-600 dark:text-indigo-400 uppercase">
-                      <Sparkles size={14} className="text-amber-400" />
-                      <span>Audits Stratégiques & Intelligence Artificielle</span>
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest hidden sm:inline">Piliers d'analyse</span>
-                  </div>
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                     {/* Abonnements & Prélèvements */}
+                     <button 
+                       onClick={() => {
+                         setIsToolsSheetOpen(false); 
+                         handleOpenSubscriptionsAudit();
+                       }} 
+                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-blue-500/20 hover:border-blue-400/50 hover:shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                     >
+                       <div className="flex items-start gap-3.5 min-w-0">
+                         <div className="w-11 h-11 rounded-2xl bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                           <Calendar size={20}/>
+                         </div>
+                         <div className="min-w-0">
+                           <div className="flex items-center gap-2 flex-wrap">
+                             <h4 className="font-bold text-sm text-white truncate">
+                               Abonnements & Prélèvements
+                             </h4>
+                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 font-extrabold uppercase">
+                               Anti-Hausse
+                             </span>
+                           </div>
+                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                             Détection d'augmentations de tarif, suivi chronologique et assistant de résiliation.
+                           </p>
+                         </div>
+                       </div>
+                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-blue-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                     </button>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Outil Frise Chronologique & Rapprochement */}
-                    <button 
-                      onClick={() => {
-                        setIsToolsSheetOpen(false); 
-                        setActiveViewMode('timeline');
-                      }} 
-                      className="relative p-5 rounded-[1.8rem] bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent dark:from-emerald-950/40 dark:via-teal-950/20 dark:to-transparent border-2 border-emerald-500/30 dark:border-emerald-500/40 hover:border-emerald-500 shadow-sm hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 group cursor-pointer text-left flex flex-col justify-between active:scale-[0.98]"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <span className="text-[10px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold font-mono border border-emerald-500/25 uppercase tracking-wider">
-                            Moteur NoSQL
-                          </span>
-                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                            <CheckCircle2 size={12} />
-                            Source vérifiée
-                          </span>
-                        </div>
+                     {/* Budget & Coût de la vie (Unifié : Objectif & Réel) */}
+                     <button 
+                       onClick={() => {
+                         setIsToolsSheetOpen(false); 
+                         setIsBudgetTrackingDrawerOpen(true);
+                       }} 
+                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-emerald-500/20 hover:border-emerald-400/50 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                     >
+                       <div className="flex items-start gap-3.5 min-w-0">
+                         <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                           <PiggyBank size={20}/>
+                         </div>
+                         <div className="min-w-0">
+                           <div className="flex items-center gap-2 flex-wrap">
+                             <h4 className="font-bold text-sm text-white truncate">
+                               Budget & Coût de la vie
+                             </h4>
+                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-extrabold uppercase">
+                               Objectif & Réel
+                             </span>
+                           </div>
+                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                             Fixez vos charges cibles (courses, loyer, factures) et comparez-les en direct avec vos vraies dépenses bancaires.
+                           </p>
+                         </div>
+                       </div>
+                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                     </button>
 
-                        <div className="flex items-start gap-3.5">
-                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/25 group-hover:scale-105 transition-transform shrink-0">
-                            <Clock size={22} />
-                          </div>
-                          <div>
-                            <h4 className="font-extrabold text-base text-gray-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                              Frise Chronologique & Rapprochement
-                            </h4>
-                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-                              Rapprochement continu PDF vs CSV, validation des soldes officiels et détection automatique des ruptures temporelles ou écarts.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
+                     {/* Habitudes de Dépenses */}
+                     <button 
+                       onClick={() => {
+                         setIsToolsSheetOpen(false); 
+                         setIsSpendingHabitsDrawerOpen(true);
+                       }} 
+                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-purple-500/20 hover:border-purple-400/50 hover:shadow-[0_0_20px_-5px_rgba(168,85,247,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                     >
+                       <div className="flex items-start gap-3.5 min-w-0">
+                         <div className="w-11 h-11 rounded-2xl bg-purple-500/15 text-purple-400 border border-purple-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                           <Clock size={20}/>
+                         </div>
+                         <div className="min-w-0">
+                           <div className="flex items-center gap-2 flex-wrap">
+                             <h4 className="font-bold text-sm text-white truncate">
+                               Habitudes de Dépenses
+                             </h4>
+                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30 font-extrabold uppercase">
+                               Temporalité
+                             </span>
+                           </div>
+                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                             Analyse chronologique des jours et périodes d'achats les plus intenses.
+                           </p>
+                         </div>
+                       </div>
+                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-purple-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                     </button>
+                   </div>
+                 </div>
 
-                      <div className="mt-4 pt-3 border-t border-emerald-500/20 flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                        <span>Explorer la timeline continue</span>
-                        <ChevronDown className="rotate-[-90deg] group-hover:translate-x-1 transition-transform" size={16}/>
-                      </div>
-                    </button>
+                 {/* 3. SECTION FLUX & SOLIDARITÉ */}
+                 <div className="space-y-3">
+                   <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-rose-400 uppercase px-1">
+                     <Users size={14} />
+                     <span>Flux Internes & Rapprochements Tiers</span>
+                   </div>
 
-                    {/* 1. Rapport d'Audit Approfondi IA */}
-                    <button 
-                      onClick={() => {
-                        setIsToolsSheetOpen(false); 
-                        handleOpenDeepAudit();
-                      }} 
-                      className="relative p-5 rounded-[1.8rem] bg-gradient-to-br from-indigo-500/15 via-purple-500/10 to-pink-500/5 dark:from-indigo-950/40 dark:via-purple-950/30 dark:to-transparent border-2 border-indigo-500/35 dark:border-indigo-500/45 hover:border-indigo-500 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 group cursor-pointer text-left flex flex-col justify-between active:scale-[0.98]"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <span className="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-extrabold font-mono border border-indigo-500/25 uppercase tracking-wider">
-                            Gemini 2.5 Flash
-                          </span>
-                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-                            <Zap size={12} className="text-amber-400" />
-                            Diagnostic 360°
-                          </span>
-                        </div>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                     {/* Mouvements Inter-comptes */}
+                     <button 
+                       onClick={() => {
+                         setIsToolsSheetOpen(false); 
+                         handleOpenInterAccountsAudit();
+                       }} 
+                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-indigo-500/20 hover:border-indigo-400/50 hover:shadow-[0_0_20px_-5px_rgba(99,102,241,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                     >
+                       <div className="flex items-start gap-3.5 min-w-0">
+                         <div className="w-11 h-11 rounded-2xl bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                           <ArrowLeftRight size={20}/>
+                         </div>
+                         <div className="min-w-0">
+                           <div className="flex items-center gap-2 flex-wrap">
+                             <h4 className="font-bold text-sm text-white truncate">
+                               Mouvements Inter-comptes
+                             </h4>
+                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 font-extrabold uppercase">
+                               Neutre au Bilan
+                             </span>
+                           </div>
+                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                             Rapprochement et compensation des transferts entre vos différents comptes.
+                           </p>
+                         </div>
+                       </div>
+                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                     </button>
 
-                        <div className="flex items-start gap-3.5">
-                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform shrink-0">
-                            {isGeneratingDeepAudit ? <Loader2 size={22} className="animate-spin" /> : <Sparkles size={22} className="text-amber-300" />}
-                          </div>
-                          <div>
-                            <h4 className="font-extrabold text-base text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                              Rapport d'Audit Approfondi IA
-                            </h4>
-                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-                              {isGeneratingDeepAudit ? "Génération en cours par l'intelligence artificielle..." : "Synthèse financière en 6 volets : analyse du biais bancaire, flux nets réels, 7 alertes prédictives & stratégie de trésorerie."}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
+                     {/* Échanges Famille & Amis */}
+                     <button 
+                       onClick={() => {
+                         setIsToolsSheetOpen(false); 
+                         handleOpenPeerTransfersAudit();
+                       }} 
+                       className="p-4 sm:p-5 rounded-[1.6rem] bg-white/[0.035] hover:bg-white/[0.07] border border-pink-500/20 hover:border-pink-400/50 hover:shadow-[0_0_20px_-5px_rgba(236,72,153,0.3)] shadow-md backdrop-blur-xl transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
+                     >
+                       <div className="flex items-start gap-3.5 min-w-0">
+                         <div className="w-11 h-11 rounded-2xl bg-pink-500/15 text-pink-400 border border-pink-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                           <Users size={20}/>
+                         </div>
+                         <div className="min-w-0">
+                           <div className="flex items-center gap-2 flex-wrap">
+                             <h4 className="font-bold text-sm text-white truncate">
+                               Échanges Famille & Amis
+                             </h4>
+                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-400/30 font-extrabold uppercase">
+                               Balance Tiers
+                             </span>
+                           </div>
+                           <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                             Position débitrice/créditrice et solde des remboursements avec vos proches.
+                           </p>
+                         </div>
+                       </div>
+                       <ChevronDown className="rotate-[-90deg] text-slate-400 group-hover:text-pink-400 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
+                     </button>
+                   </div>
+                 </div>
 
-                      <div className="mt-4 pt-3 border-t border-indigo-500/20 flex items-center justify-between text-xs font-bold text-indigo-700 dark:text-indigo-300">
-                        <span>{isGeneratingDeepAudit ? "Génération..." : "Consulter le rapport d'audit"}</span>
-                        <ChevronDown className="rotate-[-90deg] group-hover:translate-x-1 transition-transform" size={16}/>
-                      </div>
-                    </button>
-                  </div>
-                </div>
+                 {/* 4. PARAMÈTRES AVANCÉS & ACTION DESTRUCTIVE (ZONE SÉCURISÉE) */}
+                 <div className="pt-2">
+                   <div className="p-4 sm:p-5 rounded-2xl bg-rose-500/10 border border-rose-500/25 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                     <div className="flex items-center gap-3">
+                       <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center justify-center shrink-0">
+                         <AlertTriangle size={17} />
+                       </div>
+                       <div>
+                         <div className="text-xs font-bold text-white">Zone de Réinitialisation</div>
+                         <div className="text-[11px] text-slate-400">Supprimer définitivement ce relevé et toutes ses opérations du périmètre actif</div>
+                       </div>
+                     </div>
+                     <button 
+                       onClick={() => {
+                         setIsToolsSheetOpen(false); 
+                         handlePurgeScope();
+                       }} 
+                       className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                     >
+                       <Trash2 size={14}/>
+                       <span>Supprimer ce relevé</span>
+                     </button>
+                   </div>
+                 </div>
 
-                {/* 2. SECTION CHARGES & MAÎTRISE BUDGÉTAIRE */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-amber-600 dark:text-amber-400 uppercase px-1">
-                    <Layers size={14} />
-                    <span>Maîtrise des Charges & Optimisation Budgétaire</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                    {/* Abonnements & Prélèvements */}
-                    <button 
-                      onClick={() => {
-                        setIsToolsSheetOpen(false); 
-                        handleOpenSubscriptionsAudit();
-                      }} 
-                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-blue-500/20 hover:border-blue-500/50 hover:bg-blue-50/30 dark:hover:bg-blue-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
-                    >
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        <div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                          <Calendar size={20}/>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
-                              Abonnements & Prélèvements
-                            </h4>
-                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-extrabold uppercase">
-                              Anti-Hausse
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                            Détection d'augmentations de tarif, suivi chronologique et assistant de résiliation.
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
-                    </button>
-
-                    {/* Budget & Coût de la vie (Unifié : Objectif & Réel) */}
-                    <button 
-                      onClick={() => {
-                        setIsToolsSheetOpen(false); 
-                        setIsBudgetTrackingDrawerOpen(true);
-                      }} 
-                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-emerald-500/20 hover:border-emerald-500/50 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
-                    >
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                          <PiggyBank size={20}/>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
-                              Budget & Coût de la vie
-                            </h4>
-                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold uppercase">
-                              Objectif & Réel
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                            Fixez vos charges cibles (courses, loyer, factures) et comparez-les en direct avec vos vraies dépenses bancaires.
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-emerald-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
-                    </button>
-
-                    {/* Habitudes de Dépenses */}
-                    <button 
-                      onClick={() => {
-                        setIsToolsSheetOpen(false); 
-                        setIsSpendingHabitsDrawerOpen(true);
-                      }} 
-                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-purple-500/20 hover:border-purple-500/50 hover:bg-purple-50/30 dark:hover:bg-purple-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
-                    >
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        <div className="w-11 h-11 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                          <Clock size={20}/>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
-                              Habitudes de Dépenses
-                            </h4>
-                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 font-extrabold uppercase">
-                              Temporalité
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                            Analyse chronologique des jours et périodes d'achats les plus intenses.
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-purple-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 3. SECTION FLUX & SOLIDARITÉ */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-rose-600 dark:text-rose-400 uppercase px-1">
-                    <Users size={14} />
-                    <span>Flux Internes & Rapprochements Tiers</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                    {/* Mouvements Inter-comptes */}
-                    <button 
-                      onClick={() => {
-                        setIsToolsSheetOpen(false); 
-                        handleOpenInterAccountsAudit();
-                      }} 
-                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-indigo-500/20 hover:border-indigo-500/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
-                    >
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                          <ArrowLeftRight size={20}/>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
-                              Mouvements Inter-comptes
-                            </h4>
-                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-extrabold uppercase">
-                              Neutre au Bilan
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                            Rapprochement et compensation des transferts entre vos différents comptes.
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
-                    </button>
-
-                    {/* Échanges Famille & Amis */}
-                    <button 
-                      onClick={() => {
-                        setIsToolsSheetOpen(false); 
-                        handleOpenPeerTransfersAudit();
-                      }} 
-                      className="p-4 sm:p-4.5 rounded-[1.6rem] bg-white dark:bg-gray-800/90 border border-pink-500/20 hover:border-pink-500/50 hover:bg-pink-50/30 dark:hover:bg-pink-950/20 shadow-sm hover:shadow-md transition-all group cursor-pointer text-left flex items-start justify-between gap-3 active:scale-[0.98]"
-                    >
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        <div className="w-11 h-11 rounded-2xl bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                          <Users size={20}/>
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
-                              Échanges Famille & Amis
-                            </h4>
-                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-600 dark:text-pink-400 font-extrabold uppercase">
-                              Balance Tiers
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                            Position débitrice/créditrice et solde des remboursements avec vos proches.
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronDown className="rotate-[-90deg] text-gray-400 group-hover:text-pink-500 group-hover:translate-x-1 transition-all shrink-0 mt-2" size={18}/>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4. PARAMÈTRES AVANCÉS & ACTION DESTRUCTIVE (ZONE SÉCURISÉE) */}
-                <div className="pt-2">
-                  <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-                        <AlertTriangle size={17} />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-gray-900 dark:text-white">Zone de Réinitialisation</div>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400">Supprimer définitivement ce relevé et toutes ses opérations du périmètre actif</div>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        setIsToolsSheetOpen(false); 
-                        handlePurgeScope();
-                      }} 
-                      className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95 shrink-0"
-                    >
-                      <Trash2 size={14}/>
-                      <span>Supprimer ce relevé</span>
-                    </button>
-                  </div>
-                </div>
-
-             </div>
+              </div>
            </div>
         </div>
       )}

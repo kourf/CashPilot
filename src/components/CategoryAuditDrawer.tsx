@@ -476,7 +476,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
             {/* Identité commerciale et sous-titre épuré */}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-sm sm:text-base text-foreground tracking-tight truncate" title={meta.cleanTitle}>
+                <span className="font-bold text-sm sm:text-base text-white tracking-tight truncate" title={meta.cleanTitle}>
                   {meta.cleanTitle}
                 </span>
 
@@ -510,7 +510,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
               </div>
 
               {/* Ligne informative subtile */}
-              <div className="text-[11px] text-muted-foreground font-medium flex items-center gap-1.5 mt-0.5 truncate">
+              <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5 mt-0.5 truncate">
                 <span>{tx.subscriptionDay ? `Le ${tx.subscriptionDay} du mois` : formatDateFR(tx.date)}</span>
                 {meta.isBNPL && meta.installmentDetails && (
                   <>
@@ -531,7 +531,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
           {/* Montant & Bouton de dépliage */}
           <div className="flex items-center gap-2.5 shrink-0 pl-1">
             <div className="text-right">
-              <span className="text-sm sm:text-base font-black font-mono tracking-tight text-foreground">
+              <span className="text-sm sm:text-base font-black font-mono tracking-tight text-white">
                 -{formatCurrency(absAmt, { showSign: false })}
               </span>
               <span className="text-[10px] text-muted-foreground ml-1">
@@ -547,7 +547,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
         {/* --- DÉTAILS CONTEXTUELS & TECHNIQUES (DÉPLIAGE PROGRESSIF À LA DEMANDE) --- */}
         {isExpanded && (
-          <div className="border-t border-border/40 bg-secondary/20 dark:bg-white/[0.01] px-4 py-3.5 space-y-3 text-xs animate-in fade-in duration-200">
+          <div className="border-t border-white/10 bg-black/30 px-4 py-3.5 space-y-3 text-xs animate-in fade-in duration-200 text-slate-300">
             {/* Définition claire et explicite */}
             <div className="flex items-start gap-2 text-[11.5px] text-foreground/90 leading-relaxed font-medium">
               <Info className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
@@ -703,7 +703,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold text-xs sm:text-sm text-foreground truncate" title={label}>
+              <span className="font-bold text-xs sm:text-sm text-white truncate" title={label}>
                 {label}
               </span>
               {(auditType === 'category' || auditType === 'kpi-expenses' || auditType === 'kpi-essential' || auditType === 'kpi-comfort') && (
@@ -788,22 +788,22 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
     <div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop sombre flouté */}
       <div 
-        className="fixed inset-0 bg-background/80 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/80 backdrop-blur-xl transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
       />
 
       {/* Slide-over Drawer Panel */}
-      <div className="relative z-10 w-full max-w-2xl bg-card border-l border-border/80 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300 text-foreground overflow-hidden">
+      <div className="relative z-10 w-full max-w-2xl bg-[#0b0f1e]/95 backdrop-blur-2xl border-l border-white/15 shadow-[0_25px_60px_rgba(0,0,0,0.8)] flex flex-col h-full animate-in slide-in-from-right duration-300 text-slate-100 overflow-hidden">
         
         {/* --- HEADER --- */}
-        <div className="p-4 sm:p-5 border-b border-border/60 bg-secondary/30 dark:bg-white/[0.02] shrink-0">
+        <div className="p-4 sm:p-5 border-b border-white/10 bg-white/[0.03] backdrop-blur-xl shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               {onBack && (
                 <button
                   type="button"
                   onClick={onBack}
-                  className="p-2.5 -ml-1 rounded-2xl bg-secondary/80 hover:bg-secondary text-foreground transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
+                  className="p-2.5 -ml-1 rounded-2xl bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white border border-white/10 transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
                   title="Retour à la liste des outils"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -861,7 +861,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-foreground">
+                  <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-white">
                     {auditType === 'category' && (categoryData?.category || 'Détail de la catégorie')}
                     {auditType === 'inter-accounts' && 'Mouvements Inter-Comptes (Flux Propres)'}
                     {auditType === 'peer-transfers' && 'Échanges Famille & Amis (Wero / Paylib)'}
@@ -919,7 +919,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
                   )}
                 </div>
 
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                   {auditType === 'category' && categoryData?.description}
                   {auditType === 'inter-accounts' && 'Virements entre compte courant, épargne et livrets : exclus des charges de consommation pour refléter votre niveau de vie exact.'}
                   {auditType === 'peer-transfers' && 'Suivi des remboursements, avances et sommes échangées entre particuliers (Wero, Paylib, proches).'}
@@ -935,7 +935,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors shrink-0"
+              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white border border-white/10 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-sm"
               title="Fermer"
             >
               <X className="w-5 h-5" />
@@ -944,7 +944,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
         </div>
 
         {/* --- KPI SUMMARY STRIP (CONCILIATION ARITHMÉTIQUE) --- */}
-        <div className="p-4 sm:p-5 border-b border-border/60 bg-secondary/15 dark:bg-white/[0.01] shrink-0 space-y-3">
+        <div className="p-4 sm:p-5 border-b border-white/10 bg-white/[0.025] backdrop-blur-xl shrink-0 space-y-3">
           {/* CAS 1 : Catégorie de dépense */}
           {auditType === 'category' && categoryData && (
             <div className="space-y-3">
@@ -1325,21 +1325,21 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
           {/* CAS 5 : Synthèse Épurée pour Abonnements & Prélèvements (Google Stitch DNA) */}
           {auditType === 'subscriptions' && (
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-secondary/30 border border-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+            <div className="p-4 sm:p-5 rounded-3xl bg-white/[0.035] hover:bg-white/[0.05] border border-blue-500/25 shadow-lg backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 transition-all">
               <div className="flex items-baseline gap-3">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                     Total Mensuel Récurrent
                   </span>
                   <div className="flex items-baseline gap-2 mt-0.5">
-                    <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-foreground">
+                    <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white">
                       {formatCurrency(customTotalAmount !== undefined ? customTotalAmount : currentFilteredSum, { showSign: false })}
                     </span>
-                    <span className="text-xs text-muted-foreground font-medium">/ mois</span>
+                    <span className="text-xs text-slate-400 font-medium">/ mois</span>
                   </div>
                 </div>
                 <div className="hidden sm:block h-8 w-px bg-border/60 mx-1 self-center" />
-                <div className="text-xs text-muted-foreground font-medium space-y-0.5">
+                <div className="text-xs text-slate-400 font-medium space-y-0.5">
                   <div>~<strong>{formatCurrency((customTotalAmount !== undefined ? customTotalAmount : currentFilteredSum) * 12, { showSign: false })}</strong> / an</div>
                   <div><strong>{rawTransactions.length}</strong> contrat{rawTransactions.length > 1 ? 's' : ''} actif{rawTransactions.length > 1 ? 's' : ''}</div>
                 </div>
@@ -1381,7 +1381,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
         </div>
 
                 {/* --- BARRE D'OUTILS ET RECHERCHE --- */}
-        <div className="p-3 sm:p-4 border-b border-border/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0 bg-card">
+        <div className="p-3 sm:p-4 border-b border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0 bg-[#0b0f1e]/80 backdrop-blur-md">
           <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -1389,7 +1389,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={auditType === 'subscriptions' ? "Rechercher un abonnement (Netflix, EDF, Orange, 10.99...)" : "Rechercher par libellé, mot-clé ou montant..."}
-              className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-background border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground placeholder:text-muted-foreground"
+              className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-white/[0.04] border border-white/10 focus:outline-none focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40 text-white placeholder:text-slate-400 font-medium"
             />
             {searchQuery && (
               <button 
@@ -1438,7 +1438,7 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
 
           {auditType === 'subscriptions' && (
             <div className="flex items-center justify-between gap-2 flex-wrap self-start sm:self-auto">
-              <div className="flex items-center gap-1 bg-secondary/40 p-1 rounded-xl overflow-x-auto border border-border/40">
+              <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl overflow-x-auto border border-white/10">
                 <button
                   type="button"
                   onClick={() => setSubscriptionSortMode('logical')}
@@ -1563,13 +1563,13 @@ export const CategoryAuditDrawer: React.FC<CategoryAuditDrawerProps> = ({
         </div>
 
         {/* --- FOOTER : CONCILIATION ARITHMÉTIQUE STRICTE --- */}
-        <div className="p-4 border-t border-border/60 bg-secondary/30 dark:bg-white/[0.02] flex items-center justify-between text-xs shrink-0">
-          <div className="flex items-center gap-1.5 text-muted-foreground">
+        <div className="p-4 border-t border-white/10 bg-[#0b0f1e]/90 backdrop-blur-xl flex items-center justify-between text-xs shrink-0">
+          <div className="flex items-center gap-1.5 text-slate-400">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
             <span>
               <strong>{filteredTransactions.length}</strong> opération{filteredTransactions.length > 1 ? 's' : ''} • Somme arithmétique :
             </span>
-            <strong className="text-foreground font-mono">
+            <strong className="text-white font-mono font-bold">
               {formatCurrency(currentFilteredSum, { showSign: false })}
             </strong>
           </div>

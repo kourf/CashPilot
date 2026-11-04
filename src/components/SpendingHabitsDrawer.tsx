@@ -78,21 +78,21 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
     <div className="fixed inset-0 z-[100] flex justify-end">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-background/80 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/80 backdrop-blur-xl transition-opacity animate-in fade-in duration-200"
         onClick={handleClose}
       />
 
       {/* Drawer Panel */}
-      <div className="relative z-10 w-full max-w-xl bg-card border-l border-border/80 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300 text-foreground overflow-hidden">
+      <div className="relative z-10 w-full max-w-xl bg-[#0b0f1e]/95 backdrop-blur-2xl border-l border-white/15 shadow-[0_25px_60px_rgba(0,0,0,0.8)] flex flex-col h-full animate-in slide-in-from-right duration-300 text-slate-100 overflow-hidden">
         
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-border/60 bg-secondary/30 shrink-0">
+        <div className="p-4 sm:p-5 border-b border-white/10 bg-white/[0.03] backdrop-blur-xl shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               {activeDay ? (
                 <button
                   onClick={() => setSelectedDay(null)}
-                  className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20 hover:text-indigo-600 transition-colors flex items-center justify-center shrink-0 cursor-pointer"
+                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white border border-white/10 transition-colors flex items-center justify-center shrink-0 cursor-pointer shadow-sm"
                   title="Retour aux jours"
                 >
                   <ArrowLeft className="w-5 h-5" />
@@ -103,7 +103,7 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
                     <button
                       type="button"
                       onClick={onBack}
-                      className="p-2.5 -ml-1 rounded-2xl bg-secondary/80 hover:bg-secondary text-foreground transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
+                      className="p-2.5 -ml-1 rounded-2xl bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white border border-white/10 transition-all flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95 cursor-pointer"
                       title="Retour à la liste des outils"
                     >
                       <ArrowLeft className="w-4 h-4" />
@@ -117,10 +117,10 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
               )}
               
               <div>
-                <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-foreground flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
                   {activeDay ? `Détails : ${activeDay.name}` : "Habitudes de Dépenses"}
                 </h2>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                   {activeDay 
                     ? `${activeDay.transactions.length} transaction(s) ce jour-là` 
                     : "Analyse des jours les plus dépensiers de la semaine."}
@@ -129,7 +129,7 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
             </div>
             <button
               onClick={handleClose}
-              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors shrink-0"
+              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white border border-white/10 flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-sm"
               title="Fermer"
             >
               <X className="w-5 h-5" />
@@ -139,8 +139,8 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
 
         {/* Total Summary Header for Main View */}
         {!activeDay && (
-          <div className="p-5 border-b border-border/60 bg-secondary/15 shrink-0">
-            <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-between">
+          <div className="p-5 border-b border-white/10 bg-white/[0.02] shrink-0">
+            <div className="p-4 sm:p-5 rounded-3xl bg-white/[0.035] border border-purple-500/25 shadow-lg backdrop-blur-xl flex items-center justify-between">
               <div>
                 <span className="text-xs uppercase font-bold text-indigo-500/90 block mb-1">
                   Total Dépensé (Période)
@@ -157,7 +157,7 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
         )}
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 overscroll-contain bg-background">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 overscroll-contain bg-transparent">
           
           {/* Main View: List of Days */}
           {!activeDay && (
@@ -194,13 +194,13 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
                         }`}>
                           {rank}
                         </div>
-                        <h3 className={`font-bold ${isTop ? 'text-indigo-600 dark:text-indigo-400 text-lg' : 'text-foreground'}`}>
+                        <h3 className={`font-bold ${isTop ? 'text-purple-300 text-lg' : 'text-white'}`}>
                           {day.name}
                         </h3>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <div className={`font-black font-mono ${isTop ? 'text-indigo-600 dark:text-indigo-400 text-lg' : 'text-foreground'}`}>
+                          <div className={`font-black font-mono ${isTop ? 'text-purple-300 text-lg' : 'text-white'}`}>
                             {formatCurrency(day.totalAmount, { showSign: false })}
                           </div>
                           {day.totalAmount > 0 && (
@@ -216,7 +216,7 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
                     </div>
                     
                     {/* Visual Bar */}
-                    <div className="w-full h-1.5 bg-secondary/80 rounded-full overflow-hidden relative z-10">
+                    <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden relative z-10">
                       <div 
                         className={`h-full rounded-full transition-all duration-700 ease-out ${isTop ? 'bg-indigo-500' : 'bg-indigo-400/50 group-hover:bg-indigo-400'}`}
                         style={{ width: `${percentOfMax}%` }}
@@ -234,9 +234,9 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
               
               {/* Category Breakdown */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 border-b border-border/40 pb-2">
+                <div className="flex items-center gap-2 border-b border-white/10 pb-2">
                   <Tags className="w-4 h-4 text-indigo-500" />
-                  <h3 className="font-bold text-sm text-foreground">Répartition par catégorie</h3>
+                  <h3 className="font-bold text-sm text-white">Répartition par catégorie</h3>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -249,7 +249,7 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
                     return Object.entries(cats)
                       .sort((a, b) => b[1] - a[1])
                       .map(([cat, amount]) => (
-                        <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-secondary/30 border border-border/50">
+                        <div key={cat} className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.03] border border-white/10 text-white">
                           <span className="text-sm font-medium text-foreground/90 truncate mr-2" title={cat}>{cat}</span>
                           <span className="font-mono font-bold text-sm shrink-0">{formatCurrency(amount, { showSign: false })}</span>
                         </div>
@@ -267,9 +267,9 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
                 
                 <div className="space-y-2">
                   {activeDay.transactions.map(t => (
-                    <div key={t.id} className="flex items-center justify-between p-3.5 rounded-xl bg-card border border-border/50 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group">
+                    <div key={t.id} className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 transition-all backdrop-blur-xl shadow-sm group">
                       <div className="min-w-0 flex-1 mr-4">
-                        <div className="font-semibold text-sm text-foreground truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" title={t.description}>
+                        <div className="font-semibold text-sm text-white truncate group-hover:text-purple-300 transition-colors" title={t.description}>
                           {t.description}
                         </div>
                         <div className="flex items-center gap-2 mt-1">
