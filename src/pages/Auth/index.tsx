@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Mail,
@@ -14,14 +14,21 @@ import {
   ArrowLeft,
   CheckCircle2,
   AlertCircle,
-  HelpCircle,
+  Coins,
+  Volume2,
+  VolumeX,
+  Flame,
+  Lamp,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { BanknoteCanvas, type BanknoteCanvasRef } from '../../components/BanknoteAnimation/BanknoteCanvas';
+import { BanknotePullDispenser } from '../../components/BanknoteAnimation/BanknotePullDispenser';
 import { PullLamp } from '../../components/PullLamp/PullLamp';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { cn } from '../../lib/utils';
 
 type AuthTab = 'login' | 'register' | 'reset';
+type AnimationTheme = 'banknotes' | 'lamp';
 
 export const AuthPage: React.FC = () => {
   const navigate = useNavigate();
@@ -37,8 +44,21 @@ export const AuthPage: React.FC = () => {
     clearError,
   } = useAuth();
 
-  // État de la lampe : allumée ou éteinte
-  const [isLampOn, setIsLampOn] = useState<boolean>(false);
+  // Thème d'animation : 'banknotes' (par défaut, billets de banque volants) ou 'lamp'
+  const [animTheme, setAnimTheme] = useState<AnimationTheme>('banknotes');
+
+  // État de déverrouillage du coffre / révélation
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
+
+  // Contrôle audio
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+
+  // Compteur d'argent collecté au clic sur les billets (gamification ludique)
+  const [collectedCash, setCollectedCash] = useState<number>(0);
+  const [lastCollectedLabel, setLastCollectedLabel] = useState<string | null>(null);
+
+  // Référence vers le canvas de billets pour déclencher la pluie
+  const canvasRef = useRef<BanknoteCanvasRef | null>(null);
 
   // Onglet courant : 'login', 'register' ou 'reset'
   const [activeTab, setActiveTab] = useState<AuthTab>('login');
@@ -51,19 +71,19 @@ export const AuthPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // États locaux de soumission et validation
+  // États locaux
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
 
-  // Rediriger automatiquement si l'utilisateur est déjà connecté
+  // Redirection automatique si connecté
   useEffect(() => {
     if (user) {
       navigate('/', { replace: true });
     }
   }, [user, navigate]);
 
-  // Initialisation de l'onglet selon le paramètre URL (?mode=register ou ?mode=login)
+  // Initialisation via paramètres d'URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const modeParam = params.get('mode');
@@ -72,13 +92,14 @@ export const AuthPage: React.FC = () => {
     } else if (modeParam === 'reset') {
       setActiveTab('reset');
     }
-    // Si l'utilisateur clique sur un lien direct avec ?turnOn=true, on allume la lampe
-    if (params.get('turnOn') === 'true') {
-      setIsLampOn(true);
+    if (params.get('theme') === 'lamp') {
+      setAnimTheme('lamp');
+    }
+    if (params.get('unlocked') === 'true') {
+      setIsUnlocked(true);
     }
   }, [location.search]);
 
-  // Réinitialisation des erreurs lors du changement d'onglet
   const switchTab = (tab: AuthTab) => {
     clearError();
     setLocalError(null);
@@ -86,7 +107,21 @@ export const AuthPage: React.FC = () => {
     setActiveTab(tab);
   };
 
-  // Connexion Google via Firebase Auth
+  // Déclencher une cascade de billets
+  const handleMakeItRain = () => {
+    if (canvasRef.current) {
+      canvasRef.current.makeItRain(32);
+    }
+  };
+
+  // Callback quand un utilisateur clique sur un billet volant
+  const handleCollectCash = (amount: number, label: string) => {
+    setCollectedCash((prev) => prev + amount);
+    setLastCollectedLabel(label);
+    setTimeout(() => setLastCollectedLabel(null), 2500);
+  };
+
+  // Connexion Google
   const handleGoogleSignIn = async () => {
     clearError();
     setLocalError(null);
@@ -96,20 +131,19 @@ export const AuthPage: React.FC = () => {
       await loginWithGoogle();
       navigate('/', { replace: true });
     } catch {
-      // Erreur affichée via AuthContext
+      // Erreur capturée par AuthContext
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Soumission du formulaire Email
+  // Soumission formulaire
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
     setLocalError(null);
     setResetSuccessMsg(null);
 
-    // Validation locale pour l'inscription : confirmation du mot de passe
     if (activeTab === 'register') {
       if (password.length < 6) {
         setLocalError('Le mot de passe doit contenir au moins 6 caractères.');
@@ -126,7 +160,6 @@ export const AuthPage: React.FC = () => {
     try {
       if (activeTab === 'login') {
         const cleanEmail = email.toLowerCase().trim();
-        // Détection de l'accès administrateur préconfiguré
         if (
           cleanEmail === 'admin@cashpilot.fr' ||
           cleanEmail === 'admin' ||
@@ -142,9 +175,7 @@ export const AuthPage: React.FC = () => {
         navigate('/', { replace: true });
       } else if (activeTab === 'reset') {
         await resetPassword(email);
-        setResetSuccessMsg(
-          'Un e-mail de réinitialisation sécurisé a été transmis à votre adresse.'
-        );
+        setResetSuccessMsg('Un e-mail de réinitialisation sécurisé a été envoyé.');
       }
     } catch {
       // Erreur gérée par AuthContext
@@ -153,7 +184,7 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  // Accès Express Administrateur (Démo & tests immédiats)
+  // Accès Express Administrateur
   const handleExpressAdminAccess = async () => {
     setIsSubmitting(true);
     try {
@@ -172,143 +203,202 @@ export const AuthPage: React.FC = () => {
     <div
       className={cn(
         'relative min-h-screen w-full flex flex-col items-center justify-between transition-colors duration-700 font-sans select-none overflow-x-hidden',
-        isLampOn ? 'bg-[#090d16]' : 'bg-[#030508]'
+        isUnlocked ? 'bg-[#080c18]' : 'bg-[#03050a]'
       )}
     >
       {/* =========================================================================
-          ARRIÈRE-PLAN D'AMBIANCE : OBSCURITÉ MYSTÉRIEUSE vs RAYONNEMENT VOLUMÉTRIQUE
+          1. MOTEUR PHYSIQUE DE BILLETS DE BANQUE FLOTTANTS 3D (Arrière-plan interactif)
           ========================================================================= */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden z-0">
-        {/* Halo de l'ampoule (visible seulement allumée) */}
-        <div
-          className={cn(
-            'absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full blur-[110px] transition-opacity duration-700',
-            isLampOn
-              ? 'bg-gradient-to-b from-amber-300/25 via-amber-500/15 to-transparent opacity-100'
-              : 'opacity-0'
-          )}
+      {animTheme === 'banknotes' && (
+        <BanknoteCanvas
+          ref={canvasRef}
+          className="fixed inset-0 w-full h-full pointer-events-auto z-0"
+          intensity={isUnlocked ? 'normal' : 'subtle'}
+          interactive={true}
+          soundEnabled={soundEnabled}
+          onCollectCash={handleCollectCash}
         />
+      )}
 
-        {/* Faisceau lumineux conique descendant (Lumière de l'abat-jour vers la table) */}
-        <div
-          className={cn(
-            'absolute top-20 left-1/2 -translate-x-1/2 w-[92vw] max-w-[850px] h-[85vh] transition-all duration-700 origin-top',
-            isLampOn ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-          )}
-          style={{
-            clipPath: 'polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%)',
-            background:
-              'radial-gradient(ellipse at 50% 0%, rgba(254, 240, 138, 0.22) 0%, rgba(251, 191, 36, 0.12) 35%, rgba(6, 182, 212, 0.05) 65%, transparent 100%)',
-          }}
-        />
-
-        {/* Texture Mesh Tech Apple Liquid Glass quand allumée */}
-        <div
-          className={cn(
-            'absolute inset-0 transition-opacity duration-1000',
-            isLampOn ? 'opacity-60' : 'opacity-10'
-          )}
-        >
-          <div className="absolute bottom-10 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-[120px]" />
-          <div className="absolute top-1/3 right-1/4 w-80 h-80 bg-indigo-600/10 rounded-full blur-[130px]" />
+      {/* Arrière-plan de la lampe si activée */}
+      {animTheme === 'lamp' && (
+        <div className="pointer-events-none fixed inset-0 overflow-hidden z-0">
+          <div
+            className={cn(
+              'absolute top-20 left-1/2 -translate-x-1/2 w-[92vw] max-w-[850px] h-[85vh] transition-all duration-700 origin-top',
+              isUnlocked ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+            )}
+            style={{
+              clipPath: 'polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%)',
+              background:
+                'radial-gradient(ellipse at 50% 0%, rgba(254, 240, 138, 0.22) 0%, rgba(251, 191, 36, 0.12) 35%, rgba(6, 182, 212, 0.05) 65%, transparent 100%)',
+            }}
+          />
         </div>
+      )}
+
+      {/* Halos lumineux d'ambiance visionOS */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden z-0">
+        <div
+          className={cn(
+            'absolute top-1/4 left-1/2 -translate-x-1/2 w-[650px] h-[350px] rounded-full blur-[140px] transition-opacity duration-1000',
+            isUnlocked
+              ? 'bg-gradient-to-tr from-emerald-500/20 via-cyan-500/25 to-indigo-600/20 opacity-100'
+              : 'opacity-10'
+          )}
+        />
       </div>
 
       {/* =========================================================================
-          BARRE SUPÉRIEURE : RETOUR & CONTROLES
+          2. BARRE SUPÉRIEURE : NAVIGATION, COMMANDES & GADGETS FINANCIERS
           ========================================================================= */}
-      <header className="relative z-30 w-full max-w-5xl px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between">
+      <header className="relative z-30 w-full max-w-5xl px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between gap-2">
         <Link
           to="/bienvenue"
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all backdrop-blur-md cursor-pointer active:scale-95"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all backdrop-blur-md cursor-pointer active:scale-95 shrink-0"
         >
           <ArrowLeft size={14} />
           <span className="hidden sm:inline">Retour à l'accueil</span>
           <span className="sm:hidden">Accueil</span>
         </Link>
 
-        {/* Badge d'état de la lampe interactif */}
-        <div className="flex items-center gap-2.5">
+        {/* Boutons d'interaction : Pluie de billets, Audio, Bascule Thème */}
+        <div className="flex items-center gap-2">
+          {/* Bouton "Faire pleuvoir les billets" */}
+          {animTheme === 'banknotes' && (
+            <button
+              type="button"
+              onClick={handleMakeItRain}
+              className="px-3 py-1.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 backdrop-blur-md cursor-pointer active:scale-95 shadow-sm"
+              title="Faire pleuvoir les billets de banque"
+            >
+              <Coins size={13} className="text-emerald-400 animate-spin" />
+              <span className="hidden sm:inline">Pluie de Billets</span>
+              <span className="sm:hidden">Billets</span>
+            </button>
+          )}
+
+          {/* Compteur d'épargne ludique au clic */}
+          {collectedCash > 0 && (
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold backdrop-blur-md animate-pulse">
+              <Sparkles size={12} className="text-amber-400" />
+              <span>+{collectedCash} € collectés</span>
+            </div>
+          )}
+
+          {/* Bascule Son */}
           <button
             type="button"
-            onClick={() => setIsLampOn(!isLampOn)}
-            className={cn(
-              'px-3 py-1 rounded-full text-[11px] font-semibold border transition-all flex items-center gap-1.5 backdrop-blur-md cursor-pointer active:scale-95',
-              isLampOn
-                ? 'bg-amber-400/15 border-amber-400/30 text-amber-300'
-                : 'bg-white/[0.04] border-white/10 text-slate-400 hover:text-slate-200'
-            )}
-            title="Vous pouvez aussi tirer sur la tirette de la lampe"
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className="p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-slate-300 hover:text-white transition-all backdrop-blur-md cursor-pointer active:scale-95"
+            title={soundEnabled ? 'Désactiver les effets sonores' : 'Activer les effets sonores'}
           >
-            <span
-              className={cn(
-                'w-2 h-2 rounded-full transition-colors',
-                isLampOn ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b]' : 'bg-slate-600'
-              )}
-            />
-            <span>{isLampOn ? 'Lampe allumée' : 'Lampe éteinte'}</span>
+            {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} className="text-slate-500" />}
           </button>
+
+          {/* Bascule du thème d'animation (Billets de banque / Lampe) */}
+          <button
+            type="button"
+            onClick={() => setAnimTheme(animTheme === 'banknotes' ? 'lamp' : 'banknotes')}
+            className="px-2.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-[11px] font-semibold text-slate-300 hover:text-white transition-all backdrop-blur-md cursor-pointer flex items-center gap-1"
+            title="Changer le style d'animation"
+          >
+            {animTheme === 'banknotes' ? (
+              <>
+                <Flame size={13} className="text-emerald-400" />
+                <span className="hidden sm:inline">Billets</span>
+              </>
+            ) : (
+              <>
+                <Lamp size={13} className="text-amber-400" />
+                <span className="hidden sm:inline">Lampe</span>
+              </>
+            )}
+          </button>
+
           <ThemeToggle />
         </div>
       </header>
 
       {/* =========================================================================
-          ZONE CENTRALE : LA LAMPE SUSPENDUE ET LA CARTE D'AUTHENTIFICATION
+          3. ZONE CENTRALE : L'INTERACTION HÉRO ET LE FORMULAIRE RÉVÉLÉ
           ========================================================================= */}
       <main className="relative z-20 w-full max-w-md px-4 flex flex-col items-center my-auto pb-8">
-        {/* 1. LA LAMPE À TIRETTE ANIMÉE */}
-        <div className="relative mb-2 sm:mb-4">
-          <PullLamp
-            isOn={isLampOn}
-            onToggle={(state) => setIsLampOn(state)}
-            className="transition-transform duration-300"
-          />
+        {/* A. MÉCANISME D'INTERACTION HÉRO : TIREUR DE BILLET OU LAMPE */}
+        <div className="relative mb-3 sm:mb-5">
+          {animTheme === 'banknotes' ? (
+            <BanknotePullDispenser
+              isUnlocked={isUnlocked}
+              onToggleUnlock={(unlocked) => setIsUnlocked(unlocked)}
+              onTriggerRain={handleMakeItRain}
+            />
+          ) : (
+            <PullLamp
+              isOn={isUnlocked}
+              onToggle={(unlocked) => setIsUnlocked(unlocked)}
+            />
+          )}
         </div>
 
-        {/* 2. INVITATION VISUELLE QUAND ÉTEINT */}
-        {!isLampOn && (
+        {/* Indication au survol/clic des billets flottants */}
+        {lastCollectedLabel && (
+          <div className="absolute top-12 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold shadow-lg backdrop-blur-md animate-bounce pointer-events-none z-40">
+            {lastCollectedLabel}
+          </div>
+        )}
+
+        {/* B. INVITATION VISUELLE QUAND VERROUILLÉ */}
+        {!isUnlocked && (
           <div
-            onClick={() => setIsLampOn(true)}
-            className="flex flex-col items-center gap-3 mt-6 sm:mt-8 p-6 rounded-3xl bg-white/[0.02] border border-white/[0.06] backdrop-blur-sm cursor-pointer hover:border-cyan-400/30 transition-all text-center group max-w-xs animate-pulse-subtle"
+            onClick={() => {
+              setIsUnlocked(true);
+              handleMakeItRain();
+            }}
+            className="flex flex-col items-center gap-3 mt-6 sm:mt-8 p-5 sm:p-6 rounded-3xl bg-white/[0.03] border border-white/[0.08] backdrop-blur-md cursor-pointer hover:border-emerald-400/40 transition-all text-center group max-w-xs animate-pulse-subtle shadow-xl"
           >
-            <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
-              <Sparkles size={20} />
+            <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform shadow-md">
+              <Coins size={22} />
             </div>
             <div>
               <p className="text-sm font-bold text-white mb-1">
-                La pièce est dans le noir
+                Coffre CashPilot Verrouillé
               </p>
-              <p className="text-xs text-slate-400">
-                Tirez sur la tirette suspendue ci-dessus pour allumer la lampe et révéler votre espace CashPilot.
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {animTheme === 'banknotes'
+                  ? 'Tirez le billet de banque ci-dessus ou cliquez ici pour révéler votre cockpit financier.'
+                  : 'Tirez sur la tirette de la lampe ci-dessus pour allumer et révéler votre espace.'}
               </p>
+              <div className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-400">
+                <Sparkles size={12} />
+                <span>Cliquez sur les billets volants pour tester !</span>
+              </div>
             </div>
           </div>
         )}
 
-        {/* 3. CARTE DU FORMULAIRE D'AUTHENTIFICATION (Révélation lumineuse) */}
+        {/* C. LA CARTE D'AUTHENTIFICATION RÉVÉLÉE (Liquid Glass visionOS) */}
         <div
           className={cn(
             'w-full rounded-3xl p-6 sm:p-8 transition-all duration-700 ease-out border backdrop-blur-2xl shadow-2xl relative',
-            // Quand allumé : visible avec réfraction Liquid Glass et éclat de lumière
-            isLampOn
-              ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto bg-[#0f1422]/90 border-amber-400/25 shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_40px_rgba(251,191,36,0.12)]'
+            isUnlocked
+              ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto bg-[#0d1222]/90 border-emerald-400/30 shadow-[0_20px_60px_rgba(0,0,0,0.7),0_0_40px_rgba(16,185,129,0.15)]'
               : 'opacity-0 translate-y-8 scale-95 pointer-events-none max-h-0 overflow-hidden py-0 my-0 border-transparent shadow-none'
           )}
         >
-          {/* Liseré de réflexion spéculaire supérieur style visionOS */}
-          <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/40 to-transparent" />
+          {/* Liseré de réflexion spéculaire supérieur */}
+          <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
 
           {/* En-tête de la carte */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-semibold mb-3">
-              <Sparkles size={13} className="text-cyan-400" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-xs font-semibold mb-3">
+              <Sparkles size={13} className="text-emerald-400" />
               <span>Cockpit Financier Intelligent</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Bienvenue sur <span className="bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">CashPilot</span>
+              Bienvenue sur <span className="bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">CashPilot</span>
             </h1>
             <p className="text-xs text-slate-400 mt-1">
-              Pilotez vos finances personnelles avec une clarté absolue.
+              Pilotez vos relevés, tickets et flux financiers en toute sécurité.
             </p>
           </div>
 
@@ -321,7 +411,7 @@ export const AuthPage: React.FC = () => {
                 className={cn(
                   'py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer',
                   activeTab === 'login'
-                    ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md'
+                    ? 'bg-gradient-to-r from-emerald-500 to-cyan-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white'
                 )}
               >
@@ -333,7 +423,7 @@ export const AuthPage: React.FC = () => {
                 className={cn(
                   'py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer',
                   activeTab === 'register'
-                    ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md'
+                    ? 'bg-gradient-to-r from-emerald-500 to-cyan-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white'
                 )}
               >
@@ -342,7 +432,7 @@ export const AuthPage: React.FC = () => {
             </div>
           )}
 
-          {/* Message de succès (ex. réinitialisation de mot de passe) */}
+          {/* Message de succès */}
           {resetSuccessMsg && (
             <div className="mb-4 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2.5">
               <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-emerald-400" />
@@ -414,7 +504,7 @@ export const AuthPage: React.FC = () => {
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="Alexandre"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
                   />
                 </div>
               </div>
@@ -437,7 +527,7 @@ export const AuthPage: React.FC = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="vous@exemple.com"
                   autoComplete="email"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
                 />
               </div>
             </div>
@@ -453,7 +543,7 @@ export const AuthPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => switchTab('reset')}
-                      className="text-[10px] font-semibold text-cyan-400 hover:underline cursor-pointer"
+                      className="text-[10px] font-semibold text-emerald-400 hover:underline cursor-pointer"
                     >
                       Mot de passe oublié ?
                     </button>
@@ -472,7 +562,7 @@ export const AuthPage: React.FC = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     autoComplete={activeTab === 'login' ? 'current-password' : 'new-password'}
-                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
                   />
                   <button
                     type="button"
@@ -486,7 +576,7 @@ export const AuthPage: React.FC = () => {
               </div>
             )}
 
-            {/* Confirmation du mot de passe (en mode inscription) */}
+            {/* Confirmation du mot de passe (mode inscription) */}
             {activeTab === 'register' && (
               <div>
                 <label className="block text-[11px] font-semibold text-slate-300 mb-1">
@@ -510,7 +600,7 @@ export const AuthPage: React.FC = () => {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
                     autoComplete="new-password"
-                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-all"
                   />
                   <button
                     type="button"
@@ -528,7 +618,7 @@ export const AuthPage: React.FC = () => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95 border border-white/20 mt-2"
+              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-cyan-500 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95 border border-white/20 mt-2"
             >
               {isSubmitting ? (
                 <>
@@ -561,21 +651,21 @@ export const AuthPage: React.FC = () => {
             </div>
           )}
 
-          {/* Accès Express Administrateur (Démo) */}
+          {/* Accès Express Administrateur */}
           {activeTab === 'login' && (
             <div className="mt-5 pt-4 border-t border-white/10 space-y-2">
               <button
                 type="button"
                 onClick={handleExpressAdminAccess}
                 disabled={isSubmitting}
-                className="w-full py-2.5 px-3 rounded-2xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                className="w-full py-2.5 px-3 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
               >
-                <Zap size={14} className="text-cyan-400" />
+                <Zap size={14} className="text-emerald-400" />
                 <span>⚡ Accès Express Administrateur</span>
               </button>
               <div className="flex items-center justify-between text-[10px] text-slate-500 px-1">
-                <span>Espace : <strong className="text-cyan-400/80 font-mono">cashpilot_main_user</strong></span>
-                <span className="text-emerald-400 font-semibold">0 latence</span>
+                <span>Espace : <strong className="text-emerald-400/90 font-mono">cashpilot_main_user</strong></span>
+                <span className="text-emerald-400 font-semibold">Actif • 0 latence</span>
               </div>
             </div>
           )}
@@ -583,10 +673,10 @@ export const AuthPage: React.FC = () => {
       </main>
 
       {/* =========================================================================
-          PIED DE PAGE DISCRET
+          4. PIED DE PAGE DISCRET
           ========================================================================= */}
       <footer className="relative z-20 py-4 text-center text-[11px] text-slate-500">
-        <p>CashPilot © {new Date().getFullYear()} • Chiffrement de bout en bout • Données sécurisées</p>
+        <p>CashPilot © {new Date().getFullYear()} • Gestion Financière & Intelligence Artificielle • Données Chiffrées</p>
       </footer>
     </div>
   );
