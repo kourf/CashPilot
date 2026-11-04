@@ -7,6 +7,7 @@ import Coach from './pages/Coach';
 import Settings from './pages/Settings';
 import LandingPage from './pages/Landing';
 import SecretAdminGate from './pages/SecretAdmin';
+import AuthPage from './pages/Auth';
 import PrivateRoute from './components/PrivateRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuth } from './context/AuthContext';
@@ -28,6 +29,24 @@ export default function AppRouter() {
           <Route
             path="/bienvenue"
             element={!loading && user ? <Navigate to="/" replace /> : <LandingPage />}
+          />
+
+          {/* Page d'authentification interactive immersive (Lampe à tirette & révélation lumineuse) */}
+          <Route
+            path="/auth"
+            element={!loading && user ? <Navigate to="/" replace /> : <AuthPage />}
+          />
+          <Route
+            path="/connexion"
+            element={!loading && user ? <Navigate to="/" replace /> : <AuthPage />}
+          />
+          <Route
+            path="/login"
+            element={!loading && user ? <Navigate to="/" replace /> : <AuthPage />}
+          />
+          <Route
+            path="/register"
+            element={!loading && user ? <Navigate to="/" replace /> : <AuthPage />}
           />
 
           {/* Routes Privées : Accès protégé aux 4 onglets (Accueil, Relevé bancaire, Ticket, Coach IA) + Paramètres */}

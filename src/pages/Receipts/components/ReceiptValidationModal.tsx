@@ -402,24 +402,24 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div 
-        className="w-full max-w-4xl bg-card border border-border/80 dark:border-white/[0.1] rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[94dvh] sm:h-auto sm:max-h-[88vh] animate-in zoom-in-95 duration-200"
+        className="w-full max-w-4xl bg-[#0c1222]/95 border border-white/20 rounded-2xl sm:rounded-3xl shadow-2xl backdrop-blur-2xl overflow-hidden flex flex-col h-[94dvh] sm:h-auto sm:max-h-[88vh] animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* EN-TÊTE FIXE DE LA MODALE */}
-        <div className="p-3.5 sm:p-5 border-b border-border/70 flex items-center justify-between bg-muted/20 shrink-0">
+        <div className="p-3.5 sm:p-5 border-b border-white/10 flex items-center justify-between bg-white/[0.02] shrink-0">
           <div className="min-w-0 pr-2">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse shrink-0" />
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-primary truncate">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0 shadow-[0_0_8px_rgba(56,189,248,0.8)]" />
+              <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-cyan-300 truncate">
                 Audit Pré-Enregistrement
               </span>
             </div>
-            <h2 className="text-base sm:text-xl font-extrabold text-foreground mt-0.5 truncate">
+            <h2 className="text-base sm:text-xl font-black text-white mt-0.5 truncate tracking-tight">
               Validation des données extraites du ticket
             </h2>
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 line-clamp-1">
+            <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 line-clamp-1">
               Contrôlez les libellés, prix et rayons avant intégration définitive dans la matrice comparative.
             </p>
           </div>
@@ -428,7 +428,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
             type="button"
             onClick={onCancel}
             disabled={isSaving}
-            className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors shrink-0 cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -463,11 +463,11 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
             )}
 
             {/* SECTION 1 : MÉTADONNÉES DU TICKET (RÈGLES 1, 2, 3, 4) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-secondary/30 border border-border/60">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 p-3.5 sm:p-4 rounded-2xl bg-white/[0.035] border border-white/10 backdrop-blur-xl">
               {/* ENSEIGNE AVEC LOCALISATION */}
               <div className="md:col-span-2">
-                <label className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1.5">
-                  <Store size={14} className="text-primary" />
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Store size={14} className="text-cyan-400" />
                   Enseigne & Ville / Localisation *
                 </label>
                 <input
@@ -477,7 +477,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                   onChange={(e) => setStoreName(e.target.value)}
                   list="validation-existing-stores"
                   placeholder="ex: E.Leclerc Ville-la-Grand, Lidl Annemasse..."
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-white/5 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-medium"
                 />
                 <datalist id="validation-existing-stores">
                   {existingStoreNames.map(s => (
@@ -488,8 +488,8 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
 
               {/* DATE */}
               <div>
-                <label className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1.5">
-                  <Calendar size={14} className="text-primary" />
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Calendar size={14} className="text-cyan-400" />
                   Date de l'achat *
                 </label>
                 <input
@@ -497,14 +497,14 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                   required
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-mono"
                 />
               </div>
 
               {/* HEURE (POUR DISCRIMINATION DES DOUBLONS) */}
               <div>
-                <label className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1.5">
-                  <Clock size={14} className="text-primary" />
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Clock size={14} className="text-cyan-400" />
                   Heure de caisse
                 </label>
                 <input
@@ -512,14 +512,14 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   placeholder="ex: 14:35"
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-white/5 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-mono"
                 />
               </div>
 
               {/* TOTAL PAYÉ */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-foreground flex items-center gap-1">
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
                     Total payé (€) *
                   </label>
                 </div>
@@ -530,18 +530,18 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                   required
                   value={totalAmount}
                   onChange={(e) => setTotalAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono font-bold"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-mono font-bold"
                 />
               </div>
             </div>
 
             {/* REMISES & CONTRÔLE COMPTABLE D'AUDIT (RÈGLE 3) */}
-            <div className="p-3.5 rounded-xl bg-secondary/20 border border-border/70 space-y-2.5">
+            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2.5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground">Sous-total net :</span>
-                    <span className="font-mono font-bold text-foreground">
+                    <span className="text-slate-400">Sous-total net :</span>
+                    <span className="font-mono font-bold text-white">
                       {formatCurrency(sumItems, { showSign: false })}
                     </span>
                   </div>
@@ -804,11 +804,11 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
               </div>
 
               {/* 2. VUE DESKTOP : TABLEAU COMPLET (HIDDEN SM:BLOCK) */}
-              <div className="hidden sm:block border border-border/80 rounded-xl overflow-hidden bg-card/60">
-                <div className="overflow-x-auto">
+              <div className="hidden sm:block border border-white/10 rounded-2xl overflow-hidden bg-white/[0.02] shadow-xl">
+                <div className="overflow-x-auto touch-scroll">
                   <table className="w-full text-left border-collapse min-w-[1050px] text-xs">
                     <thead>
-                      <tr className="border-b border-border/80 bg-muted/40 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      <tr className="border-b border-white/10 bg-white/5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                         <th className="py-2.5 px-3 w-[21%]">Libellé Normalisé *</th>
                         <th className="py-2.5 px-3 w-[11%]">Marque</th>
                         <th className="py-2.5 px-3 w-[9%]">Format/Poids</th>
@@ -822,7 +822,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                       </tr>
                     </thead>
 
-                    <tbody className="divide-y divide-border/60">
+                    <tbody className="divide-y divide-white/5">
                       {items.map((item, idx) => (
                         <tr key={item.id} className="hover:bg-muted/30 transition-colors">
                           {/* LIBELLÉ NORMALISÉ */}
@@ -976,9 +976,9 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
           </div>
 
           {/* PIED DE MODALE VERROUILLÉ (STICKY FOOTER AVEC SAFE-AREA) */}
-          <div className="shrink-0 bg-card/95 backdrop-blur-md border-t border-border/80 p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between z-30">
-            <div className="hidden sm:flex items-center gap-2 text-[11px] text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+          <div className="shrink-0 bg-[#0c1222]/95 backdrop-blur-2xl border-t border-white/10 p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-2xl flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between z-30">
+            <div className="hidden sm:flex items-center gap-2 text-[11px] text-slate-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
               <span>Données auditées et synchronisées en direct sur PC et smartphone.</span>
             </div>
 
@@ -989,7 +989,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                 size="sm"
                 onClick={onCancel}
                 disabled={isSaving}
-                className="h-10 sm:h-9 text-xs flex-1 sm:flex-none border-border/80"
+                className="h-10 sm:h-9 text-xs flex-1 sm:flex-none border-white/15 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl cursor-pointer"
               >
                 Annuler
               </Button>
@@ -998,16 +998,16 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
                 type="submit"
                 size="sm"
                 disabled={isSaving || items.length === 0 || isDuplicate}
-                className="h-10 sm:h-9 text-xs font-bold gap-1.5 shadow-md flex-1 sm:flex-none"
+                className="h-10 sm:h-9 text-xs font-black gap-1.5 shadow-lg bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 rounded-xl flex-1 sm:flex-none cursor-pointer"
               >
                 {isSaving ? (
                   <>
-                    <Loader2 size={14} className="animate-spin" />
+                    <Loader2 size={14} className="animate-spin text-slate-950" />
                     <span>Enregistrement...</span>
                   </>
                 ) : (
                   <>
-                    <Check size={14} />
+                    <Check size={14} className="stroke-[3]" />
                     <span>Valider le ticket ({items.length} art.)</span>
                   </>
                 )}

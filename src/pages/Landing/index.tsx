@@ -78,10 +78,7 @@ export const LandingPage: React.FC = () => {
   }, [loginAsAdmin, navigate]);
 
   const openModal = (mode: AuthMode = 'login') => {
-    clearError();
-    setResetSuccessMsg(null);
-    setAuthMode(mode);
-    setIsAuthModalOpen(true);
+    navigate(`/auth?mode=${mode}`);
   };
 
   const handleGoogleSignIn = async () => {

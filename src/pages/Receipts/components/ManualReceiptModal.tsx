@@ -231,22 +231,22 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div 
-        className="w-full max-w-4xl bg-card border border-border/80 dark:border-white/[0.1] rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[94dvh] sm:h-auto sm:max-h-[88vh] animate-in zoom-in-95 duration-200"
+        className="w-full max-w-4xl bg-[#0c1222]/95 border border-white/20 rounded-2xl sm:rounded-3xl shadow-2xl backdrop-blur-2xl overflow-hidden flex flex-col h-[94dvh] sm:h-auto sm:max-h-[88vh] animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* EN-TÊTE FIXE */}
-        <div className="p-3.5 sm:p-5 border-b border-border/70 flex items-center justify-between bg-muted/20 shrink-0">
+        <div className="p-3.5 sm:p-5 border-b border-white/10 flex items-center justify-between bg-white/[0.02] shrink-0">
           <div className="flex items-center gap-3 min-w-0 pr-2">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-cyan-400 flex items-center justify-center shrink-0 shadow-inner">
               <FileSpreadsheet size={18} />
             </div>
             <div className="min-w-0">
-              <h2 className="text-base sm:text-lg font-extrabold text-foreground truncate">
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight truncate">
                 Saisie manuelle d'un ticket de caisse
               </h2>
-              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">
+              <p className="text-[11px] sm:text-xs text-slate-400 truncate">
                 Ajoutez directement vos articles sans scan, 100% hors-ligne et gratuit.
               </p>
             </div>
@@ -256,7 +256,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
             type="button"
             onClick={onClose}
             disabled={isSaving}
-            className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors shrink-0 cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -290,10 +290,10 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
             )}
 
             {/* MÉTADONNÉES TICKET */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-secondary/30 border border-border/60">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 p-3.5 sm:p-4 rounded-2xl bg-white/[0.035] border border-white/10 backdrop-blur-xl">
               <div className="md:col-span-2">
-                <label className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1.5">
-                  <Store size={14} className="text-primary" />
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Store size={14} className="text-cyan-400" />
                   Enseigne & Ville *
                 </label>
                 <input
@@ -303,7 +303,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
                   onChange={(e) => setStoreName(e.target.value)}
                   list="manual-existing-stores"
                   placeholder="ex: Intermarché - Gaillard, Intermarché - Annemasse, E.Leclerc - Ville-la-Grand..."
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-white/5 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-medium"
                 />
                 <datalist id="manual-existing-stores">
                   {existingStoreNames.map(s => (
@@ -313,8 +313,8 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1.5">
-                  <Calendar size={14} className="text-primary" />
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Calendar size={14} className="text-cyan-400" />
                   Date de l'achat *
                 </label>
                 <input
@@ -322,13 +322,13 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
                   required
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-mono"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1.5">
-                  <Clock size={14} className="text-primary" />
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Clock size={14} className="text-cyan-400" />
                   Heure de caisse
                 </label>
                 <input
@@ -336,13 +336,13 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   placeholder="ex: 11:20"
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-white/5 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-mono"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-foreground">
+                  <label className="text-xs font-bold text-slate-300">
                     Total payé (€)
                   </label>
                 </div>
@@ -353,7 +353,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
                   value={totalAmount || ''}
                   onChange={(e) => setTotalAmount(parseFloat(e.target.value) || 0)}
                   placeholder={expectedTotal.toFixed(2)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono font-bold"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-mono font-bold"
                 />
               </div>
             </div>
@@ -568,11 +568,11 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
               </div>
 
               {/* 2. VUE DESKTOP : TABLEAU COMPLET (HIDDEN SM:BLOCK) */}
-              <div className="hidden sm:block border border-border/80 rounded-xl overflow-hidden bg-card/60">
-                <div className="overflow-x-auto">
+              <div className="hidden sm:block border border-white/10 rounded-2xl overflow-hidden bg-white/[0.02] shadow-xl">
+                <div className="overflow-x-auto touch-scroll">
                   <table className="w-full text-left border-collapse min-w-[800px] text-xs">
                     <thead>
-                      <tr className="border-b border-border/80 bg-muted/40 text-[10px] font-bold text-muted-foreground uppercase">
+                      <tr className="border-b border-white/10 bg-white/5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                         <th className="py-2.5 px-3 w-[24%]">Nom du Produit *</th>
                         <th className="py-2.5 px-3 w-[15%]">Marque</th>
                         <th className="py-2.5 px-3 w-[13%]">Contenance/Poids</th>
@@ -582,7 +582,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
                         <th className="py-2.5 px-3 w-[6%] text-center">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border/60">
+                    <tbody className="divide-y divide-white/5">
                       {items.map((item, idx) => (
                         <tr key={item.id} className="hover:bg-muted/30">
                           {/* NOM DU PRODUIT */}
@@ -688,9 +688,9 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
           </div>
 
           {/* PIED VERROUILLÉ (STICKY FOOTER AVEC SAFE-AREA) */}
-          <div className="shrink-0 bg-card/95 backdrop-blur-md border-t border-border/80 p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between z-30">
-            <span className="text-xs font-semibold text-muted-foreground">
-              Total des lignes : <strong className="text-foreground font-mono">{formatCurrency(sumItems, { showSign: false })}</strong>
+          <div className="shrink-0 bg-[#0c1222]/95 backdrop-blur-2xl border-t border-white/10 p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-2xl flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between z-30">
+            <span className="text-xs font-semibold text-slate-400">
+              Total des lignes : <strong className="text-white font-mono">{formatCurrency(sumItems, { showSign: false })}</strong>
             </span>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -700,7 +700,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
                 size="sm"
                 onClick={onClose}
                 disabled={isSaving}
-                className="h-10 sm:h-9 text-xs flex-1 sm:flex-none border-border/80"
+                className="h-10 sm:h-9 text-xs flex-1 sm:flex-none border-white/15 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl cursor-pointer"
               >
                 Annuler
               </Button>
@@ -709,9 +709,9 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
                 type="submit"
                 size="sm"
                 disabled={isSaving || isDuplicate}
-                className="h-10 sm:h-9 text-xs font-bold gap-1.5 shadow-md flex-1 sm:flex-none"
+                className="h-10 sm:h-9 text-xs font-black gap-1.5 shadow-lg bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 rounded-xl flex-1 sm:flex-none cursor-pointer"
               >
-                <Check size={14} />
+                <Check size={14} className="stroke-[3]" />
                 <span>Enregistrer le ticket</span>
               </Button>
             </div>
