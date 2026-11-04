@@ -44,7 +44,6 @@ import {
   Wifi,
   Cloud,
   ShoppingCart,
-  ChevronLeft,
   ChevronRight
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -186,8 +185,6 @@ export const BankStatements: React.FC = () => {
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
   const [selectedAccount, setSelectedAccount] = useState<string>('ALL');
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const PAGE_SIZE = 15;
   
   // Modals & Panels
   const [isUploading, setIsUploading] = useState(false);
@@ -846,16 +843,8 @@ export const BankStatements: React.FC = () => {
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [monthScopedTransactions, selectedAccount, searchTerm, selectedFilter, transferFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
-  const paginatedTransactions = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredTransactions.slice(start, start + PAGE_SIZE);
-  }, [filteredTransactions, currentPage, PAGE_SIZE]);
-
-  // Réinitialiser la pagination lors d'un changement de filtre
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, selectedFilter, selectedMonth, selectedAccount]);
+  // Affichage direct et continu de l'intégralité des transactions filtrées (sans pagination)
+  const paginatedTransactions = filteredTransactions;
 
   // Auto-hide notification
   useEffect(() => {
@@ -2768,37 +2757,10 @@ export const BankStatements: React.FC = () => {
             )}
           </div>
 
-          {/* Contrôleur de Pagination VisionOS (0ms Latency) */}
-          {filteredTransactions.length > PAGE_SIZE && (
-            <div className="liquid-glass rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-              <span className="text-muted-foreground">
-                Affichage de <strong className="text-foreground">{(currentPage - 1) * PAGE_SIZE + 1}</strong> à <strong className="text-foreground">{Math.min(currentPage * PAGE_SIZE, filteredTransactions.length)}</strong> sur <strong className="text-foreground">{filteredTransactions.length}</strong> opérations
-              </span>
-              <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="liquid-pill px-3 py-1.5 rounded-xl font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition flex items-center gap-1 cursor-pointer"
-                >
-                  <ChevronLeft size={14} />
-                  <span>Précédent</span>
-                </button>
-
-                <span className="px-3 py-1.5 rounded-xl bg-white/5 font-mono font-semibold text-foreground">
-                  {currentPage} / {totalPages}
-                </span>
-
-                <button
-                  type="button"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="liquid-pill px-3 py-1.5 rounded-xl font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Suivant</span>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
+          {/* Indicateur de total des transactions (flux continu sans pagination) */}
+          {filteredTransactions.length > 0 && (
+            <div className="text-center py-2 text-xs text-muted-foreground/60 font-medium">
+              {filteredTransactions.length} opération{filteredTransactions.length > 1 ? 's' : ''} au total
             </div>
           )}
         </div>
