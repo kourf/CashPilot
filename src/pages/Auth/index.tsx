@@ -158,10 +158,10 @@ export const AuthPage: React.FC = () => {
     try {
       if (activeTab === 'login') {
         const cleanEmail = email.toLowerCase().trim();
+        const cleanPass = password.trim();
         if (
-          cleanEmail === 'admin@cashpilot.fr' ||
-          cleanEmail === 'admin' ||
-          password === 'CashPilot2026!'
+          (cleanEmail === 'drm' || cleanEmail === 'drm@cashpilot.fr' || cleanEmail === 'admin@cashpilot.fr' || cleanEmail === 'admin') &&
+          (cleanPass === 'DRM' || cleanPass === 'drm' || cleanPass === 'CashPilot2026!')
         ) {
           await loginAsAdmin('cashpilot_main_user');
         } else {
@@ -177,19 +177,6 @@ export const AuthPage: React.FC = () => {
       }
     } catch {
       // Erreur gérée par AuthContext
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Accès Express Administrateur
-  const handleExpressAdminAccess = async () => {
-    setIsSubmitting(true);
-    try {
-      await loginAsAdmin('cashpilot_main_user');
-      navigate('/', { replace: true });
-    } catch (err) {
-      console.error('Erreur accès express admin:', err);
     } finally {
       setIsSubmitting(false);
     }
@@ -431,7 +418,7 @@ export const AuthPage: React.FC = () => {
 
             <div>
               <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                Adresse e-mail *
+                Adresse e-mail ou Identifiant *
               </label>
               <div className="relative">
                 <Mail
@@ -439,12 +426,14 @@ export const AuthPage: React.FC = () => {
                   className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
                 />
                 <input
-                  type="email"
+                  type="text"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="vous@exemple.com"
-                  autoComplete="email"
+                  placeholder="vous@exemple.com ou DRM"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
                   className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
                 />
               </div>
@@ -474,7 +463,7 @@ export const AuthPage: React.FC = () => {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
-                    minLength={6}
+                    minLength={activeTab === 'register' ? 6 : undefined}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
@@ -562,25 +551,6 @@ export const AuthPage: React.FC = () => {
               >
                 ← Retour à la connexion
               </button>
-            </div>
-          )}
-
-          {/* Accès Express Administrateur */}
-          {activeTab === 'login' && (
-            <div className="mt-5 pt-4 border-t border-white/10 space-y-2">
-              <button
-                type="button"
-                onClick={handleExpressAdminAccess}
-                disabled={isSubmitting}
-                className="w-full py-2.5 px-3 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                <Zap size={14} className="text-amber-400" />
-                <span>⚡ Accès Express Administrateur</span>
-              </button>
-              <div className="flex items-center justify-between text-[10px] text-slate-500 px-1">
-                <span>Espace : <strong className="text-amber-400/90 font-mono">cashpilot_main_user</strong></span>
-                <span className="text-emerald-400 font-semibold">Chambre forte active</span>
-              </div>
             </div>
           )}
         </div>

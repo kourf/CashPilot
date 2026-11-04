@@ -353,15 +353,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithEmail = useCallback(async (email: string, password: string): Promise<User> => {
     setError(null);
     const cleanEmail = email.toLowerCase().trim();
+    const cleanPass = password.trim();
 
-    // INTERCEPTION ADMINISTRATEUR :
-    // Si l'utilisateur saisit l'e-mail admin OU le mot de passe maître CashPilot2026!
-    // -> Connexion immédiate sur l'espace contenant tous les RB et tickets historiques.
+    // ACCÈS STRICT COMPTE PERSONNEL / DÉMO VIA IDENTIFIANTS DRM / DRM :
+    // Accessible uniquement par saisie directe de l'identifiant "DRM" et mot de passe "DRM"
     if (
-      cleanEmail === DEFAULT_ADMIN_EMAIL.toLowerCase() || 
-      cleanEmail === 'admin' || 
-      cleanEmail === 'admin@cashpilot.com' ||
-      password === DEFAULT_ADMIN_PASS
+      (cleanEmail === 'drm' || cleanEmail === 'drm@cashpilot.fr' || cleanEmail === DEFAULT_ADMIN_EMAIL.toLowerCase() || cleanEmail === 'admin') &&
+      (cleanPass === 'DRM' || cleanPass === 'drm' || cleanPass === DEFAULT_ADMIN_PASS)
     ) {
       return loginAsAdmin(DEFAULT_ADMIN_WORKSPACE);
     }

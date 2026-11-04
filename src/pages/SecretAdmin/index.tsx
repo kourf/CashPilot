@@ -25,7 +25,7 @@ export const SecretAdminGate: React.FC = () => {
   const [workspaceId, setWorkspaceId] = useState<string>(() => {
     return localStorage.getItem('cashpilot_admin_workspace') || DEFAULT_ADMIN_WORKSPACE;
   });
-  const [adminKey, setAdminKey] = useState<string>(DEFAULT_ADMIN_PASS);
+  const [adminKey, setAdminKey] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -38,6 +38,11 @@ export const SecretAdminGate: React.FC = () => {
   const handleQuickLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     clearError();
+    const cleanKey = adminKey.trim();
+    if (cleanKey !== 'DRM' && cleanKey !== 'drm' && cleanKey !== DEFAULT_ADMIN_PASS) {
+      alert('Clé secrète invalide. Saisissez DRM.');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
