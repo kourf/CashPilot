@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
-import { useTransactions } from '../../context/TransactionsContext';
 import { useCoach, type SavedConversation } from '../../context/CoachContext';
-import { getGeminiModelName, type ProposedAdminAction } from '../../lib/coachFinancialEngine';
+import { type ProposedAdminAction } from '../../lib/coachFinancialEngine';
 import { DEFAULT_COST_OF_LIVING_ITEMS, type CustomUserRule } from '../../lib/kpiUtils';
 import { 
   Sparkles, 
@@ -16,7 +15,6 @@ import {
   Scale, 
   ShoppingBag, 
   CreditCard, 
-  SlidersHorizontal,
   History,
   Trash2,
   X,
@@ -59,19 +57,15 @@ const AVAILABLE_CATEGORIES = [
 ];
 
 export default function Coach() {
-  const { transactions = [], availableMonths = [] } = useTransactions();
   const {
     conversations,
     activeConversationId,
     messages,
-    selectedScope,
-    scopedTransactions,
     isLoading,
     loadingStep,
     inputPrompt,
     setInputPrompt,
     setActiveConversationId,
-    handleScopeChange,
     handleCreateNewConversation,
     handleDeleteConversation,
     handleDeleteMessage,
@@ -156,7 +150,6 @@ export default function Coach() {
     }
   };
 
-  const activeModel = getGeminiModelName();
   const validConversations = conversations.filter(c => c.messages && c.messages.length > 0);
 
   // 4 Suggestions officielles Google Stitch visionOS
@@ -384,73 +377,68 @@ export default function Coach() {
     <div className="coach-liquid-aura flex flex-col min-h-[calc(100vh-4rem)] text-white relative selection:bg-sky-500/30 selection:text-white overflow-x-hidden">
       
       {/* 1. TOP BAR ÉPURÉE LIQUID GLASS CAPSULE */}
-      <div className="sticky top-0 z-30 px-2 sm:px-6 py-2.5 sm:py-3">
-        <div className="apple-glass rounded-full px-2.5 sm:px-5 py-1.5 sm:py-2 flex items-center justify-between gap-1.5 sm:gap-2 max-w-5xl mx-auto shadow-2xl">
+      <div className="sticky top-0 z-30 px-3 sm:px-6 py-2.5 sm:py-3">
+        <div className="apple-glass rounded-full px-3.5 sm:px-5 py-2 flex items-center justify-between gap-3 max-w-5xl mx-auto shadow-2xl">
           
-          {/* Gauche: Historique & Mes Règles */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Gauche: Historique & Mes Règles & Abonnements avec Infobulle */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Bouton Historique (remplace "(0)" par "Historique") */}
             <button
               onClick={() => setIsHistoryOpen(true)}
-              className="apple-glass-pill hover:bg-white/15 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold text-white/90 flex items-center gap-1 sm:gap-1.5 transition-all group cursor-pointer"
-              title="Ouvrir l'historique des conversations"
+              className="apple-glass-pill hover:bg-white/15 px-3 py-1.5 rounded-full text-xs font-semibold text-white/90 flex items-center gap-1.5 transition-all group cursor-pointer"
+              title="Ouvrir l'historique des discussions"
             >
-              <History size={13} className="text-sky-400 group-hover:rotate-12 transition-transform shrink-0" />
-              <span className="hidden xs:inline">Historique</span>
-              <span className="text-sky-400 font-bold">({validConversations.length})</span>
+              <History size={14} className="text-sky-400 group-hover:rotate-12 transition-transform shrink-0" />
+              <span>Historique</span>
             </button>
 
-            <button
-              onClick={() => setIsRulesOpen(true)}
-              className="apple-glass-pill hover:bg-white/15 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-400 border-emerald-500/30 flex items-center gap-1 sm:gap-1.5 transition-all group cursor-pointer"
-              title="Gérer mes règles personnalisées et clarifications d'abonnements"
-            >
-              <BookmarkCheck size={13} className="group-hover:scale-110 transition-transform shrink-0" />
-              <span className="hidden sm:inline">Mes Règles</span>
-              <span className="sm:hidden hidden xs:inline">Règles</span>
-              <span className="font-bold">({customRules.length})</span>
-            </button>
-          </div>
-
-          {/* Centre: Indicateur Live IA & Données connectées */}
-          <div className="hidden md:flex items-center gap-2">
-            <div className="apple-glass-pill px-3 py-1 rounded-full text-[11px] text-white/90 flex items-center gap-1.5 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
-              <span className="text-white font-semibold">{activeModel}</span>
-            </div>
-            <div className="apple-glass-pill px-3 py-1 rounded-full text-[11px] text-slate-300 flex items-center gap-1.5 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-              <span>{scopedTransactions.length} flux connectés</span>
-            </div>
-          </div>
-
-          {/* Droite: Portée & Nouvelle discussion */}
-          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-            <div className="apple-glass-pill px-2 py-1 rounded-full flex items-center gap-1 text-xs text-slate-200 min-w-0 max-w-[130px] sm:max-w-none">
-              <SlidersHorizontal size={11} className="text-slate-400 shrink-0" />
-              <select
-                value={selectedScope}
-                onChange={(e) => handleScopeChange(e.target.value)}
-                className="bg-transparent text-xs font-medium text-white focus:outline-none cursor-pointer pr-1 truncate w-full"
+            {/* Bouton Mes Règles & Abonnements avec Infobulle Explicative Simple & Intelligible */}
+            <div className="relative group/tooltip flex items-center">
+              <button
+                onClick={() => setIsRulesOpen(true)}
+                className="apple-glass-pill hover:bg-white/15 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-400 border-emerald-500/30 flex items-center gap-1.5 transition-all group cursor-pointer"
               >
-                <option value="all" className="bg-[#080a14] text-white">Toute la base ({transactions.length})</option>
-                {availableMonths.map(m => (
-                  <option key={m} value={m} className="bg-[#080a14] text-white">
-                    Mois {m}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <BookmarkCheck size={14} className="group-hover:scale-110 transition-transform shrink-0" />
+                <span className="hidden sm:inline">Mes Règles & Abonnements</span>
+                <span className="sm:hidden">Mes Règles</span>
+                <span className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] flex items-center justify-center font-bold ml-0.5">
+                  ?
+                </span>
+              </button>
 
+              {/* Infobulle Stitch Liquid Glass ultra claire et intelligible */}
+              <div className="absolute top-full left-0 sm:left-1/2 sm:-translate-x-1/2 mt-2 w-72 sm:w-80 p-3.5 rounded-2xl apple-glass bg-[#080a14]/95 border border-emerald-500/30 shadow-2xl opacity-0 translate-y-1 pointer-events-none group-hover/tooltip:opacity-100 group-hover/tooltip:translate-y-0 transition-all duration-200 z-50 text-left">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center justify-center shrink-0 text-xs font-bold">
+                    💡
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-white">À quoi sert cette section ?</p>
+                    <p className="text-[11px] text-slate-300 leading-relaxed font-light">
+                      Elle sert à <strong className="text-emerald-400 font-semibold">apprendre à l'IA à reconnaître vos abonnements</strong> (ex: Netflix, Salle de sport, Assurance, Loyer) pour qu'elle les classe automatiquement sans se tromper.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-white/10 flex items-center justify-between text-[10px] text-emerald-400 font-medium">
+                  <span>Cliquez pour consulter ou ajouter une règle</span>
+                  <span>→</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Droite: + Nouvelle Discussion (remplace "+ Nouvelle" par "+ Nouvelle Discussion", sans sélection "tous les bases") */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => {
                 handleCreateNewConversation();
                 setIsHistoryOpen(false);
               }}
-              className="p-1.5 sm:px-3.5 sm:py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white text-xs font-semibold flex items-center gap-1 shadow-lg shadow-sky-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
+              className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-sky-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
               title="Créer une nouvelle discussion"
             >
               <Plus size={14} className="shrink-0" />
-              <span className="hidden sm:inline">Nouvelle</span>
+              <span>+ Nouvelle Discussion</span>
             </button>
           </div>
         </div>
@@ -577,8 +565,8 @@ export default function Coach() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">Mes Règles & Abonnements</h3>
-                  <p className="text-[11px] text-slate-400">
-                    Clarifications de libellés, affectations budgétaires et montants fixes
+                  <p className="text-[11px] text-emerald-300/90 font-light">
+                    Apprenez à l'IA à reconnaître vos abonnements récurrents (ex : Netflix, Loyer, Salle de sport) pour les classer automatiquement.
                   </p>
                 </div>
               </div>
@@ -835,7 +823,7 @@ export default function Coach() {
                   <Lock size={12} className="text-sky-400" /> Chiffrement bancaire AES-256
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <ShieldCheck size={12} className="text-emerald-400" /> Grand livre connecté ({scopedTransactions.length} flux)
+                  <ShieldCheck size={12} className="text-emerald-400" /> Grand livre bancaire & tickets synchronisés
                 </span>
               </div>
             </div>

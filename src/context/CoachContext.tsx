@@ -171,7 +171,8 @@ export const CoachProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [conversations, activeConversationId]);
 
   const messages = currentConversation.messages;
-  const selectedScope = currentConversation.scope || 'all';
+  // Par défaut et en permanence, l'IA a accès à l'ensemble complet de la base de données (tous les mois et flux)
+  const selectedScope = 'all';
 
   // Helper de sérialisation d'une conversation pour Firestore
   const formatConversationForFirestore = (c: SavedConversation) => ({
