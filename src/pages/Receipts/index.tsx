@@ -48,6 +48,7 @@ import {
   sanitizeGenericDisplayName,
   normalizeProductNeed
 } from '../../types/receipts';
+import { ReceiptMonthlyAudit } from './components/ReceiptMonthlyAudit';
 import { ReceiptHistoryView } from './components/ReceiptHistoryView';
 import { ReceiptValidationModal } from './components/ReceiptValidationModal';
 import { ManualReceiptModal } from './components/ManualReceiptModal';
@@ -146,6 +147,26 @@ export default function Receipts() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAisleFilter, setSelectedAisleFilter] = useState<string>('ALL');
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('ALL');
+
+  // Sélecteur Global de Mois ('ALL' ou 'YYYY-MM')
+  const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
+
+  // Mois disponibles dans l'historique des tickets (YYYY-MM)
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    receipts.forEach(r => {
+      if (r.date && r.date.length >= 7) {
+        set.add(r.date.substring(0, 7));
+      }
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [receipts]);
+
+  // Tickets filtrés dynamiquement selon le mois sélectionné
+  const monthFilteredReceipts = useMemo(() => {
+    if (selectedMonth === 'ALL') return receipts;
+    return receipts.filter(r => (r.date || '').startsWith(selectedMonth));
+  }, [receipts, selectedMonth]);
 
   // L'INFOBULLE FLOTTANTE (TOOLTIP) AU SURVOL DU PRIX (RÈGLE 3 & STITCH DESIGN DNA)
   const [floatingTooltip, setFloatingTooltip] = useState<{
@@ -576,9 +597,15 @@ export default function Receipts() {
     };
   }, [matrix, receipts, hiddenProductNames]);
 
-  // Filtrage réactif de la vue (Promos, Magasin spécifique, Incomparables, Rayon, Recherche)
+  // Filtrage réactif de la vue (Mois, Promos, Magasin spécifique, Incomparables, Rayon, Recherche)
   const filteredRows = useMemo(() => {
     return crossTableRows.filter(row => {
+      // -1. Filtre Global Mois
+      if (selectedMonth !== 'ALL') {
+        const hasOfferInMonth = Object.values(row.storeOffers).some((off: any) => off.date && off.date.startsWith(selectedMonth));
+        if (!hasOfferInMonth) return false;
+      }
+
       // 0. Filtre Promotions Uniquement
       if (showPromosOnly && !row.hasAnyPromo) {
         return false;
@@ -610,7 +637,17 @@ export default function Receipts() {
 
       return true;
     });
-  }, [crossTableRows, showPromosOnly, selectedStoreFilter, hideUncomparable, selectedAisleFilter, searchTerm]);
+  }, [crossTableRows, showPromosOnly, selectedStoreFilter, hideUncomparable, selectedAisleFilter, searchTerm, selectedMonth]);
+
+  // Nombre d'articles par rayon pour le système de filtres horizontaux en pilules (Chips)
+  const aisleCountMap = useMemo(() => {
+    const map: Record<string, number> = { ALL: crossTableRows.length };
+    crossTableRows.forEach(row => {
+      const cat = row.category || row.rayon || 'Autres / Divers';
+      map[cat] = (map[cat] || 0) + 1;
+    });
+    return map;
+  }, [crossTableRows]);
 
   // Regroupement par catégories pour aérer la lecture du tableau (Google Stitch / Fintech)
   const groupedRowsByCategory = useMemo(() => {
@@ -1064,6 +1101,16 @@ export default function Receipts() {
       )}
 
       {/* ========================================================================= */}
+      {/* 2. TABLEAU DE BORD D'AUDIT FINANCIER PERSONNEL & RECHARTS (GOOGLE STITCH) */}
+      {/* ========================================================================= */}
+      <ReceiptMonthlyAudit
+        receipts={receipts}
+        selectedMonth={selectedMonth}
+        onSelectMonth={setSelectedMonth}
+        availableMonths={availableMonths}
+      />
+
+      {/* ========================================================================= */}
       {/* NAVIGATION PAR ONGLETS (APPLE VISIONOS STYLE) & SÉLECTEUR DE VUE          */}
       {/* ========================================================================= */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1092,7 +1139,7 @@ export default function Receipts() {
             )}
           >
             <History size={14} className={activeTab === 'history' ? "text-cyan-400" : ""} />
-            <span>Historique des Tickets ({receipts.length})</span>
+            <span>Historique des Tickets ({monthFilteredReceipts.length})</span>
           </button>
         </div>
       </div>
@@ -1127,20 +1174,8 @@ export default function Receipts() {
                 )}
               </div>
 
-              {/* CONTRÔLES : SÉLECTEUR DE RAYON, PROMOS, MASQUER UNIQUE, HARMONISER */}
+              {/* CONTRÔLES : PROMOS, MASQUER UNIQUE, HARMONISER */}
               <div className="flex items-center gap-2 flex-wrap">
-                {/* SÉLECTEUR DE RAYON */}
-                <select
-                  value={selectedAisleFilter}
-                  onChange={(e) => setSelectedAisleFilter(e.target.value)}
-                  className="px-3 py-1.5 text-xs rounded-xl border border-white/15 bg-slate-900/90 text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-400 font-medium"
-                >
-                  <option value="ALL">Tous les rayons ({SUPERMARKET_AISLES.length})</option>
-                  {SUPERMARKET_AISLES.map(aisle => (
-                    <option key={aisle} value={aisle}>{aisle}</option>
-                  ))}
-                </select>
-
                 {/* FILTRE PROMOS */}
                 <button
                   type="button"
@@ -1203,6 +1238,71 @@ export default function Receipts() {
                   )}
                   <span>{isHarmonizing ? "Harmonisation..." : "✨ Harmoniser & Doublons"}</span>
                 </button>
+              </div>
+            </div>
+
+            {/* SYSTÈME DE FILTRES HORIZONTAUX DE TYPE "PILULES" (CHIPS) PAR RAYON */}
+            <div className="pt-2.5 border-t border-white/5 space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <span>Rayons ({SUPERMARKET_AISLES.length}) :</span>
+                {selectedAisleFilter !== 'ALL' && (
+                  <button
+                    onClick={() => setSelectedAisleFilter('ALL')}
+                    className="text-cyan-400 hover:text-cyan-300 normal-case font-semibold text-[11px] cursor-pointer"
+                  >
+                    Réinitialiser
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-scroll py-0.5 select-none">
+                <button
+                  type="button"
+                  onClick={() => setSelectedAisleFilter('ALL')}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 shadow-sm cursor-pointer border",
+                    selectedAisleFilter === 'ALL'
+                      ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black shadow-cyan-500/25 shadow-md border-cyan-400/40"
+                      : "bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-white/10"
+                  )}
+                >
+                  <span>🛒</span>
+                  <span>Tous les rayons</span>
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.2 rounded-full font-mono",
+                    selectedAisleFilter === 'ALL' ? "bg-white/25 text-white font-bold" : "bg-white/10 text-slate-400"
+                  )}>
+                    {crossTableRows.length}
+                  </span>
+                </button>
+
+                {SUPERMARKET_AISLES.map(aisle => {
+                  const isSelected = selectedAisleFilter === aisle;
+                  const count = aisleCountMap[aisle] || 0;
+                  return (
+                    <button
+                      key={aisle}
+                      type="button"
+                      onClick={() => setSelectedAisleFilter(isSelected ? 'ALL' : aisle)}
+                      className={cn(
+                        "px-3.5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 shadow-sm cursor-pointer border",
+                        isSelected
+                          ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black shadow-cyan-500/25 shadow-md border-cyan-400/40"
+                          : "bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-white/10"
+                      )}
+                    >
+                      <span>{getCategoryEmoji(aisle)}</span>
+                      <span>{aisle}</span>
+                      {count > 0 && (
+                        <span className={cn(
+                          "text-[10px] px-1.5 py-0.2 rounded-full font-mono",
+                          isSelected ? "bg-white/25 text-white font-bold" : "bg-white/10 text-slate-400"
+                        )}>
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1639,7 +1739,7 @@ export default function Receipts() {
       {/* VUE 2 : HISTORIQUE COMPLET DES TICKETS */}
       {activeTab === 'history' && (
         <ReceiptHistoryView
-          receipts={receipts}
+          receipts={monthFilteredReceipts}
           onDeleteReceipt={deleteReceipt}
           onOpenUpload={scrollToUpload}
         />
