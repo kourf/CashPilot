@@ -204,6 +204,7 @@ export const ManualReceiptModal: React.FC<ManualReceiptModalProps> = ({
             ...it,
             id: `item-${Date.now()}-${idx}`,
             normalizedName: it.normalizedName.trim(),
+            standardized_name: it.standardized_name?.trim() || it.normalizedName.trim() || it.rawName.trim(),
             rawName: it.rawName.trim() || it.normalizedName.trim(),
             brand: it.brand?.trim() || 'Générique',
             pricePaid,

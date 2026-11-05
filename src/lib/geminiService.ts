@@ -1626,6 +1626,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT :
 export interface RawExtractedItem {
   rawName: string;
   normalizedName: string;
+  standardized_name?: string;
   brand: string;
   pricePaid: number;
   quantity: number;
@@ -1785,9 +1786,27 @@ Il existe 3 magasins Intermarché distincts ciblés dans la zone pour le compara
 Tu DOIS IMPÉRATIVEMENT extraire l'adresse de rue et la ville avec exactitude pour permettre à l'application de savoir dans lequel des 3 magasins le ticket a été émis.
 
 ================================================================================
-RÈGLE 8 : LE "NETTOYAGE EXTRÊME" & FAMILLES CANONIQUES (COUCHES 1 & 2)
+RÈGLE 8 : STANDARDISATION & CATÉGORISATION STRICTE (standardized_name & category)
 ================================================================================
-Pour chaque article, tu dois extraire le champ "nom_generique_nettoye" en réduisant le libellé à sa FAMILLE CANONIQUE PURE :
+Pour chaque article, tu DOIS OBLIGATOIREMENT générer les deux champs capitaux suivants :
+1. "standardized_name" : Un nom générique et standardisé (ex: transformer "Coca Zero 1.5L" et "Soda Cola Sans Sucre 1.5L" en "Cola sans sucres (1.5L)", "PANZANI COQUILLETTE 500G" en "Coquillettes (500g)", "BTE 10 OEUFS PLEIN AIR BIO" en "Œufs plein air (x10)") pour permettre une comparaison rigoureuse et équitable entre enseignes.
+2. "category" : Une catégorie stricte issue de la liste prédéfinie officielle :
+   - Boucherie, Volaille & Poissonnerie (ou Viandes & Poissons)
+   - Fruits & Légumes
+   - Produits frais & Crèmerie (ou Produits Laitiers)
+   - Épicerie salée & Épices
+   - Épicerie sucrée
+   - Boissons
+   - Hygiène, Beauté & Sanitaire
+   - Entretien & Maison
+   - Maison, Textile & Culture
+   - Santé & Pharmacie
+   - Papeterie & Bureau
+   - Fleurs & Cadeaux
+   - Sacs & Consignes
+   - Autres / Divers
+
+Tu dois également extraire le champ "nom_generique_nettoye" en réduisant le libellé à sa FAMILLE CANONIQUE PURE :
 1. AUCUNE MARQUE : Élimine totalement toute marque ou enseigne (Harry's, Lu, Danone, Heinz, Marque Repère, Super U, Président, Candia, Lesieur, Jafun, Paquito, Pâturages, Monique Ranou, Chabrior, etc.).
 2. AUCUN EMBALLAGE OU CONDITIONNEMENT : Élimine Pet, Bocal, Sachet, Bidon, Flacon, Brique, Boîte, Canette, Barquette, Lot, Pack, Filet, Tube, Étui, Pot, Verre, Plastique, Squeeze, Bouchon sport, etc.).
 3. AUCUNE CONTENANCE NI DÉCOUPE : Élimine Kg, 825g, 500g, 1L, 1.5L, 6x1L, Pièce, Pce, Tranches, Morceaux, Découpé, 1er prix, Prix.
@@ -1870,6 +1889,8 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
   "totalAmount": 28.45,
   "items": [
     {
+      "standardized_name": "Saumon fumé (150g)",
+      "category": "Boucherie, Volaille & Poissonnerie",
       "nom_generique_nettoye": "Saumon fumé",
       "marque": "Super U",
       "format_exact": "150g",
@@ -1887,6 +1908,8 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
       "quantity": 1
     },
     {
+      "standardized_name": "Lait demi-écrémé (1L)",
+      "category": "Produits frais & Crèmerie",
       "nom_generique_nettoye": "Lait demi-écrémé",
       "marque": "generique",
       "format_exact": "1L",
@@ -2043,9 +2066,10 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
 
       // Règle 4 : Extraction champs JSON Strict & Clé de Besoin Générique
       const rawBrand = String(it.marque || it.brand || '').trim();
-      const rawNorm = String(it.nom_generique_nettoye || it.nom_generique || it.normalizedName || it.cleanName || raw).trim();
+      const rawStandardized = String(it.standardized_name || it.nom_generique_nettoye || it.nom_generique || it.normalizedName || it.cleanName || raw).trim();
+      const rawNorm = String(it.nom_generique_nettoye || it.nom_generique || it.standardized_name || it.normalizedName || it.cleanName || raw).trim();
       const rawFormat = String(it.format_exact || it.poids_ou_volume || it.weightOrVolume || '').trim();
-      const rawAisle = String(it.rayon_assigne || it.categoryKey || it.category || classifyItemAisle(rawNorm, raw));
+      const rawAisle = String(it.category || it.rayon_assigne || it.categoryKey || classifyItemAisle(rawStandardized, raw));
 
       // Règle 1 & Couches 1/2 : Empreinte Pure & Famille Canonique
       const canonical = normalizeProductNeed(rawNorm, rawBrand);
@@ -2063,6 +2087,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
 
       const brand = isGeneric ? 'Générique' : (rawBrand.charAt(0).toUpperCase() + rawBrand.slice(1));
       const norm = canonical.nom_affichage || correctFrenchSpelling(rawNorm);
+      const standardizedName = correctFrenchSpelling(rawStandardized) || norm;
       const qty = Math.max(1, Number(it.quantity) || 1);
       const weightOrVolume = rawFormat;
       const weightOrVolumeValue = typeof it.weightOrVolumeValue === 'number' ? it.weightOrVolumeValue : undefined;
@@ -2120,6 +2145,7 @@ RÉPONDS STRICTEMENT SOUS FORME D'UN JSON VALIDE AU FORMAT SUIVANT (AUCUN TEXTE 
       validExtractedItems.push({
         rawName: raw,
         normalizedName: norm,
+        standardized_name: standardizedName,
         brand,
         pricePaid: Number(pricePaid.toFixed(2)),
         initialPrice: Number(initialPrice.toFixed(2)),

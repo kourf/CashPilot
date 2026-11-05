@@ -206,70 +206,67 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
         </Button>
       </div>
 
-      {/* BARRE DE FILTRES EN CAPSULES (STITCH STYLE) */}
+      {/* BARRE DE FILTRES EN CAPSULES (STITCH STYLE - 1 LIGNE HARMONISÉE SUR DESKTOP) */}
       <div className="glass-surface rounded-3xl p-4 sm:p-5 border border-white/10 shadow-xl space-y-3.5 backdrop-blur-2xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5">
-          
-          {/* SÉLECTEURS DE FILTRAGE : MOIS, ANNÉE, ENSEIGNE */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 flex-1 max-w-2xl">
-            {/* FILTRE MOIS */}
-            <div>
-              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
-                Mois
-              </label>
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-slate-900/90 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-medium cursor-pointer"
-              >
-                {MONTHS_FR.map(m => (
-                  <option key={m.value} value={m.value} className="bg-slate-900 text-white">{m.label}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* FILTRE ANNÉE */}
-            <div>
-              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
-                Année
-              </label>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-slate-900/90 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-medium cursor-pointer"
-              >
-                <option value="ALL" className="bg-slate-900 text-white">Toutes les années</option>
-                {availableYears.map(y => (
-                  <option key={y} value={y} className="bg-slate-900 text-white">{y}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* FILTRE ENSEIGNE */}
-            <div className="col-span-2 sm:col-span-1">
-              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
-                Enseigne
-              </label>
-              <select
-                value={selectedStore}
-                onChange={(e) => setSelectedStore(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-white/15 bg-slate-900/90 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-medium truncate cursor-pointer"
-              >
-                <option value="ALL" className="bg-slate-900 text-white">Toutes les enseignes ({availableStores.length})</option>
-                {availableStores.map(s => (
-                  <option key={s} value={s} className="bg-slate-900 text-white">{s}</option>
-                ))}
-              </select>
-            </div>
+        {/* Grille 4 colonnes harmonisée sur grand écran */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+          {/* FILTRE MOIS */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+              Mois
+            </label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="w-full h-11 px-3 py-2 text-xs rounded-xl border border-white/15 bg-slate-900/90 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-medium cursor-pointer"
+            >
+              {MONTHS_FR.map(m => (
+                <option key={m.value} value={m.value} className="bg-slate-900 text-white">{m.label}</option>
+              ))}
+            </select>
           </div>
 
-          {/* DÉPENSES FILTRÉES EN DIRECT (APPLE LUXURY PILL) */}
-          <div className="p-3 px-4.5 rounded-2xl bg-gradient-to-br from-cyan-500/15 via-white/[0.04] to-violet-500/10 border border-cyan-500/30 shadow-lg backdrop-blur-md flex flex-col items-start md:items-end shrink-0">
+          {/* FILTRE ANNÉE */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+              Année
+            </label>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="w-full h-11 px-3 py-2 text-xs rounded-xl border border-white/15 bg-slate-900/90 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-medium cursor-pointer"
+            >
+              <option value="ALL" className="bg-slate-900 text-white">Toutes les années</option>
+              {availableYears.map(y => (
+                <option key={y} value={y} className="bg-slate-900 text-white">{y}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* FILTRE ENSEIGNE */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+              Enseigne
+            </label>
+            <select
+              value={selectedStore}
+              onChange={(e) => setSelectedStore(e.target.value)}
+              className="w-full h-11 px-3 py-2 text-xs rounded-xl border border-white/15 bg-slate-900/90 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 font-medium truncate cursor-pointer"
+            >
+              <option value="ALL" className="bg-slate-900 text-white">Toutes les enseignes ({availableStores.length})</option>
+              {availableStores.map(s => (
+                <option key={s} value={s} className="bg-slate-900 text-white">{s}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* DÉPENSES FILTRÉES EN DIRECT (Hauteur harmonisée h-11 avec les sélecteurs) */}
+          <div className="h-11 px-4 rounded-xl bg-gradient-to-r from-cyan-500/15 via-white/[0.04] to-violet-500/10 border border-cyan-500/30 shadow-lg backdrop-blur-md flex items-center justify-between">
             <span className="text-[10px] font-black uppercase tracking-widest text-cyan-300">
               Dépenses filtrées
             </span>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-base sm:text-xl font-black font-mono text-white">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-base font-black font-mono text-white">
                 {formatCurrency(filteredTotalSpent, { showSign: false })}
               </span>
               <span className="text-[10px] text-slate-400 font-medium">
@@ -277,7 +274,6 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
               </span>
             </div>
           </div>
-
         </div>
 
         {/* CHAMP DE RECHERCHE TEXTUELLE */}
@@ -301,7 +297,7 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
         </div>
       </div>
 
-      {/* LISTE DES TICKETS FILTRÉS (APPLE VISIONOS STYLE) */}
+      {/* LISTE DES TICKETS FILTRÉS (APPLE VISIONOS STYLE - ÉTENDUE PLEINE LARGEUR) */}
       {filteredReceipts.length === 0 ? (
         <div className="glass-surface p-12 text-center rounded-3xl border border-white/10 text-xs text-slate-400 space-y-2">
           <Filter size={28} className="mx-auto mb-2 opacity-40 text-cyan-400" />
@@ -309,7 +305,7 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
           <p className="text-[11px] text-slate-400">Ajustez vos filtres de mois, année ou enseigne pour réafficher vos tickets.</p>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-2.5 w-full">
           {filteredReceipts.map((receipt) => {
             const dotColor = getStoreDotColor(receipt.storeName);
 
@@ -317,19 +313,19 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
               <div 
                 key={receipt.id}
                 onClick={() => setInspectingReceipt(receipt)}
-                className="rounded-2xl border border-white/10 bg-white/[0.035] backdrop-blur-xl p-3.5 sm:p-4 hover:bg-white/[0.07] hover:border-cyan-400/40 hover:shadow-lg hover:shadow-cyan-950/30 transition-all duration-200 cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden"
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.035] backdrop-blur-xl p-3.5 sm:p-4 hover:bg-white/[0.07] hover:border-cyan-400/40 hover:shadow-lg hover:shadow-cyan-950/30 transition-all duration-200 cursor-pointer group flex flex-col md:flex-row md:items-center justify-between gap-3 relative overflow-hidden"
               >
                 {/* IDENTITÉ DU TICKET */}
-                <div className="flex items-center gap-3.5 min-w-0">
+                <div className="flex items-center gap-3.5 min-w-0 flex-1">
                   <div className="w-11 h-11 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-cyan-300 shrink-0 shadow-inner group-hover:scale-105 group-hover:border-cyan-400/40 transition-transform">
                     <Store size={20} />
                   </div>
 
-                  <div className="min-w-0 space-y-1">
+                  <div className="min-w-0 space-y-1 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex items-center gap-1.5">
                         <span className={cn("w-2 h-2 rounded-full shrink-0", dotColor)} />
-                        <h4 className="font-extrabold text-sm sm:text-base text-white tracking-tight leading-snug truncate max-w-[220px] sm:max-w-[340px]">
+                        <h4 className="font-extrabold text-sm sm:text-base text-white tracking-tight leading-snug truncate max-w-[240px] sm:max-w-md">
                           {receipt.storeName}
                         </h4>
                       </div>
@@ -367,8 +363,8 @@ export const ReceiptHistoryView: React.FC<ReceiptHistoryViewProps> = ({
                 </div>
 
                 {/* MONTANT & ACTIONS */}
-                <div className="flex items-center justify-between sm:justify-end gap-3.5 border-t sm:border-t-0 pt-2.5 sm:pt-0 border-white/5 shrink-0">
-                  <div className="text-left sm:text-right">
+                <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-white/5 shrink-0">
+                  <div className="text-left md:text-right">
                     <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">
                       Total Payé
                     </span>

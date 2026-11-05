@@ -87,111 +87,120 @@ export default function Layout() {
     <div className="flex h-screen overflow-hidden flex-col antialiased liquid-mesh text-slate-100 selection:bg-cyan-500/20 selection:text-cyan-400 transition-colors duration-300">
       
       {/* Top Sticky Header avec Logo CashPilot, Navigation Info & Profil Apple VisionOS */}
-      <header className="h-16 px-4 md:px-8 border-b border-white/10 backdrop-blur-xl flex items-center justify-between z-30 shrink-0 bg-slate-950/40 text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
-        {/* Gauche : Logo CashPilot PRO & Titre de page */}
-        <div className="flex items-center gap-3 sm:gap-6">
-          <Link to="/" className="flex items-center gap-2.5 sm:gap-3 group">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-transform duration-300 border border-white/20 shrink-0">
-              <Landmark size={18} className="stroke-[2.5]" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-base sm:text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
-                  CashPilot
-                </span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                  PRO
-                </span>
+      <header className="h-16 px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 border-b border-white/10 backdrop-blur-xl z-30 shrink-0 bg-slate-950/40 text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex items-center">
+        <div className="w-full flex items-center justify-between">
+          {/* Gauche : Logo CashPilot PRO & Titre de page */}
+          <div className="flex items-center gap-3 sm:gap-6">
+            <Link to="/" className="flex items-center gap-2.5 sm:gap-3 group">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-transform duration-300 border border-white/20 shrink-0">
+                <Landmark size={18} className="stroke-[2.5]" />
               </div>
-              <p className="text-[10px] sm:text-[11px] font-medium text-slate-400">Finance & Patrimoine</p>
-            </div>
-          </Link>
-
-          <div className="hidden lg:block h-6 w-px bg-white/10" />
-
-          <div className="hidden lg:block">
-            <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-              {pageInfo.title}
-            </h2>
-            <p className="text-xs text-slate-400">
-              {pageInfo.subtitle}
-            </p>
-          </div>
-        </div>
-
-        {/* Droite : Outils, Mode Sombre & Profil Utilisateur */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Badge UID Chiffré discret */}
-          <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-slate-300 text-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
-            <span className="text-[11px] font-medium">UID Chiffré</span>
-            <ShieldCheck size={13} className="text-emerald-400 ml-0.5" />
-          </div>
-
-          {/* Bouton de mise à jour instantanée & purge cache */}
-          <button
-            onClick={handleForceRefresh}
-            title="Vider le cache et charger la dernière version"
-            disabled={isRefreshingApp}
-            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-300 hover:text-cyan-300 hover:bg-white/[0.08] border border-white/10 flex items-center gap-1.5 text-xs transition-all active:scale-95 cursor-pointer bg-white/[0.04]"
-          >
-            <RefreshCw size={14} className={cn("text-cyan-400 shrink-0", isRefreshingApp && "animate-spin")} />
-            <span className="text-[11px] font-bold text-cyan-300 sm:inline">v2.5</span>
-          </button>
-
-          <ThemeToggle variant="compact" />
-
-          {/* Profil utilisateur & Déconnexion */}
-          <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-white/10">
-            {userProfile && (
-              <div className="flex items-center gap-2">
-                {userProfile.photoURL ? (
-                  <img
-                    src={userProfile.photoURL}
-                    alt={userProfile.displayName || 'Profil'}
-                    className="w-8 h-8 rounded-full object-cover border border-cyan-500/30"
-                  />
-                ) : (
-                  <div
-                    title={userProfile?.email || 'Compte connecté'}
-                    className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500/20 to-primary/20 border border-cyan-500/30 flex items-center justify-center text-xs font-bold text-cyan-300"
-                  >
-                    {userInitials}
-                  </div>
-                )}
-
-                <div className="hidden sm:block text-left min-w-0 max-w-[130px]">
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs font-bold truncate text-white block">
-                      {userProfile.displayName || 'Utilisateur'}
-                    </span>
-                    {userProfile.isAdmin && (
-                      <span className="text-[8px] font-bold px-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                        Admin
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] truncate text-slate-400 block">
-                    {userProfile.activeWorkspace ? `Espace : ${userProfile.activeWorkspace}` : userProfile.email}
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-base sm:text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+                    CashPilot
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                    PRO
                   </span>
                 </div>
+                <p className="text-[10px] sm:text-[11px] font-medium text-slate-400">Finance & Patrimoine</p>
               </div>
-            )}
+            </Link>
 
+            <div className="hidden lg:block h-6 w-px bg-white/10" />
+
+            <div className="hidden lg:block">
+              <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                {pageInfo.title}
+              </h2>
+              <p className="text-xs text-slate-400">
+                {pageInfo.subtitle}
+              </p>
+            </div>
+          </div>
+
+          {/* Droite : Outils, Mode Sombre & Profil Utilisateur */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Badge UID Chiffré discret */}
+            <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-slate-300 text-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+              <span className="text-[11px] font-medium">UID Chiffré</span>
+              <ShieldCheck size={13} className="text-emerald-400 ml-0.5" />
+            </div>
+
+            {/* Bouton de mise à jour instantanée & purge cache */}
             <button
-              onClick={handleLogout}
-              title="Se déconnecter"
-              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              onClick={handleForceRefresh}
+              title="Vider le cache et charger la dernière version"
+              disabled={isRefreshingApp}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-300 hover:text-cyan-300 hover:bg-white/[0.08] border border-white/10 flex items-center gap-1.5 text-xs transition-all active:scale-95 cursor-pointer bg-white/[0.04]"
             >
-              <LogOut size={16} />
+              <RefreshCw size={14} className={cn("text-cyan-400 shrink-0", isRefreshingApp && "animate-spin")} />
+              <span className="text-[11px] font-bold text-cyan-300 sm:inline">v2.5</span>
             </button>
+
+            <ThemeToggle variant="compact" />
+
+            {/* Profil utilisateur & Déconnexion */}
+            <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-white/10">
+              {userProfile && (
+                <div className="flex items-center gap-2">
+                  {userProfile.photoURL ? (
+                    <img
+                      src={userProfile.photoURL}
+                      alt={userProfile.displayName || 'Profil'}
+                      className="w-8 h-8 rounded-full object-cover border border-cyan-500/30"
+                    />
+                  ) : (
+                    <div
+                      title={userProfile?.email || 'Compte connecté'}
+                      className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500/20 to-primary/20 border border-cyan-500/30 flex items-center justify-center text-xs font-bold text-cyan-300"
+                    >
+                      {userInitials}
+                    </div>
+                  )}
+
+                  <div className="hidden sm:block text-left min-w-0 max-w-[130px]">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-bold truncate text-white block">
+                        {userProfile.displayName || 'Utilisateur'}
+                      </span>
+                      {userProfile.isAdmin && (
+                        <span className="text-[8px] font-bold px-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          Admin
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] truncate text-slate-400 block">
+                      {userProfile.activeWorkspace ? `Espace : ${userProfile.activeWorkspace}` : userProfile.email}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleLogout}
+                title="Se déconnecter"
+                className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area (Full width, expansive canvas) */}
-      <main className="flex-1 overflow-y-auto pb-32 sm:pb-36 relative touch-scroll">
-        <Outlet />
+      {/* Main Content Area (Full screen canvas, harmonieux sur grand écran PC) */}
+      <main className="flex-1 overflow-y-auto pb-32 sm:pb-36 relative touch-scroll w-full">
+        <div className={cn(
+          "w-full transition-all duration-300",
+          location.pathname === '/coach'
+            ? "h-full flex flex-col"
+            : "px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12"
+        )}>
+          <Outlet />
+        </div>
       </main>
 
       {/* Barre Flottante Apple visionOS / macOS Liquid Glass en Bas (Desktop & Mobile Unifié) */}

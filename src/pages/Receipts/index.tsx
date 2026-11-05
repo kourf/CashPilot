@@ -28,7 +28,8 @@ import {
   ChevronDown, 
   ChevronUp, 
   Package, 
-  Zap
+  Zap,
+  Trophy
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -52,7 +53,7 @@ import { ReceiptValidationModal } from './components/ReceiptValidationModal';
 import { ManualReceiptModal } from './components/ManualReceiptModal';
 import { PriceEvolutionModal } from './components/PriceEvolutionModal';
 import { DeleteConfirmDialog } from './components/DeleteConfirmDialog';
-import { getProductEmoji } from '../../lib/productEmojiMapper';
+import { getProductEmoji, getCategoryEmoji } from '../../lib/productEmojiMapper';
 import { TARGET_PHYSICAL_STORES, resolvePhysicalStore } from '../../lib/storeRegistry';
 import { AISLE_CONFIGS, normalizeStoreName } from '../../lib/receiptClassifier';
 import { optimizeImageForOCR, formatFileSize, isPdfFile } from '../../lib/imageOptimizer';
@@ -326,44 +327,33 @@ export default function Receipts() {
       });
     });
 
-    const rows: Array<{
-      cleBesoin: string;
-      nomGenerique: string;
-      rayon: string;
-      storeOffers: Record<string, {
-        prixUnitaire: number;
-        unite: string;
-        prixPaye: number;
-        marque: string;
-        format: string;
-        date: string;
-        isPromo?: boolean;
-        discountAmount?: number;
-        discountRate?: number;
-        discountType?: string;
-        initialUnitPrice?: number;
-        initialPrice?: number;
-      }>;
-      storeCount: number;
-      isComparable: boolean;
-      lowestPrice: number;
-      highestPrice: number;
-      priceDiff: number;
-      priceDiffPercent: number;
-      cheapestStore: string;
-      sampleBrands: string[];
-      sampleRawRow?: ProductComparisonRow;
-      hasAnyPromo?: boolean;
-    }> = [];
+    // 1. Indexer tous les libellés bruts depuis receipts pour une traçabilité 100% fidèle
+    const rawNamesByNeedKey = new Map<string, Set<string>>();
+    receipts.forEach(r => {
+      (r.items || []).forEach(it => {
+        const rawCandidate = it.nomGenerique || it.standardized_name || it.normalizedName || it.rawName || '';
+        const canon = normalizeProductNeed(rawCandidate, it.brand);
+        const k = canon.id;
+        if (!rawNamesByNeedKey.has(k)) {
+          rawNamesByNeedKey.set(k, new Set());
+        }
+        if (it.rawName && it.rawName.trim()) {
+          rawNamesByNeedKey.get(k)!.add(it.rawName.trim());
+        }
+      });
+    });
 
     // 2. CONSOLIDATION EXTRÊME EN 3 COUCHES : Empreinte Pure + Famille Canonique + Fusion Magasins
     const allMatrixProducts = matrix.aisleGroups.flatMap(g => g.products);
     const consolidatedMap = new Map<string, {
       canonicalKey: string;
       nomGenerique: string;
+      standardized_name: string;
       rayon: string;
+      category: string;
       storeOffers: Record<string, any>;
       sampleBrands: Set<string>;
+      sampleRawNames: Set<string>;
       sampleRawRow?: ProductComparisonRow;
     }>();
 
@@ -387,11 +377,15 @@ export default function Receipts() {
         consolidatedMap.set(canonicalKey, {
           canonicalKey,
           nomGenerique: cleanDisplayName,
+          standardized_name: prod.standardized_name || cleanDisplayName,
           rayon: canonical.rayon || prod.category,
+          category: canonical.rayon || prod.category,
           storeOffers: {},
           sampleBrands: new Set<string>(),
+          sampleRawNames: new Set<string>(),
           sampleRawRow: {
             ...prod,
+            standardized_name: prod.standardized_name || cleanDisplayName,
             normalizedName: cleanDisplayName,
             category: (canonical.rayon || prod.category) as SupermarketAisle,
             priceHistory: [...(prod.priceHistory || [])]
@@ -402,6 +396,19 @@ export default function Receipts() {
       const entry = consolidatedMap.get(canonicalKey)!;
       if (canonical.rayon) {
         entry.rayon = canonical.rayon;
+        entry.category = canonical.rayon;
+      }
+      if (prod.standardized_name && !entry.standardized_name) {
+        entry.standardized_name = prod.standardized_name;
+      }
+      if (Array.isArray(prod.sampleRawNames)) {
+        prod.sampleRawNames.forEach(rn => { if (rn) entry.sampleRawNames.add(rn); });
+      }
+      if (Array.isArray(prod.originalNames)) {
+        prod.originalNames.forEach(rn => { if (rn) entry.sampleRawNames.add(rn); });
+      }
+      if (rawNamesByNeedKey.has(canonicalKey)) {
+        rawNamesByNeedKey.get(canonicalKey)!.forEach(rn => entry.sampleRawNames.add(rn));
       }
 
       // Fusionner l'historique des prix pour la courbe d'évolution
@@ -444,6 +451,10 @@ export default function Receipts() {
         const initUnitPrice = sp.initialUnitPrice || sp.unitPrice;
         const initPrice = sp.initialPrice || (discAmt > 0 ? Number((sp.pricePaid + discAmt).toFixed(2)) : sp.pricePaid);
 
+        if (sp.rawName) {
+          entry.sampleRawNames.add(sp.rawName);
+        }
+
         // COUCHE 3.1 : Conserver l'offre la plus récente (ou la plus avantageuse à date égale)
         const existingOffer = entry.storeOffers[canonicalStoreName];
         if (
@@ -458,6 +469,7 @@ export default function Receipts() {
             marque: sp.brand || 'Générique',
             format: sp.weightOrVolume || '1 pièce',
             date: sp.date,
+            rawName: sp.rawName || '',
             isPromo: isItemPromo,
             discountAmount: discAmt,
             discountRate: discRate,
@@ -477,6 +489,26 @@ export default function Receipts() {
     const validStoreNames = new Set(storesList.map(s => s.displayName));
 
     // COUCHE 3.2 : Transformer le dictionnaire consolidé en lignes et ÉRADIQUER STRICTEMENT LES LIGNES FANTÔMES
+    const rows: Array<{
+      cleBesoin: string;
+      nomGenerique: string;
+      standardized_name: string;
+      rayon: string;
+      category: string;
+      storeOffers: Record<string, any>;
+      storeCount: number;
+      isComparable: boolean;
+      lowestPrice: number;
+      highestPrice: number;
+      priceDiff: number;
+      priceDiffPercent: number;
+      cheapestStore: string;
+      sampleBrands: string[];
+      sampleRawNames: string[];
+      sampleRawRow?: any;
+      hasAnyPromo: boolean;
+    }> = [];
+
     consolidatedMap.forEach(entry => {
       const validOffers: Record<string, any> = {};
       Object.entries(entry.storeOffers).forEach(([stName, off]: [string, any]) => {
@@ -503,7 +535,9 @@ export default function Receipts() {
       rows.push({
         cleBesoin: entry.canonicalKey,
         nomGenerique: entry.nomGenerique,
+        standardized_name: entry.standardized_name || entry.nomGenerique,
         rayon: entry.rayon,
+        category: entry.category || entry.rayon,
         storeOffers: validOffers,
         storeCount,
         isComparable: isComp,
@@ -513,6 +547,7 @@ export default function Receipts() {
         priceDiffPercent,
         cheapestStore,
         sampleBrands: Array.from(entry.sampleBrands),
+        sampleRawNames: Array.from(entry.sampleRawNames),
         sampleRawRow: entry.sampleRawRow,
         hasAnyPromo
       });
@@ -529,7 +564,7 @@ export default function Receipts() {
       totalUniqueCount: uniqCount,
       totalPromosCount: promoCount
     };
-  }, [matrix, hiddenProductNames]);
+  }, [matrix, receipts, hiddenProductNames]);
 
   // Filtrage réactif de la vue (Promos, Magasin spécifique, Incomparables, Rayon, Recherche)
   const filteredRows = useMemo(() => {
@@ -567,6 +602,33 @@ export default function Receipts() {
     });
   }, [crossTableRows, showPromosOnly, selectedStoreFilter, hideUncomparable, selectedAisleFilter, searchTerm]);
 
+  // Regroupement par catégories pour aérer la lecture du tableau (Google Stitch / Fintech)
+  const groupedRowsByCategory = useMemo(() => {
+    const map = new Map<string, typeof filteredRows>();
+
+    // Initialiser les 14 rayons pour conserver un ordre de présentation logique
+    SUPERMARKET_AISLES.forEach(aisle => {
+      map.set(aisle, []);
+    });
+
+    filteredRows.forEach(row => {
+      const cat = row.category || row.rayon || 'Autres / Divers';
+      if (!map.has(cat)) {
+        map.set(cat, []);
+      }
+      map.get(cat)!.push(row);
+    });
+
+    const result: Array<{ category: string; rows: typeof filteredRows }> = [];
+    map.forEach((rows, category) => {
+      if (rows.length > 0) {
+        result.push({ category, rows });
+      }
+    });
+
+    return result;
+  }, [filteredRows]);
+
   // Couleur du point indicateur pour chaque enseigne
   const getStoreDotColor = (storeName: string): string => {
     const s = storeName.toLowerCase();
@@ -581,13 +643,13 @@ export default function Receipts() {
   };
 
   return (
-    <div className="min-h-full text-slate-100 pb-52 sm:pb-40 md:pb-24 p-3 sm:p-6 md:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto relative select-none">
+    <div className="w-full min-h-full text-slate-100 pb-52 sm:pb-40 md:pb-24 py-4 sm:py-6 md:py-8 space-y-6 sm:space-y-8 relative select-none">
       
       {/* ========================================================================= */}
       {/* 1. EN-TÊTE PRINCIPAL STITCH & SYNCHRONISATION MULTI-APPAREILS             */}
       {/* ========================================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-white/10 pb-4 sm:pb-6">
-        <div>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-4 sm:pb-6">
+        <div className="space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.8)]" />
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -612,17 +674,17 @@ export default function Receipts() {
               PRO
             </span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+          <p className="text-xs sm:text-sm text-slate-400">
             Surveillance des prix unitaires réels (€/kg, €/L) par enseigne, détection des remises et optimisation du panier.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+        <div className="flex items-center gap-2.5 self-start md:self-auto shrink-0">
           <Button
             size="sm"
             variant="outline"
             onClick={() => setIsManualModalOpen(true)}
-            className="text-xs gap-1.5 h-9 bg-white/5 hover:bg-white/10 border-white/15 text-slate-200"
+            className="text-xs font-semibold gap-1.5 h-9 bg-white/5 hover:bg-white/10 border-white/15 text-slate-200 rounded-xl transition-all"
           >
             <FileSpreadsheet size={14} className="text-cyan-400" />
             <span>Saisie manuelle</span>
@@ -631,7 +693,7 @@ export default function Receipts() {
           <Button
             size="sm"
             onClick={scrollToUpload}
-            className="text-xs font-bold gap-1.5 h-9 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20 cursor-pointer"
+            className="text-xs font-bold gap-1.5 h-9 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20 rounded-xl cursor-pointer transition-all active:scale-95"
           >
             <Plus size={14} />
             <span>Scanner un ticket</span>
@@ -640,7 +702,7 @@ export default function Receipts() {
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. SECTION TÉLÉVERSEMENT DU TICKET DE CAISSE (HERO UPLOAD STITCH)          */}
+      {/* 2. SECTION TÉLÉVERSEMENT DU TICKET DE CAISSE (HERO UPLOAD STITCH ÉLARGIE)  */}
       {/* ========================================================================= */}
       <div ref={uploadSectionRef} id="receipt-upload-section" className="relative">
         <div className="glass-surface rounded-3xl p-5 sm:p-7 relative overflow-hidden group border border-white/10 shadow-2xl">
@@ -675,76 +737,110 @@ export default function Receipts() {
             }}
           />
 
-          <div
-            className={cn(
-              "flex flex-col items-center justify-center p-6 sm:p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-300 text-center relative",
-              isDragging
-                ? "border-cyan-400 bg-cyan-500/10 scale-[0.99]"
-                : "border-white/15 hover:border-cyan-400/50 hover:bg-white/[0.03]"
-            )}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {/* Neomorphic AI Camera Icon */}
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-cyan-500/20 via-blue-500/20 to-purple-500/20 border border-cyan-400/30 text-cyan-400 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(56,189,248,0.25)] group-hover:scale-110 transition-transform duration-300">
-              <Camera size={30} className="stroke-[2.2]" />
+          {/* Bento Dropzone: 2-column on desktop (lg+), balanced & expansive */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            {/* Zone de Drag & Drop Principale (7 cols sur desktop) */}
+            <div
+              className={cn(
+                "lg:col-span-8 flex flex-col items-center justify-center p-6 sm:p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-300 text-center relative",
+                isDragging
+                  ? "border-cyan-400 bg-cyan-500/10 scale-[0.99]"
+                  : "border-white/15 hover:border-cyan-400/50 hover:bg-white/[0.03]"
+              )}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {/* Neomorphic AI Camera Icon */}
+              <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-cyan-500/20 via-blue-500/20 to-purple-500/20 border border-cyan-400/30 text-cyan-400 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(56,189,248,0.25)] group-hover:scale-110 transition-transform duration-300">
+                <Camera size={30} className="stroke-[2.2]" />
+              </div>
+
+              <h3 className="text-base sm:text-lg font-black text-white">
+                Déposez vos tickets de caisse ou photographiez
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-lg">
+                Pour les longs tickets, prenez plusieurs photos successives. Google Gemini Flash réassemble le tout instantanément sans doublon.
+              </p>
+
+              {/* Boutons d'action internes au Hero */}
+              <div className="mt-4 flex items-center gap-2 flex-wrap justify-center" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="h-8 text-xs font-bold gap-1.5 bg-white/10 hover:bg-white/15 border-white/20 text-white rounded-xl"
+                >
+                  <Camera size={13} className="text-cyan-400" />
+                  <span>Prendre une photo</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-8 text-xs font-bold gap-1.5 bg-white/10 hover:bg-white/15 border-white/20 text-white rounded-xl"
+                >
+                  <UploadCloud size={13} className="text-cyan-400" />
+                  <span>Parcourir les fichiers</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setIsManualModalOpen(true)}
+                  className="h-8 text-xs font-medium gap-1 text-slate-400 hover:text-white rounded-xl"
+                >
+                  <FileSpreadsheet size={13} />
+                  <span>Saisie manuelle</span>
+                </Button>
+              </div>
+
+              {/* Badges descriptifs rapides */}
+              <div className="mt-4 flex items-center gap-2 flex-wrap justify-center">
+                <span className="glass-pill text-[11px] text-slate-300">
+                  JPG, PNG, WEBP, PDF
+                </span>
+                <span className="glass-pill text-[11px] text-cyan-400 font-semibold flex items-center gap-1 border-cyan-500/30">
+                  <Zap size={11} className="fill-cyan-400" />
+                  Compression PNG auto
+                </span>
+                <span className="glass-pill text-[11px] text-purple-300 font-semibold border-purple-500/30">
+                  Multi-fragments supporté
+                </span>
+              </div>
             </div>
 
-            <h3 className="text-base sm:text-lg font-black text-white">
-              Déposez vos tickets de caisse ou photographiez
-            </h3>
-            <p className="text-xs text-slate-400 mt-1 max-w-md">
-              Pour les longs tickets, prenez plusieurs photos successives. Google Gemini Flash réassemble le tout instantanément sans doublon.
-            </p>
+            {/* Volet Technique d'Audit & Intelligence Visuelle (4 cols sur desktop) */}
+            <div className="lg:col-span-4 flex flex-col justify-between gap-3 p-4 sm:p-5 rounded-2xl bg-white/[0.02] border border-white/10">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-cyan-400" />
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-cyan-300">
+                    Moteur de Reconnaissance OCR
+                  </span>
+                </div>
+                <h4 className="text-xs sm:text-sm font-bold text-white">
+                  Précision Alimentaire Ultra-Rapide
+                </h4>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Chaque ligne est vérifiée : prix unitaire ramené au kilo ou au litre, détection de remise et affectation du rayon officiel.
+                </p>
+              </div>
 
-            {/* Boutons d'action internes au Hero */}
-            <div className="mt-4 flex items-center gap-2 flex-wrap justify-center" onClick={(e) => e.stopPropagation()}>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => cameraInputRef.current?.click()}
-                className="h-8 text-xs font-bold gap-1.5 bg-white/10 hover:bg-white/15 border-white/20 text-white rounded-xl"
-              >
-                <Camera size={13} className="text-cyan-400" />
-                <span>Prendre une photo</span>
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                className="h-8 text-xs font-bold gap-1.5 bg-white/10 hover:bg-white/15 border-white/20 text-white rounded-xl"
-              >
-                <UploadCloud size={13} className="text-cyan-400" />
-                <span>Parcourir les fichiers</span>
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setIsManualModalOpen(true)}
-                className="h-8 text-xs font-medium gap-1 text-slate-400 hover:text-white rounded-xl"
-              >
-                <FileSpreadsheet size={13} />
-                <span>Saisie manuelle</span>
-              </Button>
-            </div>
-
-            {/* Badges descriptifs */}
-            <div className="mt-4 flex items-center gap-2 flex-wrap justify-center">
-              <span className="glass-pill text-[11px] text-slate-300">
-                JPG, PNG, WEBP, PDF
-              </span>
-              <span className="glass-pill text-[11px] text-cyan-400 font-semibold flex items-center gap-1 border-cyan-500/30">
-                <Zap size={11} className="fill-cyan-400" />
-                Compression PNG auto
-              </span>
-              <span className="glass-pill text-[11px] text-purple-300 font-semibold border-purple-500/30">
-                Multi-fragments supporté
-              </span>
-              <span className="glass-pill text-[11px] text-emerald-400 font-semibold border-emerald-500/30">
-                Audit & validation stricts
-              </span>
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <div className="flex items-center gap-2.5 text-xs text-slate-300 bg-white/[0.03] p-2.5 rounded-xl border border-white/5">
+                  <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                  <span className="text-[11px] leading-tight">Calcul automatique du prix de référence (€/kg, €/L)</span>
+                </div>
+                <div className="flex items-center gap-2.5 text-xs text-slate-300 bg-white/[0.03] p-2.5 rounded-xl border border-white/5">
+                  <Zap size={15} className="text-amber-400 shrink-0" />
+                  <span className="text-[11px] leading-tight">Isolation des remises catalogue & promos immédiates</span>
+                </div>
+                <div className="flex items-center gap-2.5 text-xs text-slate-300 bg-white/[0.03] p-2.5 rounded-xl border border-white/5">
+                  <Store size={15} className="text-cyan-400 shrink-0" />
+                  <span className="text-[11px] leading-tight">Différenciation stricte des magasins physiques</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1189,153 +1285,210 @@ export default function Receipts() {
                         </td>
                       </tr>
                     ) : (
-                      filteredRows.map(row => (
-                        <tr key={row.cleBesoin || row.nomGenerique} className="hover:bg-white/[0.03] transition-colors group">
-                          <td className="py-2.5 px-3 sm:py-3 sm:px-4 sticky left-0 bg-[#0c1222]/95 backdrop-blur-md z-1 border-r border-white/10 max-w-[140px] sm:max-w-[220px] align-middle">
-                            <div className="flex flex-col gap-1 min-w-0">
-                              <div className="flex items-center gap-1.5 sm:gap-2">
-                                <span className="text-sm sm:text-base shrink-0">{getProductEmoji(row.nomGenerique, row.rayon)}</span>
-                                <span className="font-bold sm:font-extrabold text-white text-[11px] sm:text-xs tracking-tight leading-snug line-clamp-2">
-                                  {correctFrenchSpelling(row.nomGenerique)}
+                      groupedRowsByCategory.map(({ category, rows }) => (
+                        <React.Fragment key={category}>
+                          {/* LIGNE D'EN-TÊTE DE SÉPARATION VISUELLE PAR CATÉGORIE (GOOGLE STITCH) */}
+                          <tr className="bg-slate-900/90 border-y-2 border-white/10 text-white backdrop-blur-md sticky top-0 z-2 shadow-sm">
+                            <td
+                              colSpan={allStores.length + 3}
+                              className="py-2.5 px-3 sm:px-4 bg-gradient-to-r from-slate-900 via-slate-800/80 to-slate-900/40"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="text-base sm:text-lg">{getCategoryEmoji(category)}</span>
+                                  <span className="font-extrabold text-xs sm:text-sm tracking-wide text-white uppercase">
+                                    {category}
+                                  </span>
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono">
+                                    {rows.length} article{rows.length > 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                                <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                                  {rows.filter(r => r.isComparable).length} produit{rows.filter(r => r.isComparable).length > 1 ? 's' : ''} comparable{rows.filter(r => r.isComparable).length > 1 ? 's' : ''}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-1 pl-5 sm:pl-6">
-                                <span className="text-[9px] font-medium text-slate-400 bg-white/[0.05] border border-white/[0.08] px-1.5 py-0.2 rounded-md truncate max-w-[140px]" title={row.rayon}>
-                                  {row.rayon}
-                                </span>
-                              </div>
-                            </div>
-                          </td>
+                            </td>
+                          </tr>
 
-                          {allStores.map(st => {
-                            const offer = row.storeOffers[st.displayName];
-                            if (!offer) {
-                              return (
-                                <td key={st.displayName} className="py-3 px-3 text-center text-slate-600 font-mono text-xs align-middle">
-                                  —
-                                </td>
-                              );
-                            }
-
-                            const isCheapestInRow = row.isComparable && offer.prixUnitaire === row.lowestPrice;
-
-                            return (
-                              <td 
-                                key={st.displayName}
-                                className={cn(
-                                  "py-3 px-3 text-center transition-colors align-middle",
-                                  isCheapestInRow && "bg-emerald-500/10"
-                                )}
-                              >
-                                <div
-                                  className="flex flex-col items-center justify-center cursor-pointer py-1.5 px-2 rounded-xl transition-all hover:bg-white/5 select-none group/cell"
-                                  onMouseEnter={(e) => {
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    setFloatingTooltip({
-                                      offer,
-                                      storeName: st.displayName,
-                                      isCheapest: isCheapestInRow,
-                                      x: rect.left + rect.width / 2,
-                                      y: rect.top
-                                    });
-                                  }}
-                                  onMouseLeave={() => setFloatingTooltip(null)}
-                                  onClick={(e) => {
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    setFloatingTooltip(prev => prev ? null : {
-                                      offer,
-                                      storeName: st.displayName,
-                                      isCheapest: isCheapestInRow,
-                                      x: rect.left + rect.width / 2,
-                                      y: rect.top
-                                    });
-                                  }}
-                                  role="button"
-                                  tabIndex={0}
-                                >
-                                  {offer.isPromo && offer.initialUnitPrice && offer.initialUnitPrice > offer.prixUnitaire && (
-                                    <span className="text-[10px] font-mono text-slate-400 line-through block leading-none mb-0.5">
-                                      {formatCurrency(offer.initialUnitPrice, { showSign: false })}
+                          {/* LIGNES D'ARTICLES DE CETTE CATÉGORIE */}
+                          {rows.map(row => (
+                            <tr key={row.cleBesoin || row.nomGenerique} className="hover:bg-white/[0.03] transition-colors group">
+                              {/* 1. COLONNE PRODUIT AVEC DOUBLE AFFICHAGE (standardized_name en évidence + nom brut du ticket dessous) */}
+                              <td className="py-2.5 px-3 sm:py-3 sm:px-4 sticky left-0 bg-[#0c1222]/95 backdrop-blur-md z-1 border-r border-white/10 max-w-[140px] sm:max-w-[240px] align-middle">
+                                <div className="flex flex-col gap-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 sm:gap-2">
+                                    <span className="text-sm sm:text-base shrink-0">{getProductEmoji(row.standardized_name || row.nomGenerique, row.rayon)}</span>
+                                    <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight leading-snug line-clamp-2">
+                                      {correctFrenchSpelling(row.standardized_name || row.nomGenerique)}
                                     </span>
+                                  </div>
+
+                                  {/* Double affichage : nom original issu des tickets de caisse */}
+                                  {row.sampleRawNames && row.sampleRawNames.length > 0 ? (
+                                    <div className="text-[11px] text-slate-400 font-mono truncate pl-5 sm:pl-6" title={row.sampleRawNames.join(' · ')}>
+                                      <span className="text-slate-500 font-semibold mr-1">Ticket :</span>
+                                      <span>{row.sampleRawNames.slice(0, 2).join(' · ')}{row.sampleRawNames.length > 2 ? ` (+${row.sampleRawNames.length - 2})` : ''}</span>
+                                    </div>
+                                  ) : (
+                                    row.sampleRawRow?.rawName && row.sampleRawRow.rawName !== row.nomGenerique && (
+                                      <div className="text-[11px] text-slate-400 font-mono truncate pl-5 sm:pl-6">
+                                        <span className="text-slate-500 font-semibold mr-1">Ticket :</span>
+                                        <span>{row.sampleRawRow.rawName}</span>
+                                      </div>
+                                    )
                                   )}
 
-                                  <div className={cn(
-                                    "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight transition-transform duration-150 group-hover/cell:scale-105",
-                                    isCheapestInRow ? "text-emerald-300 font-extrabold" : "text-white"
-                                  )}>
-                                    <span>{formatCurrency(offer.prixUnitaire, { showSign: false })}</span>
-                                    <span className="text-[11px] font-bold text-slate-400">
-                                      /{offer.unite}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex flex-wrap items-center justify-center gap-1 mt-0.5">
-                                    {offer.isPromo && (
-                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                        <Zap size={8} className="fill-amber-400" />
-                                        -{offer.discountRate || Math.round(((offer.discountAmount || 0) / (offer.initialPrice || 1)) * 100)}%
+                                  {row.sampleBrands.length > 0 && row.sampleBrands[0] !== 'Générique' && (
+                                    <div className="flex items-center gap-1 pl-5 sm:pl-6">
+                                      <span className="text-[9px] font-medium text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.2 rounded-md truncate max-w-[140px]" title={row.sampleBrands.join(', ')}>
+                                        {row.sampleBrands.join(', ')}
                                       </span>
-                                    )}
-
-                                    {isCheapestInRow && (
-                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                        <Check size={9} className="stroke-[3]" />
-                                        Moins cher
-                                      </span>
-                                    )}
-                                  </div>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
-                            );
-                          })}
 
-                          <td className="py-3 px-3 text-right align-middle">
-                            {row.isComparable ? (
-                              <div className="flex flex-col items-end">
-                                <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
-                                  {row.storeCount} magasins
-                                </span>
-                                {row.priceDiff > 0 && (
-                                  <span className="text-[10px] font-bold text-emerald-300 font-mono mt-1">
-                                    -{row.priceDiffPercent}% (+{formatCurrency(row.priceDiff, { showSign: false })})
-                                  </span>
+                              {/* 2. COLONNES MAGASINS : MISE EN ÉVIDENCE DE LA CELLULE LA MOINS CHÈRE */}
+                              {allStores.map(st => {
+                                const offer = row.storeOffers[st.displayName];
+                                if (!offer) {
+                                  return (
+                                    <td key={st.displayName} className="py-3 px-3 text-center text-slate-600 font-mono text-xs align-middle">
+                                      —
+                                    </td>
+                                  );
+                                }
+
+                                const isCheapestInRow = (row.isComparable || row.storeCount > 1) && offer.prixUnitaire === row.lowestPrice;
+
+                                return (
+                                  <td 
+                                    key={st.displayName}
+                                    className={cn(
+                                      "py-3 px-3 text-center transition-all align-middle",
+                                      isCheapestInRow && "bg-emerald-500/15 border-x border-emerald-500/30 shadow-[inset_0_0_12px_rgba(16,185,129,0.12)]"
+                                    )}
+                                  >
+                                    <div
+                                      className="flex flex-col items-center justify-center cursor-pointer py-1.5 px-2 rounded-xl transition-all hover:bg-white/5 select-none group/cell"
+                                      onMouseEnter={(e) => {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setFloatingTooltip({
+                                          offer,
+                                          storeName: st.displayName,
+                                          isCheapest: isCheapestInRow,
+                                          x: rect.left + rect.width / 2,
+                                          y: rect.top
+                                        });
+                                      }}
+                                      onMouseLeave={() => setFloatingTooltip(null)}
+                                      onClick={(e) => {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setFloatingTooltip(prev => prev ? null : {
+                                          offer,
+                                          storeName: st.displayName,
+                                          isCheapest: isCheapestInRow,
+                                          x: rect.left + rect.width / 2,
+                                          y: rect.top
+                                        });
+                                      }}
+                                      role="button"
+                                      tabIndex={0}
+                                    >
+                                      {offer.isPromo && offer.initialUnitPrice && offer.initialUnitPrice > offer.prixUnitaire && (
+                                        <span className="text-[10px] font-mono text-slate-400 line-through block leading-none mb-0.5">
+                                          {formatCurrency(offer.initialUnitPrice, { showSign: false })}
+                                        </span>
+                                      )}
+
+                                      {/* Prix au kilo/litre en vert fluo si le moins cher */}
+                                      <div className={cn(
+                                        "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight transition-transform duration-150 group-hover/cell:scale-105",
+                                        isCheapestInRow 
+                                          ? "text-[#22c55e] font-black drop-shadow-[0_0_8px_rgba(34,197,94,0.4)]" 
+                                          : "text-white"
+                                      )}>
+                                        <span>{formatCurrency(offer.prixUnitaire, { showSign: false })}</span>
+                                        <span className={cn(
+                                          "text-[11px] font-bold",
+                                          isCheapestInRow ? "text-emerald-400/90" : "text-slate-400"
+                                        )}>
+                                          /{offer.unite}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex flex-wrap items-center justify-center gap-1 mt-0.5">
+                                        {offer.isPromo && (
+                                          <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                            <Zap size={8} className="fill-amber-400" />
+                                            -{offer.discountRate || Math.round(((offer.discountAmount || 0) / (offer.initialPrice || 1)) * 100)}%
+                                          </span>
+                                        )}
+
+                                        {/* Badge et trophée pour le produit le moins cher */}
+                                        {isCheapestInRow && (
+                                          <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-400/40 shadow-xs">
+                                            <Trophy size={10} className="text-amber-300 fill-amber-300 shrink-0" />
+                                            <span>Moins cher</span>
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+
+                              {/* 3. Statut & Écart Audit */}
+                              <td className="py-3 px-3 text-right align-middle">
+                                {row.isComparable ? (
+                                  <div className="flex flex-col items-end">
+                                    <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
+                                      {row.storeCount} magasins
+                                    </span>
+                                    {row.priceDiff > 0 && (
+                                      <span className="text-[10px] font-bold text-emerald-300 font-mono mt-1">
+                                        -{row.priceDiffPercent}% (+{formatCurrency(row.priceDiff, { showSign: false })})
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col items-end">
+                                    <span className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10">
+                                      1 magasin
+                                    </span>
+                                    <span className="text-[9px] text-slate-400 mt-0.5">
+                                      Unique
+                                    </span>
+                                  </div>
                                 )}
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-end">
-                                <span className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10">
-                                  1 magasin
-                                </span>
-                                <span className="text-[9px] text-slate-400 mt-0.5">
-                                  Unique
-                                </span>
-                              </div>
-                            )}
-                          </td>
+                              </td>
 
-                          <td className="py-3 px-2 text-center align-middle">
-                            <div className="flex items-center justify-center gap-1">
-                              {row.sampleRawRow && (
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedProductForEvolution(row.sampleRawRow || null)}
-                                  className="p-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/15 transition-colors"
-                                  title="Voir la courbe d'évolution du prix"
-                                >
-                                  <TrendingUp size={13} />
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => setProductToDelete(row.nomGenerique)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
-                                title="Masquer ce produit du tableau comparatif"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                              {/* 4. Action */}
+                              <td className="py-3 px-2 text-center align-middle">
+                                <div className="flex items-center justify-center gap-1">
+                                  {row.sampleRawRow && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedProductForEvolution(row.sampleRawRow || null)}
+                                      className="p-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/15 transition-colors"
+                                      title="Voir la courbe d'évolution du prix"
+                                    >
+                                      <TrendingUp size={13} />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductToDelete(row.nomGenerique)}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
+                                    title="Masquer ce produit du tableau comparatif"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
                       ))
                     )}
                   </tbody>

@@ -48,6 +48,7 @@ export interface ReceiptItem {
   id: string;
   rawName: string; // Nom brut sur le ticket (ex: "COLA ZERO FREW 1.5L")
   normalizedName: string; // Nom générique du produit nettoyé de la marque (ex: "Cola gazeux sans sucres")
+  standardized_name?: string; // Nom générique standardisé IA (ex: "Cola sans sucres (1.5L)")
   brand: string; // Marque constatée (ex: "Freeway", "Coca-Cola", "Marque Repère", "Générique")
   pricePaid: number; // Prix total TTC de la ligne payé en caisse (ex: 3.70 pour 2 x 1.85)
   quantity: number; // Quantité achetée (ex: 2)
@@ -147,9 +148,11 @@ export interface PriceEvolutionInfo {
  */
 export interface ProductComparisonRow {
   normalizedName: string;
+  standardized_name?: string;
   category: SupermarketAisle;
   categoryKey: SupermarketAisleKey;
   sampleRawNames: string[];
+  originalNames?: string[];
   sampleBrands: string[];
   storePrices: Record<string, StorePriceDetail>; // Enseigne -> Détails du dernier prix constaté
   priceHistory: StorePriceDetail[]; // Tous les relevés historiques chronologiques pour ce produit
@@ -267,6 +270,8 @@ export interface StandardizedProductDoc {
   superKey: string;
   marque: string;
   nom_generique: string;
+  standardized_name?: string;
+  category?: string;
   poids_ou_volume: string;
   unite_mesure: 'kg' | 'L' | 'piece';
   rayon_assigne: SupermarketAisle;

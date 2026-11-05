@@ -163,7 +163,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="p-3 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500 pb-36 sm:pb-32 md:pb-12 text-slate-100 select-none">
+    <div className="w-full py-4 sm:py-6 space-y-6 sm:space-y-8 animate-in fade-in duration-500 pb-36 sm:pb-32 md:pb-12 text-slate-100 select-none">
       
       {/* =========================================================================
           TOP COMMAND CENTER BAR: MonthSelector, Live Sync & VisionOS Branding
@@ -282,131 +282,168 @@ export default function Dashboard() {
       )}
 
       {/* =========================================================================
-          HERO BENTO GRID: 3 Main Financial Health Cards (Apple Stitch Design DNA)
+          HERO BENTO GRID: 4 Top Financial Health KPI Cards (Apple Stitch Design DNA)
          ========================================================================= */}
-      <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         
         {/* CARD 1: HERO "Reste à vivre" */}
-        <div className="md:col-span-1 rounded-3xl bg-gradient-to-b from-white/[0.09] to-white/[0.03] backdrop-blur-2xl border border-white/20 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.3)] relative overflow-hidden group flex flex-col justify-between">
-          <div className="absolute top-0 right-0 w-52 h-52 bg-gradient-to-bl from-cyan-500/25 to-transparent rounded-full blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+        <div className="rounded-3xl bg-gradient-to-b from-white/[0.09] to-white/[0.03] backdrop-blur-2xl border border-white/20 p-5 sm:p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.3)] relative overflow-hidden group flex flex-col justify-between">
+          <div className="absolute top-0 right-0 w-44 h-44 bg-gradient-to-bl from-cyan-500/25 to-transparent rounded-full blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
           
           <div>
             <div className="flex items-center justify-between pb-3">
               <div>
-                <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider block">
-                  Capacité nette disponible
+                <span className="text-[10px] sm:text-[11px] font-bold text-cyan-300 uppercase tracking-wider block">
+                  Capacité disponible
                 </span>
-                <h3 className="text-lg font-extrabold text-white mt-0.5">Reste à vivre</h3>
+                <h3 className="text-base sm:text-lg font-extrabold text-white mt-0.5">Reste à vivre</h3>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-white/[0.1] border border-white/20 text-cyan-400 flex items-center justify-center shadow-lg group-hover:rotate-6 transition-transform">
-                <Wallet size={24} className="stroke-[2.2]" />
+              <div className="w-11 h-11 rounded-2xl bg-white/[0.1] border border-white/20 text-cyan-400 flex items-center justify-center shadow-lg group-hover:rotate-6 transition-transform">
+                <Wallet size={22} className="stroke-[2.2]" />
               </div>
             </div>
 
-            <div className="space-y-3 mt-2">
+            <div className="space-y-2 mt-2">
               {loading ? (
-                <Skeleton className="h-12 w-48 mb-2" />
+                <Skeleton className="h-10 w-40 mb-2" />
               ) : (
-                <div className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white drop-shadow-[0_4px_16px_rgba(56,189,248,0.25)]">
+                <div className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white drop-shadow-[0_4px_16px_rgba(56,189,248,0.25)]">
                   {formatCurrency(displayReste, { showSign: false })}
                 </div>
               )}
-              <p className="text-xs text-slate-300 flex items-center gap-1.5">
-                <ShieldCheck size={14} className="text-emerald-400" />
-                Revenus encaissés nets de charges réelles
+              <p className="text-[11px] text-slate-300 flex items-center gap-1.5">
+                <ShieldCheck size={13} className="text-emerald-400 shrink-0" />
+                <span>Revenus nets de charges réelles</span>
               </p>
             </div>
           </div>
 
           <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-between">
             <div>
-              <span className="text-[11px] text-slate-400 block font-medium">Budget par jour</span>
-              <span className="text-sm sm:text-base font-extrabold text-white">
+              <span className="text-[10px] text-slate-400 block font-medium">Budget par jour</span>
+              <span className="text-xs sm:text-sm font-extrabold text-white">
                 {loading ? '...' : `${formatCurrency(displayBudgetJour, { showSign: false })} / jour`}
               </span>
             </div>
             <span className={cn(
-              "text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 border shadow-sm",
+              "text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border shadow-sm",
               isHealthy 
                 ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.3)]" 
                 : "bg-rose-500/20 text-rose-300 border-rose-500/30 shadow-[0_0_12px_rgba(244,63,94,0.3)]"
             )}>
-              {isHealthy ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}
-              {isHealthy ? 'Solde Positif' : 'Déficit'}
+              {isHealthy ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+              {isHealthy ? 'Positif' : 'Déficit'}
             </span>
           </div>
         </div>
 
         {/* CARD 2: REVENUS DU MOIS */}
-        <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 p-6 shadow-[0_16px_36px_rgba(0,0,0,0.35)] hover:border-emerald-500/30 transition-all duration-300 group flex flex-col justify-between">
+        <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 p-5 sm:p-6 shadow-[0_16px_36px_rgba(0,0,0,0.35)] hover:border-emerald-500/30 transition-all duration-300 group flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-3">
               <div>
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                   Entrées financières
                 </span>
-                <h3 className="text-base font-extrabold text-white mt-0.5">Revenus encaissés</h3>
+                <h3 className="text-base sm:text-lg font-extrabold text-white mt-0.5">Revenus encaissés</h3>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                <TrendingUp size={24} className="stroke-[2.2]" />
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+                <TrendingUp size={22} className="stroke-[2.2]" />
               </div>
             </div>
 
-            <div className="space-y-3 mt-2">
+            <div className="space-y-2 mt-2">
               {loading ? (
-                <Skeleton className="h-10 w-40 mb-2" />
+                <Skeleton className="h-10 w-36 mb-2" />
               ) : (
-                <div className="text-3xl font-black tracking-tight text-emerald-400 drop-shadow-[0_2px_12px_rgba(16,185,129,0.25)]">
+                <div className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-emerald-400 drop-shadow-[0_2px_12px_rgba(16,185,129,0.25)]">
                   +{formatCurrency(displayRevenus, { showSign: false })}
                 </div>
               )}
-              <p className="text-xs text-slate-400">
+              <p className="text-[11px] text-slate-400">
                 Salaires, rentes & encaissements réels
               </p>
             </div>
           </div>
 
           <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-between text-xs">
-            <span className="text-slate-400">Part restante préservée</span>
-            <span className="font-bold text-emerald-400 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <span className="text-slate-400 text-[11px]">Part préservée</span>
+            <span className="font-bold text-emerald-400 px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px]">
               {savingsRate.toFixed(1)} %
             </span>
           </div>
         </div>
 
         {/* CARD 3: DÉPENSES RÉELLES */}
-        <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 p-6 shadow-[0_16px_36px_rgba(0,0,0,0.35)] hover:border-rose-500/30 transition-all duration-300 group flex flex-col justify-between">
+        <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 p-5 sm:p-6 shadow-[0_16px_36px_rgba(0,0,0,0.35)] hover:border-rose-500/30 transition-all duration-300 group flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-3">
               <div>
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Sorties d'argent nettes
+                <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Sorties d'argent
                 </span>
-                <h3 className="text-base font-extrabold text-white mt-0.5">Dépenses réelles</h3>
+                <h3 className="text-base sm:text-lg font-extrabold text-white mt-0.5">Dépenses réelles</h3>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/25 text-rose-400 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                <TrendingDown size={24} className="stroke-[2.2]" />
+              <div className="w-11 h-11 rounded-2xl bg-rose-500/15 border border-rose-500/25 text-rose-400 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+                <TrendingDown size={22} className="stroke-[2.2]" />
               </div>
             </div>
 
-            <div className="space-y-3 mt-2">
+            <div className="space-y-2 mt-2">
               {loading ? (
-                <Skeleton className="h-10 w-40 mb-2" />
+                <Skeleton className="h-10 w-36 mb-2" />
               ) : (
-                <div className="text-3xl font-black tracking-tight text-white drop-shadow-[0_2px_12px_rgba(244,63,94,0.2)]">
+                <div className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white drop-shadow-[0_2px_12px_rgba(244,63,94,0.2)]">
                   -{formatCurrency(displayDepenses, { showSign: false })}
                 </div>
               )}
-              <p className="text-xs text-slate-400">
+              <p className="text-[11px] text-slate-400">
                 Charges fixes, consommation & imprévus
               </p>
             </div>
           </div>
 
           <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-between text-xs">
-            <span className="text-slate-400">Abonnements récurrents</span>
-            <span className="font-bold text-indigo-300 px-2.5 py-1 rounded-xl bg-indigo-500/15 border border-indigo-500/25">
+            <span className="text-slate-400 text-[11px]">Abonnements</span>
+            <span className="font-bold text-indigo-300 px-2 py-0.5 rounded-lg bg-indigo-500/15 border border-indigo-500/25 text-[11px]">
               {displayAbonnements}
+            </span>
+          </div>
+        </div>
+
+        {/* CARD 4: CHARGES INCOMPRESSIBLES & ABONNEMENTS */}
+        <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 p-5 sm:p-6 shadow-[0_16px_36px_rgba(0,0,0,0.35)] hover:border-cyan-500/30 transition-all duration-300 group flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3">
+              <div>
+                <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Structure fixe
+                </span>
+                <h3 className="text-base sm:text-lg font-extrabold text-white mt-0.5">Charges Fixes</h3>
+              </div>
+              <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 border border-cyan-500/25 text-cyan-400 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+                <Layers size={22} className="stroke-[2.2]" />
+              </div>
+            </div>
+
+            <div className="space-y-2 mt-2">
+              {loading ? (
+                <Skeleton className="h-10 w-36 mb-2" />
+              ) : (
+                <div className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-cyan-300 drop-shadow-[0_2px_12px_rgba(56,189,248,0.25)]">
+                  {formatCurrency(isDemo ? 650 : kpis.fixe, { showSign: false })}
+                </div>
+              )}
+              <p className="text-[11px] text-slate-400">
+                Loyer, énergie, télécom & abonnements
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-between text-xs">
+            <span className="text-slate-400 text-[11px]">Dép. Variables</span>
+            <span className="font-bold text-slate-200 px-2 py-0.5 rounded-lg bg-white/[0.06] border border-white/10 text-[11px]">
+              {formatCurrency(isDemo ? 420 : kpis.variable, { showSign: false })}
             </span>
           </div>
         </div>

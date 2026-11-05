@@ -345,6 +345,7 @@ export const ReceiptValidationModal: React.FC<ReceiptValidationModalProps> = ({
         id: it.id || `item-${Date.now()}-${idx}`,
         rawName: it.rawName.trim() || it.normalizedName.trim() || `Article ${idx + 1}`,
         normalizedName: it.normalizedName.trim() || it.rawName.trim() || `Article ${idx + 1}`,
+        standardized_name: it.standardized_name?.trim() || it.normalizedName.trim() || it.rawName.trim(),
         brand: it.brand?.trim() || 'Générique',
         pricePaid,
         price: pricePaid,

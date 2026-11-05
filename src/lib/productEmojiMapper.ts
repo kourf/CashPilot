@@ -118,3 +118,25 @@ export function getProductEmoji(productName?: string, aisle?: string): string {
 
   return '🛒';
 }
+
+/**
+ * Retourne un emoji expressif pour l'en-tête de catégorie / rayon de supermarché.
+ */
+export function getCategoryEmoji(category?: string): string {
+  if (!category) return '🛒';
+  const c = category.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (c.includes('boucherie') || c.includes('viande') || c.includes('poisson') || c.includes('volaille')) return '🥩';
+  if (c.includes('fruit') || c.includes('legume') || c.includes('primeur')) return '🥗';
+  if (c.includes('frais') || c.includes('cremerie') || c.includes('lait') || c.includes('fromage')) return '🥛';
+  if (c.includes('salee') || c.includes('epice')) return '🧂';
+  if (c.includes('sucree') || c.includes('chocolat') || c.includes('biscuit') || c.includes('dessert')) return '🍪';
+  if (c.includes('boisson') || c.includes('soda') || c.includes('eau') || c.includes('jus')) return '🥤';
+  if (c.includes('hygiene') || c.includes('beaute') || c.includes('sanitaire')) return '🧴';
+  if (c.includes('entretien') || c.includes('maison') || c.includes('menage')) return '🧼';
+  if (c.includes('sante') || c.includes('pharmacie')) return '💊';
+  if (c.includes('textile') || c.includes('culture') || c.includes('bazar')) return '📚';
+  if (c.includes('fleur') || c.includes('cadeau')) return '💐';
+  if (c.includes('papeterie') || c.includes('bureau')) return '📄';
+  if (c.includes('sac') || c.includes('consigne')) return '🛍️';
+  return '📦';
+}

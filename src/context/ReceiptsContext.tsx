@@ -172,7 +172,8 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
           rawItems.forEach((it: Record<string, unknown>, idx: number) => {
             const rawName = String(it.rawName || it.name || 'Article').trim();
-            const normalizedName = String(it.normalizedName || it.standardName || it.cleanName || rawName).trim();
+            const standardized_name = String(it.standardized_name || it.nom_generique_nettoye || it.nomGenerique || it.normalizedName || it.standardName || it.cleanName || rawName).trim();
+            const normalizedName = String(it.normalizedName || it.standardized_name || it.standardName || it.cleanName || rawName).trim();
             const brand = String(it.brand || '').trim();
             const pricePaid = Number(it.pricePaid ?? it.price ?? it.paidPrice) || 0;
             const quantity = Math.max(1, Number(it.quantity) || 1);
@@ -182,7 +183,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const comp = computeUnitPrice(pricePaid, weightOrVolume, quantity, weightOrVolumeValue, weightOrVolumeUnit);
             const unit = String(it.unit || '').trim() || comp.unit;
             const unitPrice = Number(it.referenceUnitPrice || it.unitPrice) > 0 ? Number(it.referenceUnitPrice || it.unitPrice) : comp.unitPrice;
-            const aisle = normalizeAisle(String(it.categoryKey || it.category || classifyItemAisle(normalizedName, rawName)));
+            const aisle = normalizeAisle(String(it.category || it.categoryKey || it.rayon_assigne || classifyItemAisle(standardized_name || normalizedName, rawName)));
 
             // Clé de fusion stricte au sein du ticket : même libellé normalisé + même unité
             const itemKey = `${normalizedName.toLowerCase()}__${unit.toLowerCase()}`;
@@ -200,6 +201,7 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 id: String(it.id || `item-${d.id}-${idx}`),
                 rawName,
                 normalizedName,
+                standardized_name,
                 brand: brand || 'Générique',
                 pricePaid: Number(pricePaid.toFixed(2)),
                 price: Number(pricePaid.toFixed(2)),
@@ -387,6 +389,8 @@ export const ReceiptsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           cle_besoin: canonical.id,
           marque: it.brand || 'Générique',
           nom_generique: canonical.nom_affichage,
+          standardized_name: it.standardized_name || canonical.nom_affichage,
+          category: aisle.label,
           poids_ou_volume: it.weightOrVolume || '1 piece',
           unite_mesure: (it.unit || comp.unit || 'piece') as any,
           rayon: aisle.label,

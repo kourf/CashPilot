@@ -227,38 +227,22 @@ export default function Coach() {
     return filterConversations(validConversations, historySearchQuery);
   }, [validConversations, historySearchQuery]);
 
-  // 4 Suggestions officielles Google Stitch visionOS
+  // Suggestions épurées style Antigravity Console
   const stitchSuggestions = [
     {
-      icon: Receipt,
-      iconColor: 'text-sky-400',
-      bgGlow: 'bg-sky-500/10 border-sky-400/20 group-hover:bg-sky-500/20',
-      title: 'Audit courses & alimentation',
-      subtitle: '« À combien j\'achète mes fruits et quel est le magasin le moins cher ? »',
-      prompt: "À combien j'achète mes fruits ? Donne-moi la synthèse directe et le tableau comparatif complet."
+      label: "Audit courses & paniers",
+      prompt: "À combien j'achète mes courses ? Donne-moi la synthèse directe et le tableau comparatif par enseigne."
     },
     {
-      icon: PieChart,
-      iconColor: 'text-emerald-400',
-      bgGlow: 'bg-emerald-500/10 border-emerald-400/20 group-hover:bg-emerald-500/20',
-      title: 'Analyse règle 50/30/20',
-      subtitle: '« Évalue la répartition de mes besoins, envies et épargne sur mes revenus réels. »',
+      label: "Règle 50/30/20 & Reste à vivre",
       prompt: "Donne-moi des conseils sur la répartition de mes dépenses selon la règle 50/30/20 en te basant sur mes chiffres réels."
     },
     {
-      icon: Repeat,
-      iconColor: 'text-violet-400',
-      bgGlow: 'bg-violet-500/10 border-violet-400/20 group-hover:bg-violet-500/20',
-      title: 'Détection abonnements cachés',
-      subtitle: '« Quels sont mes prélèvements récurrents et ceux potentiellement oubliés ? »',
+      label: "Détection des abonnements",
       prompt: "Quels sont mes abonnements et prélèvements récurrents ? Détecte les anomalies ou doublons potentiels."
     },
     {
-      icon: TrendingUp,
-      iconColor: 'text-amber-400',
-      bgGlow: 'bg-amber-500/10 border-amber-400/20 group-hover:bg-amber-500/20',
-      title: 'Prévision de fin de mois',
-      subtitle: '« Selon mon rythme de dépenses, quel sera mon solde estimé le 30 ? »',
+      label: "Capacité d'épargne du mois",
       prompt: "Selon mon rythme actuel de dépenses, quelle est ma projection budgétaire et mon solde estimé de fin de mois ?"
     }
   ];

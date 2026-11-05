@@ -797,6 +797,10 @@ export const BankStatements: React.FC = () => {
     return calculateSubscriptionSummary(scopedTxs);
   }, [monthScopedTransactions, selectedAccount]);
 
+  const totalExpenses = (metrics.fixed || 0) + (metrics.variable || 0);
+  const fixedPct = totalExpenses > 0 ? Math.round(((metrics.fixed || 0) / totalExpenses) * 100) : 50;
+  const variablePct = 100 - fixedPct;
+
 
   // Filtered & Searched Transaction List for the table
   const filteredTransactions = useMemo(() => {
@@ -1612,6 +1616,28 @@ export const BankStatements: React.FC = () => {
     }
   };
 
+  // Drag & Drop event handlers for Bank Statement upload
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  };
+
   // 8. File Upload & Extraction avec refonte stricte CSV (3 colonnes) & Audit IA Gemini 3.8 Flash
   const handleFileUpload = async (file: File) => {
     if (!file) return;
@@ -2241,7 +2267,7 @@ export const BankStatements: React.FC = () => {
       <div className="glow-sphere-3 pointer-events-none" />
 
       {/* 1. BARRE D'OUTILS APPLE AÉRÉE (ERGONOMIQUE & FLUIDE) */}
-      <header className="relative md:sticky md:top-2 z-30 px-2 sm:px-4 max-w-[1520px] mx-auto w-full my-2 sm:my-3">
+      <header className="relative md:sticky md:top-2 z-30 w-full my-2 sm:my-3">
         <nav className="liquid-glass rounded-3xl p-2.5 sm:px-6 sm:py-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 sm:gap-4 shadow-xl">
           {/* Gauche : Contexte, Statut & Identité (Caché sur mobile pour maximiser l'espace utile) */}
           <div className="hidden md:flex items-center space-x-3 sm:space-x-4">
@@ -2380,7 +2406,7 @@ export const BankStatements: React.FC = () => {
         onChange={(e) => { if (e.target.files && e.target.files.length > 0) handleFileUpload(e.target.files[0]) }} 
       />
 
-      <div className="flex-1 overflow-y-auto px-2 sm:px-4 max-w-[1520px] mx-auto w-full space-y-6 pb-36 sm:pb-32 md:pb-24 touch-scroll">
+      <div className="w-full space-y-6 pb-36 sm:pb-32 md:pb-24">
         {activeViewMode === 'timeline' ? (
           <FriseChronologiqueView compteId="compte_principal" currency={currency} />
         ) : activeViewMode === 'reconciliation' ? (
@@ -2394,6 +2420,191 @@ export const BankStatements: React.FC = () => {
           />
         ) : (
           <>
+        {/* ========================================================================= */}
+        {/* 2-COLUMN HERO WORKBENCH: FILE DROPZONE & PARSED BREAKDOWN/INSIGHTS        */}
+        {/* ========================================================================= */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-stretch">
+          
+          {/* COLONNE GAUCHE (5 cols lg) : ZONE DE DÉPÔT / DROPZONE RELEVÉS BANCAIRES */}
+          <div
+            className={cn(
+              "lg:col-span-5 rounded-3xl p-5 sm:p-7 relative overflow-hidden group border transition-all duration-300 flex flex-col justify-between backdrop-blur-2xl cursor-pointer shadow-xl",
+              isDragging
+                ? "border-cyan-400 bg-cyan-500/15 scale-[0.99] shadow-[0_0_30px_rgba(56,189,248,0.3)]"
+                : "border-white/10 bg-white/[0.035] hover:border-cyan-400/40 hover:bg-white/[0.06]"
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-cyan-500/15 via-blue-500/10 to-transparent rounded-full blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+            
+            <div>
+              <div className="flex items-center justify-between pb-3">
+                <span className="text-[10px] sm:text-[11px] font-extrabold tracking-widest text-cyan-300 uppercase">
+                  Import Relevé Bancaire (RB)
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-400/30">
+                  Instant 0ms
+                </span>
+              </div>
+
+              <div className="flex flex-col items-center text-center py-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600/20 via-indigo-500/20 to-cyan-400/20 border border-cyan-400/30 text-cyan-300 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(56,189,248,0.25)] group-hover:scale-110 transition-transform duration-300">
+                  <UploadCloud size={28} className="stroke-[2.2]" />
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-white">
+                  Déposez votre relevé bancaire ici
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                  Glissez-déposez votre fichier ou cliquez pour parcourir. Détection automatique de la banque et nettoyage des libellés par IA.
+                </p>
+
+                <div className="mt-4 flex items-center gap-2 flex-wrap justify-center" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white text-xs font-bold shadow-lg shadow-cyan-500/20 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <UploadCloud size={14} />
+                    <span>Parcourir les fichiers</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Badges Banques & Formats Reconnus */}
+            <div className="pt-4 border-t border-white/10 space-y-2">
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span className="font-semibold text-slate-300">Formats supportés :</span>
+                <span className="font-mono text-cyan-300 font-bold">CSV, PDF, TXT, TSV</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {['BoursoBank', 'BNP Paribas', 'Société Générale', 'Crédit Agricole', 'Revolut', 'UBS / Suisse'].map((b) => (
+                  <span key={b} className="text-[10px] px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/10 text-slate-300 font-medium">
+                    {b}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* COLONNE DROITE (7 cols lg) : SYNTHÈSE & ANALYSES (Charges Fixes vs Variables, Abonnements) */}
+          <div className="lg:col-span-7 rounded-3xl p-5 sm:p-7 relative overflow-hidden border border-white/10 bg-white/[0.035] backdrop-blur-2xl shadow-xl flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-300">
+                    <Activity size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">
+                      Ventilation des Flux & Abonnements
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Structure de vos sorties réelles ({formatMonthLabel(selectedMonth)})
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsToolsSheetOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] border border-white/15 text-xs text-slate-200 font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Sliders size={13} className="text-amber-400" />
+                  <span>Modules d'analyse</span>
+                </button>
+              </div>
+
+              {/* SECTION 1: CHARGES FIXES VS DÉPENSES VARIABLES */}
+              <div className="py-4 space-y-2.5">
+                <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+                    <span className="font-semibold text-slate-200">Charges Fixes (Incompressibles)</span>
+                    <span className="font-mono text-cyan-300 font-bold">
+                      {formatBankAmount(metrics.fixed, currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
+                    <span className="font-semibold text-slate-200">Dépenses Variables</span>
+                    <span className="font-mono text-indigo-300 font-bold">
+                      {formatBankAmount(metrics.variable, currency)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Barre de répartition proportionnelle Apple VisionOS */}
+                <div className="w-full h-3 rounded-full bg-white/[0.06] overflow-hidden flex p-0.5 gap-1 border border-white/10">
+                  <div 
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500" 
+                    style={{ width: `${totalExpenses > 0 ? Math.max(5, Math.min(95, fixedPct)) : 50}%` }}
+                    title={`Charges fixes : ${fixedPct}%`}
+                  />
+                  <div 
+                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500" 
+                    style={{ width: `${totalExpenses > 0 ? Math.max(5, Math.min(95, variablePct)) : 50}%` }}
+                    title={`Dépenses variables : ${variablePct}%`}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
+                  <span>Part Fixe : <strong className="text-cyan-300">{fixedPct}%</strong></span>
+                  <span>Part Variable : <strong className="text-indigo-300">{variablePct}%</strong></span>
+                </div>
+              </div>
+
+              {/* SECTION 2: REVUE DES ABONNEMENTS */}
+              <div className="pt-3 border-t border-white/10 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap size={14} className="text-amber-400" />
+                    <span className="text-xs font-bold text-white">Revue des Abonnements & Débits Récurrents</span>
+                  </div>
+                  <span className="text-[11px] font-mono font-extrabold text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                    {formatBankAmount(subscriptionSummary.totalMonthly || 0, currency)} / mois
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-0.5">
+                    <span className="text-[10px] text-slate-400 block">Services actifs</span>
+                    <span className="text-sm font-black text-white">{subscriptionSummary.count || subscriptionSummary.items?.length || 0} abonnements</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-0.5">
+                    <span className="text-[10px] text-slate-400 block">Poids sur revenus</span>
+                    <span className="text-sm font-black text-amber-300">
+                      {metrics.income > 0 && subscriptionSummary.totalMonthly > 0 ? `${Math.round((subscriptionSummary.totalMonthly / metrics.income) * 100)}%` : '0%'}
+                    </span>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1 p-2.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-0.5">
+                    <span className="text-[10px] text-slate-400 block">Économies potentielles</span>
+                    <span className="text-sm font-black text-emerald-400">Jusqu'à 30%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer rapide */}
+            <div className="pt-4 mt-3 border-t border-white/10 flex items-center justify-between text-xs">
+              <span className="text-slate-400">
+                {monthScopedTransactions.length} transaction{monthScopedTransactions.length > 1 ? 's' : ''} auditée{monthScopedTransactions.length > 1 ? 's' : ''} ce mois-ci
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveViewMode('timeline')}
+                className="text-cyan-300 hover:text-cyan-200 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <span>Voir la frise chronologique</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+
+        </section>
         {/* Indicateur de chargement visuel avec chronomètre en direct lors de l'analyse IA */}
         {(Boolean(importState?.isAiAnalyzing) || isAiAnalyzing || Boolean(importState?.isImporting)) && (
           <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-950/40 dark:via-indigo-950/40 dark:to-purple-950/40 border-2 border-indigo-500/40 dark:border-indigo-500/50 rounded-[1.8rem] p-5 shadow-lg shadow-indigo-500/10 transition-all animate-pulse">

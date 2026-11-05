@@ -498,7 +498,7 @@ export const Settings: React.FC = () => {
       )}
 
       {/* 1. HERO BANNER VISIONOS IMMERSIF */}
-      <div className="pt-6 pb-4 px-4 sm:px-6 md:px-8 max-w-5xl mx-auto">
+      <div className="pt-6 pb-4 w-full">
         <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6 text-center md:text-left">
           
           {/* Bloc Titre & Orb Central */}
@@ -609,7 +609,7 @@ export const Settings: React.FC = () => {
       </div>
 
       {/* 3. CAPSULE DE NAVIGATION PAR ONGLETS LIQUID GLASS */}
-      <div className="sticky top-2 z-30 px-3 sm:px-6 py-2 max-w-5xl mx-auto">
+      <div className="sticky top-2 z-30 py-2 w-full">
         <div className="apple-glass rounded-full p-1.5 flex items-center justify-between gap-1 sm:gap-2 shadow-2xl border border-white/20 overflow-x-auto custom-scrollbar">
           
           <button
@@ -672,7 +672,7 @@ export const Settings: React.FC = () => {
       </div>
 
       {/* 4. CONTENU MODULAIRE DES ONGLETS */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 md:px-8 mt-5 space-y-6">
+      <div className="w-full mt-5 space-y-6">
 
         {/* ======================================================== */}
         {/* ONGLET 1 : PROFIL & SYSTÈME                               */}
