@@ -17,10 +17,6 @@ import {
   Copy, 
   Check, 
   Plus, 
-  Target, 
-  Scale, 
-  ShoppingBag, 
-  CreditCard, 
   History,
   Trash2,
   X,
@@ -33,13 +29,6 @@ import {
   Edit3,
   ArrowRight,
   Layers,
-  Lock,
-  ShieldCheck,
-  Receipt,
-  PieChart,
-  Repeat,
-  TrendingUp,
-  Zap,
   Search,
   ChevronUp,
   ChevronDown
@@ -433,15 +422,15 @@ export default function Coach() {
   };
 
   return (
-    <div className="coach-liquid-aura flex flex-col min-h-[calc(100vh-4rem)] text-white relative selection:bg-sky-500/30 selection:text-white overflow-x-hidden">
+    <div className="flex flex-col flex-1 h-full min-h-[calc(100vh-4rem)] bg-[#070913] bg-[radial-gradient(ellipse_75%_55%_at_50%_35%,rgba(18,48,88,0.30),rgba(7,9,19,0)_80%)] text-white relative selection:bg-sky-500/30 selection:text-white overflow-x-hidden">
       
-      {/* 1. TOP BAR ÉPURÉE LIQUID GLASS CAPSULE */}
-      <div className="sticky top-0 z-30 px-3 sm:px-6 py-2.5 sm:py-3">
-        <div className="apple-glass rounded-full px-3.5 sm:px-5 py-2 flex items-center justify-between gap-3 max-w-5xl mx-auto shadow-2xl">
+      {/* 1. TOP BAR ÉPURÉE STYLE ANTIGRAVITY CONSOLE */}
+      <div className="sticky top-0 z-30 px-3 sm:px-6 py-2.5 sm:py-3 w-full">
+        <div className="apple-glass rounded-full px-3.5 sm:px-6 py-2 flex items-center justify-between gap-3 max-w-6xl mx-auto shadow-2xl border border-white/10 bg-[#080d1e]/80">
           
-          {/* Gauche: Historique & Mes Règles & Abonnements avec Infobulle */}
+          {/* Gauche: Historique & Mes Règles & Abonnements */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Bouton Historique (remplace "(0)" par "Historique") */}
+            {/* Bouton Historique */}
             <button
               onClick={() => setIsHistoryOpen(true)}
               className="apple-glass-pill hover:bg-white/15 px-3 py-1.5 rounded-full text-xs font-semibold text-white/90 flex items-center gap-1.5 transition-all group cursor-pointer"
@@ -451,39 +440,21 @@ export default function Coach() {
               <span>Historique</span>
             </button>
 
-            {/* Bouton Mes Règles & Abonnements avec Infobulle Explicative Simple & Intelligible */}
-            <div className="relative group/tooltip flex items-center">
-              <button
-                onClick={() => setIsRulesOpen(true)}
-                className="apple-glass-pill hover:bg-white/15 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-400 border-emerald-500/30 flex items-center gap-1.5 transition-all group cursor-pointer"
-              >
-                <BookmarkCheck size={14} className="group-hover:scale-110 transition-transform shrink-0" />
-                <span className="hidden sm:inline">Mes Règles & Abonnements</span>
-                <span className="sm:hidden">Mes Règles</span>
-                <span className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] flex items-center justify-center font-bold ml-0.5">
-                  ?
+            {/* Bouton Mes Règles & Abonnements épuré */}
+            <button
+              onClick={() => setIsRulesOpen(true)}
+              className="apple-glass-pill hover:bg-white/15 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-400 border-emerald-500/30 flex items-center gap-1.5 transition-all group cursor-pointer"
+              title="Gérer mes règles et abonnements récurrents"
+            >
+              <BookmarkCheck size={14} className="group-hover:scale-110 transition-transform shrink-0" />
+              <span className="hidden sm:inline">Règles & Abonnements</span>
+              <span className="sm:hidden">Règles</span>
+              {customRules.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                  {customRules.length}
                 </span>
-              </button>
-
-              {/* Infobulle Stitch Liquid Glass ultra claire et intelligible */}
-              <div className="absolute top-full left-0 sm:left-1/2 sm:-translate-x-1/2 mt-2 w-72 sm:w-80 p-3.5 rounded-2xl apple-glass bg-[#080a14]/95 border border-emerald-500/30 shadow-2xl opacity-0 translate-y-1 pointer-events-none group-hover/tooltip:opacity-100 group-hover/tooltip:translate-y-0 transition-all duration-200 z-50 text-left">
-                <div className="flex items-start gap-2.5">
-                  <div className="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center justify-center shrink-0 text-xs font-bold">
-                    💡
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-bold text-white">À quoi sert cette section ?</p>
-                    <p className="text-[11px] text-slate-300 leading-relaxed font-light">
-                      Elle sert à <strong className="text-emerald-400 font-semibold">apprendre à l'IA à reconnaître vos abonnements</strong> (ex: Netflix, Salle de sport, Assurance, Loyer) pour qu'elle les classe automatiquement sans se tromper.
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-2.5 pt-2 border-t border-white/10 flex items-center justify-between text-[10px] text-emerald-400 font-medium">
-                  <span>Cliquez pour consulter ou ajouter une règle</span>
-                  <span>→</span>
-                </div>
-              </div>
-            </div>
+              )}
+            </button>
           </div>
 
           {/* Droite: Loupe de recherche + Nouvelle Discussion */}
@@ -936,37 +907,33 @@ export default function Coach() {
         </div>
       )}
 
-      {/* 3. ZONE CENTRALE */}
+      {/* 3. ZONE CENTRALE (ÉCRAN D'ACCUEIL OU CONVERSATION) */}
       <div className="flex-1 flex flex-col justify-between max-w-4xl w-full mx-auto px-4 md:px-6">
         
         {messages.length === 0 ? (
-          /* ÉCRAN D'ACCUEIL APPLE VISIONOS LIQUID GLASS */
-          <div className="flex-1 flex flex-col items-center justify-center py-4 sm:py-6 md:py-12 pb-36 sm:pb-32 md:pb-12 space-y-4 sm:space-y-6 md:space-y-8 animate-in fade-in duration-500">
+          /* ÉCRAN D'ACCUEIL ÉPURÉ STYLE CONSOLE ANTIGRAVITY */
+          <div className="flex-1 flex flex-col items-center justify-center py-10 sm:py-20 pb-44 space-y-7 animate-in fade-in duration-500 max-w-2xl w-full mx-auto">
             
-            {/* Squircle Orb Central avec Specular Glow */}
-            <div className="relative mb-2">
-              <div className="apple-glass specular-glow w-20 h-20 sm:w-24 sm:h-24 rounded-[28px] sm:rounded-[32px] flex items-center justify-center relative z-10 transition-transform duration-500 hover:scale-105">
-                <div className="absolute inset-1 rounded-[24px] sm:rounded-[28px] bg-gradient-to-tr from-cyan-500/20 via-sky-400/10 to-indigo-500/20" />
-                <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400 relative z-10 drop-shadow-[0_0_12px_rgba(56,189,248,0.5)]" />
-              </div>
-              <div className="absolute -bottom-1 -right-1 z-20 w-7 h-7 sm:w-8 sm:h-8 rounded-full apple-glass flex items-center justify-center border border-white/30 text-emerald-400 shadow-lg">
-                <Zap size={13} />
-              </div>
-            </div>
+            {/* Titre Pur & Élégant Antigravity */}
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-light sm:font-normal tracking-tight text-white/95 text-center px-2">
+              Par quoi voulez-vous commencer ?
+            </h1>
 
-            {/* Titre & Sous-titre Épurés */}
-            <div className="text-center space-y-2 max-w-xl px-2">
-              <h1 className="text-2xl sm:text-3xl md:text-5xl font-extrabold tracking-tight text-white">
-                Par quoi voulez-vous commencer ?
-              </h1>
-              <p className="text-xs md:text-sm text-slate-400 max-w-lg mx-auto font-light leading-relaxed">
-                Votre copilote financier de nouvelle génération. Auditez vos tickets, analysez vos flux et pilotez vos budgets en langage naturel.
-              </p>
-            </div>
+            {/* Capsule de Commande Flottante Antigravity */}
+            <div className="w-full">
+              <div className="apple-glass rounded-full p-2 pl-3.5 sm:pl-4 flex items-center gap-2 sm:gap-3 border border-white/20 bg-[#080d1e]/85 shadow-[0_12px_45px_rgba(0,0,0,0.6)] focus-within:border-sky-400/60 focus-within:shadow-[0_0_35px_rgba(56,189,248,0.25)] transition-all">
+                
+                {/* Bouton '+' (Connecteurs / Règles) */}
+                <button
+                  type="button"
+                  onClick={() => setIsRulesOpen(true)}
+                  className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
+                  title="Connecteurs & compétences"
+                >
+                  <Plus size={16} />
+                </button>
 
-            {/* Boîte de Saisie Flottante Centrale */}
-            <div className="w-full max-w-2xl">
-              <div className="apple-glass rounded-full p-1.5 sm:p-2 pl-4 sm:pl-6 flex items-center gap-2 sm:gap-3 relative transition-all duration-300 focus-within:border-sky-400/60 focus-within:shadow-[0_0_40px_rgba(56,189,248,0.25)]">
+                {/* Champ de saisie prompt épuré */}
                 <input
                   type="text"
                   value={inputPrompt}
@@ -977,77 +944,59 @@ export default function Coach() {
                       onSend();
                     }
                   }}
-                  placeholder="Posez une question ou demandez un audit..."
+                  placeholder="Tapez @ pour les connecteurs, les compétences et plus"
                   disabled={isLoading}
                   className="flex-1 bg-transparent border-none text-white text-xs sm:text-sm placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
                 />
-                
-                <div className="flex items-center gap-1.5 sm:gap-2 pr-1">
-                  <button
-                    type="button"
-                    onClick={toggleListening}
-                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full apple-glass flex items-center justify-center transition-all cursor-pointer ${
-                      isListening 
-                        ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse' 
-                        : 'text-slate-300 hover:text-white hover:bg-white/10'
-                    }`}
-                    title={isListening ? "Écoute en cours... Cliquez pour terminer" : "Activer la saisie vocale"}
-                  >
-                    {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-                  </button>
 
-                  <button
-                    type="button"
-                    onClick={() => onSend()}
-                    disabled={!inputPrompt.trim() || isLoading}
-                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                    title="Envoyer"
-                  >
-                    <ArrowUp size={18} />
-                  </button>
+                {/* Pillule Modèle 'Pro ▾' */}
+                <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-slate-300 text-xs font-semibold select-none cursor-default shrink-0">
+                  <span>Pro</span>
+                  <ChevronDown size={13} className="text-slate-400" />
                 </div>
-              </div>
 
-              {/* Badges de sécurité et connectivité */}
-              <div className="flex items-center justify-center gap-4 sm:gap-6 mt-3.5 text-[11px] text-slate-400 font-medium flex-wrap">
-                <span className="flex items-center gap-1.5">
-                  <Lock size={12} className="text-sky-400" /> Chiffrement bancaire AES-256
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <ShieldCheck size={12} className="text-emerald-400" /> Grand livre bancaire & tickets synchronisés
-                </span>
+                {/* Microphone Vocal */}
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                    isListening 
+                      ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse' 
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={isListening ? "Écoute en cours... Cliquez pour terminer" : "Activer la saisie vocale"}
+                >
+                  {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+
+                {/* Bouton Envoyer '↑' */}
+                <button
+                  type="button"
+                  onClick={() => onSend()}
+                  disabled={!inputPrompt.trim() || isLoading}
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white hover:bg-slate-200 text-slate-950 flex items-center justify-center shadow-lg transition-all disabled:opacity-20 disabled:hover:bg-white disabled:cursor-not-allowed cursor-pointer shrink-0"
+                  title="Envoyer"
+                >
+                  <ArrowUp size={16} className="stroke-[2.5]" />
+                </button>
+
               </div>
             </div>
 
-            {/* 4 Cartes de Suggestions Google Stitch */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 w-full max-w-3xl pt-2">
-              {stitchSuggestions.map((item, idx) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => onSend(item.prompt)}
-                    className="apple-glass-card rounded-3xl p-4 sm:p-5 flex items-start gap-4 cursor-pointer group text-left transition-all duration-300"
-                  >
-                    <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center shrink-0 border ${item.bgGlow} ${item.iconColor} group-hover:scale-110 transition-all duration-300`}>
-                      <Icon size={22} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <h3 className="text-xs sm:text-sm font-semibold text-white group-hover:text-sky-300 transition-colors">
-                          {item.title}
-                        </h3>
-                        <ArrowRight size={14} className="text-slate-500 group-hover:text-sky-400 group-hover:translate-x-1 transition-all" />
-                      </div>
-                      <p className="text-[11px] sm:text-xs text-slate-400 font-light leading-relaxed line-clamp-2">
-                        {item.subtitle}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
+            {/* Puces de suggestion sobres & discrètes Antigravity */}
+            <div className="flex flex-wrap items-center justify-center gap-2 max-w-xl mx-auto px-2">
+              {stitchSuggestions.map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => onSend(item.prompt)}
+                  className="px-3.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-300 hover:text-white text-xs font-medium transition-all duration-200 hover:border-white/20 active:scale-95 cursor-pointer"
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
+
           </div>
         ) : (
           /* VUE CONVERSATION LIQUID GLASS */
@@ -1145,53 +1094,37 @@ export default function Coach() {
             </div>
 
             {/* Zone de Saisie Flottante Pinned en Bas (au-dessus du Dock flottant Apple) */}
-            <div className="fixed bottom-[calc(4.85rem+env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 px-3 sm:px-6 py-2 bg-gradient-to-t from-[#080a14] via-[#080a14]/90 to-transparent backdrop-blur-md">
+            <div className="fixed bottom-[calc(4.85rem+env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 px-3 sm:px-6 py-2 bg-gradient-to-t from-[#070913] via-[#070913]/90 to-transparent backdrop-blur-md">
               <div className="max-w-3xl mx-auto space-y-2">
                 
-                {/* Pilules d'audit rapide horizontales */}
+                {/* Pilules d'audit rapide épurées */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs touch-pan-x">
                   <span className="text-slate-400 text-[11px] font-semibold shrink-0 flex items-center gap-1 pl-1">
                     <Sparkles size={11} className="text-sky-400" /> Audit :
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onSend("À combien j'achète mes fruits ? Donne-moi la synthèse directe et le tableau complet.")}
-                    className="px-3 py-1 rounded-full apple-glass-pill hover:bg-white/15 hover:text-sky-300 shrink-0 transition-colors text-[11px] font-medium cursor-pointer"
-                  >
-                    🍎 Prix de mes fruits
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onSend("Combien j'achète mon pain ? Donne-moi la synthèse directe et le tableau complet.")}
-                    className="px-3 py-1 rounded-full apple-glass-pill hover:bg-white/15 hover:text-sky-300 shrink-0 transition-colors text-[11px] font-medium cursor-pointer"
-                  >
-                    🥖 Prix de mon pain
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onSend("Fixe mon budget Courses Alimentaires à 400 €")}
-                    className="px-3 py-1 rounded-full apple-glass-pill hover:bg-white/15 hover:text-sky-300 shrink-0 transition-colors text-[11px] font-medium cursor-pointer"
-                  >
-                    🎯 Ajuster un budget
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onSend("Donne-moi des conseils sur la répartition de mes dépenses selon la règle 50/30/20 avec mes chiffres réels")}
-                    className="px-3 py-1 rounded-full apple-glass-pill hover:bg-white/15 hover:text-sky-300 shrink-0 transition-colors text-[11px] font-medium cursor-pointer"
-                  >
-                    ⚖️ Règle 50/30/20
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onSend("Quels sont mes abonnements et prélèvements récurrents ? Détecte les anomalies ou doublons potentiels.")}
-                    className="px-3 py-1 rounded-full apple-glass-pill hover:bg-white/15 hover:text-sky-300 shrink-0 transition-colors text-[11px] font-medium cursor-pointer"
-                  >
-                    🔍 Abonnements
-                  </button>
+                  {stitchSuggestions.map((item, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => onSend(item.prompt)}
+                      className="px-3 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:text-sky-300 shrink-0 transition-colors text-[11px] font-medium cursor-pointer"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
                 </div>
 
-                {/* Capsule de saisie active Liquid Glass */}
-                <div className="apple-glass rounded-full p-1.5 pl-4 sm:pl-5 flex items-center gap-2 relative border border-white/20 focus-within:border-sky-400/60 focus-within:shadow-[0_0_30px_rgba(56,189,248,0.25)] transition-all">
+                {/* Capsule de commande flottante Antigravity */}
+                <div className="apple-glass rounded-full p-2 pl-3.5 sm:pl-4 flex items-center gap-2 sm:gap-3 border border-white/20 bg-[#080d1e]/85 shadow-[0_12px_40px_rgba(0,0,0,0.6)] focus-within:border-sky-400/60 focus-within:shadow-[0_0_35px_rgba(56,189,248,0.25)] transition-all">
+                  <button
+                    type="button"
+                    onClick={() => setIsRulesOpen(true)}
+                    className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
+                    title="Connecteurs & compétences"
+                  >
+                    <Plus size={16} />
+                  </button>
+
                   <input
                     type="text"
                     value={inputPrompt}
@@ -1202,35 +1135,38 @@ export default function Coach() {
                         onSend();
                       }
                     }}
-                    placeholder="Poser une question ou demander une modification..."
+                    placeholder="Tapez @ pour les connecteurs, les compétences et plus"
                     disabled={isLoading}
                     className="flex-1 bg-transparent border-none text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
                   />
 
-                  <div className="flex items-center gap-1.5 pr-1">
-                    <button
-                      type="button"
-                      onClick={toggleListening}
-                      className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full apple-glass flex items-center justify-center transition-all cursor-pointer ${
-                        isListening 
-                          ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse' 
-                          : 'text-slate-300 hover:text-white hover:bg-white/10'
-                      }`}
-                      title={isListening ? "Écoute en cours... Cliquez pour terminer" : "Activer la saisie vocale"}
-                    >
-                      {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onSend()}
-                      disabled={!inputPrompt.trim() || isLoading}
-                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                      title="Envoyer"
-                    >
-                      <ArrowUp size={16} />
-                    </button>
+                  <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-slate-300 text-xs font-semibold select-none cursor-default shrink-0">
+                    <span>Pro</span>
+                    <ChevronDown size={13} className="text-slate-400" />
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={toggleListening}
+                    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                      isListening 
+                        ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse' 
+                        : 'text-slate-300 hover:text-white hover:bg-white/10'
+                    }`}
+                    title={isListening ? "Écoute en cours... Cliquez pour terminer" : "Activer la saisie vocale"}
+                  >
+                    {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onSend()}
+                    disabled={!inputPrompt.trim() || isLoading}
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white hover:bg-slate-200 text-slate-950 flex items-center justify-center shadow-lg transition-all disabled:opacity-20 disabled:hover:bg-white disabled:cursor-not-allowed cursor-pointer shrink-0"
+                    title="Envoyer"
+                  >
+                    <ArrowUp size={16} className="stroke-[2.5]" />
+                  </button>
                 </div>
               </div>
             </div>

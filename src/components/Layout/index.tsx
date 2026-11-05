@@ -87,7 +87,7 @@ export default function Layout() {
     <div className="flex h-screen overflow-hidden flex-col antialiased liquid-mesh text-slate-100 selection:bg-cyan-500/20 selection:text-cyan-400 transition-colors duration-300">
       
       {/* Top Sticky Header avec Logo CashPilot, Navigation Info & Profil Apple VisionOS */}
-      <header className="h-16 px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 border-b border-white/10 backdrop-blur-xl z-30 shrink-0 bg-slate-950/40 text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex items-center">
+      <header className="h-16 px-4 sm:px-6 lg:px-8 border-b border-white/10 backdrop-blur-xl z-30 shrink-0 bg-slate-950/40 text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex items-center">
         <div className="w-full flex items-center justify-between">
           {/* Gauche : Logo CashPilot PRO & Titre de page */}
           <div className="flex items-center gap-3 sm:gap-6">
@@ -197,7 +197,7 @@ export default function Layout() {
           "w-full transition-all duration-300",
           location.pathname === '/coach'
             ? "h-full flex flex-col"
-            : "px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12"
+            : "px-4 sm:px-6 lg:px-8"
         )}>
           <Outlet />
         </div>

@@ -678,7 +678,7 @@ export const Settings: React.FC = () => {
         {/* ONGLET 1 : PROFIL & SYSTÈME                               */}
         {/* ======================================================== */}
         {activeTab === 'general' && (
-          <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             
             {/* Carte Profil Utilisateur */}
             <div className="apple-glass-card rounded-3xl p-5 sm:p-7 border-white/15 space-y-5">
@@ -799,8 +799,8 @@ export const Settings: React.FC = () => {
               </div>
             </div>
 
-            {/* Carte Diagnostics & Infrastructure */}
-            <div className="apple-glass-card rounded-3xl p-5 sm:p-7 border-white/15 space-y-4">
+            {/* Carte Diagnostics & Infrastructure (Pleine largeur sur grand écran) */}
+            <div className="apple-glass-card rounded-3xl p-5 sm:p-7 border-white/15 space-y-4 lg:col-span-2">
               <div className="flex items-center gap-3 border-b border-white/10 pb-4">
                 <div className="w-10 h-10 rounded-2xl apple-glass flex items-center justify-center text-emerald-400 border border-emerald-400/30">
                   <HardDrive size={20} />
@@ -1304,7 +1304,7 @@ export const Settings: React.FC = () => {
         {/* ONGLET 4 : SAUVEGARDE & SÉCURITÉ                          */}
         {/* ======================================================== */}
         {activeTab === 'security' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             
             {/* Exportation JSON Complète */}
             <div className="apple-glass-card rounded-3xl p-5 sm:p-7 border-emerald-500/25 space-y-4">
