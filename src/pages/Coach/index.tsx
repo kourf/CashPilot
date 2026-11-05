@@ -1,8 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { MarkdownRenderer, highlightSearchMatch } from '../../components/ui/MarkdownRenderer';
 import { useCoach, type SavedConversation } from '../../context/CoachContext';
 import { type ProposedAdminAction } from '../../lib/coachFinancialEngine';
 import { DEFAULT_COST_OF_LIVING_ITEMS, type CustomUserRule } from '../../lib/kpiUtils';
+import { 
+  findSearchMatches, 
+  getNextMatchIndex, 
+  getPrevMatchIndex, 
+  filterConversations 
+} from '../../lib/conversationSearchUtils';
 import { 
   Sparkles, 
   ArrowUp,
@@ -33,7 +39,10 @@ import {
   PieChart,
   Repeat,
   TrendingUp,
-  Zap
+  Zap,
+  Search,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 export type { SavedConversation };
@@ -83,6 +92,13 @@ export default function Coach() {
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+
+  // Loupe & Moteur de recherche live dans la discussion (Apple VisionOS)
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // État du formulaire "Mes Règles & Abonnements"
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
@@ -150,7 +166,66 @@ export default function Coach() {
     }
   };
 
+  // Liste de toutes les occurrences du terme recherché dans les messages de la conversation active
+  const searchMatches = useMemo(() => {
+    return findSearchMatches(messages, searchQuery);
+  }, [messages, searchQuery]);
+
+  const scrollToMessage = (messageId: string) => {
+    if (!messageId) return;
+    const el = document.getElementById(`coach-msg-${messageId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  const handleNextMatch = () => {
+    if (searchMatches.length === 0) return;
+    const next = getNextMatchIndex(currentMatchIndex, searchMatches.length);
+    setCurrentMatchIndex(next);
+    scrollToMessage(searchMatches[next].messageId);
+  };
+
+  const handlePrevMatch = () => {
+    if (searchMatches.length === 0) return;
+    const prev = getPrevMatchIndex(currentMatchIndex, searchMatches.length);
+    setCurrentMatchIndex(prev);
+    scrollToMessage(searchMatches[prev].messageId);
+  };
+
+  // Dès que le terme recherché change, pointer sur la première occurrence et faire défiler l'écran
+  useEffect(() => {
+    setCurrentMatchIndex(0);
+    if (searchMatches.length > 0) {
+      scrollToMessage(searchMatches[0].messageId);
+    }
+  }, [searchQuery]);
+
+  // Raccourci clavier universel : Ctrl+F / Cmd+F ouvre la loupe de recherche, Échap la ferme
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setIsSearchOpen(true);
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        }, 80);
+      } else if (e.key === 'Escape' && isSearchOpen) {
+        setIsSearchOpen(false);
+        setSearchQuery('');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSearchOpen]);
+
   const validConversations = conversations.filter(c => c.messages && c.messages.length > 0);
+
+  const filteredConversations = useMemo(() => {
+    return filterConversations(validConversations, historySearchQuery);
+  }, [validConversations, historySearchQuery]);
 
   // 4 Suggestions officielles Google Stitch visionOS
   const stitchSuggestions = [
@@ -427,12 +502,38 @@ export default function Coach() {
             </div>
           </div>
 
-          {/* Droite: + Nouvelle Discussion (remplace "+ Nouvelle" par "+ Nouvelle Discussion", sans sélection "tous les bases") */}
+          {/* Droite: Loupe de recherche + Nouvelle Discussion */}
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSearchOpen((prev) => {
+                  const next = !prev;
+                  if (next) {
+                    setTimeout(() => searchInputRef.current?.focus(), 80);
+                  } else {
+                    setSearchQuery('');
+                  }
+                  return next;
+                });
+              }}
+              className={`apple-glass-pill px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all group cursor-pointer ${
+                isSearchOpen
+                  ? 'bg-sky-500/25 text-sky-300 border border-sky-400/50 shadow-[0_0_12px_rgba(56,189,248,0.35)]'
+                  : 'hover:bg-white/15 text-white/90'
+              }`}
+              title="Rechercher des mots dans la discussion (Ctrl+F)"
+            >
+              <Search size={14} className="text-sky-400 group-hover:scale-110 transition-transform shrink-0" />
+              <span className="hidden sm:inline">Recherche</span>
+            </button>
+
             <button
               onClick={() => {
                 handleCreateNewConversation();
                 setIsHistoryOpen(false);
+                setIsSearchOpen(false);
+                setSearchQuery('');
               }}
               className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-sky-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
               title="Créer une nouvelle discussion"
@@ -442,6 +543,83 @@ export default function Coach() {
             </button>
           </div>
         </div>
+
+        {/* Barre de Recherche Live Apple Liquid Glass */}
+        {isSearchOpen && (
+          <div className="pt-2 max-w-xl mx-auto animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="apple-glass rounded-2xl px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-2.5 shadow-2xl border border-sky-400/40 bg-[#080a14]/90 backdrop-blur-2xl">
+              <Search size={15} className="text-sky-400 shrink-0 ml-0.5" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      handlePrevMatch();
+                    } else {
+                      handleNextMatch();
+                    }
+                  } else if (e.key === 'Escape') {
+                    setIsSearchOpen(false);
+                    setSearchQuery('');
+                  }
+                }}
+                placeholder="Rechercher un mot, un montant ou un commerce..."
+                className="flex-1 bg-transparent border-none text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
+              />
+
+              {searchQuery.trim() && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {searchMatches.length > 0 ? (
+                    <span className="text-[10px] sm:text-[11px] font-mono font-bold text-sky-300 bg-sky-500/20 border border-sky-400/40 px-2 py-0.5 rounded-full">
+                      {currentMatchIndex + 1} / {searchMatches.length}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] sm:text-[11px] font-medium text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-full">
+                      0 résultat
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {searchMatches.length > 0 && (
+                <div className="flex items-center gap-0.5 shrink-0 border-l border-white/15 pl-1.5 sm:pl-2">
+                  <button
+                    type="button"
+                    onClick={handlePrevMatch}
+                    className="p-1 rounded-lg hover:bg-white/15 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                    title="Occurrence précédente (Maj+Entrée)"
+                  >
+                    <ChevronUp size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextMatch}
+                    className="p-1 rounded-lg hover:bg-white/15 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                    title="Occurrence suivante (Entrée)"
+                  >
+                    <ChevronDown size={15} />
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSearchOpen(false);
+                  setSearchQuery('');
+                }}
+                className="w-6 h-6 rounded-full hover:bg-white/15 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0 ml-0.5"
+                title="Fermer la recherche (Échap)"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 2. DRAWER HISTORIQUE LATÉRAL APPLE GLASS */}
@@ -472,11 +650,33 @@ export default function Coach() {
                   handleCreateNewConversation();
                   setIsHistoryOpen(false);
                 }}
-                className="w-full p-3 rounded-2xl border border-dashed border-sky-400/40 hover:border-sky-400 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-xs font-semibold flex items-center justify-center gap-2 transition-all mb-3 cursor-pointer"
+                className="w-full p-3 rounded-2xl border border-dashed border-sky-400/40 hover:border-sky-400 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-xs font-semibold flex items-center justify-center gap-2 transition-all mb-2 cursor-pointer"
               >
                 <Plus size={15} />
                 Nouvelle discussion
               </button>
+
+              {/* Filtre de recherche dans l'historique */}
+              {validConversations.length > 0 && (
+                <div className="apple-glass rounded-xl px-3 py-1.5 flex items-center gap-2 mb-2 border border-white/10 focus-within:border-sky-400/50 transition-colors">
+                  <Search size={13} className="text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    placeholder="Filtrer l'historique par mot-clé..."
+                    className="w-full bg-transparent border-none text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-0"
+                  />
+                  {historySearchQuery && (
+                    <button
+                      onClick={() => setHistorySearchQuery('')}
+                      className="text-slate-400 hover:text-white shrink-0 p-0.5 cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              )}
 
               {validConversations.length === 0 ? (
                 <div className="py-14 px-4 text-center flex flex-col items-center justify-center space-y-3 animate-in fade-in duration-300">
@@ -490,8 +690,15 @@ export default function Coach() {
                     </p>
                   </div>
                 </div>
+              ) : filteredConversations.length === 0 ? (
+                <div className="py-8 px-4 text-center flex flex-col items-center justify-center space-y-2 animate-in fade-in duration-200">
+                  <p className="text-xs font-semibold text-slate-300">Aucun résultat trouvé</p>
+                  <p className="text-[11px] text-slate-400">
+                    Aucune discussion ne contient « {historySearchQuery} ».
+                  </p>
+                </div>
               ) : (
-                validConversations.map((conv) => {
+                filteredConversations.map((conv) => {
                   const isActive = conv.id === activeConversationId;
                   const dateStr = new Date(conv.updatedAt).toLocaleDateString('fr-FR', {
                     day: 'numeric',
@@ -864,10 +1071,14 @@ export default function Coach() {
             <div className="space-y-6 pb-64 md:pb-40">
               {messages.map((msg) => {
                 const isUser = msg.role === 'user';
+                const isCurrentTargetMsg = isSearchOpen && searchMatches[currentMatchIndex]?.messageId === msg.id;
                 return (
                   <div
                     key={msg.id}
-                    className={`flex items-start gap-3.5 group ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-300`}
+                    id={`coach-msg-${msg.id}`}
+                    className={`flex items-start gap-3.5 group ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-300 transition-all ${
+                      isCurrentTargetMsg ? 'ring-2 ring-sky-400/90 shadow-[0_0_25px_rgba(56,189,248,0.45)] rounded-3xl p-1' : ''
+                    }`}
                   >
                     {!isUser && (
                       <div className="w-9 h-9 rounded-2xl apple-glass specular-glow flex items-center justify-center text-sky-400 shrink-0 border border-white/20 mt-1 shadow-md">
@@ -884,10 +1095,10 @@ export default function Coach() {
                         }`}
                       >
                         {isUser ? (
-                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                          <p className="whitespace-pre-wrap">{highlightSearchMatch(msg.content, searchQuery)}</p>
                         ) : (
                           <>
-                            <MarkdownRenderer content={msg.content} />
+                            <MarkdownRenderer content={msg.content} searchQuery={searchQuery} />
                             {msg.proposedAction && renderValidationCard(msg.id, msg.proposedAction)}
                           </>
                         )}

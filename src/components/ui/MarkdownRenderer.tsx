@@ -1,11 +1,15 @@
 import React from 'react';
+import { splitTextBySearchQuery, highlightSearchMatch } from '../../lib/conversationSearchUtils';
+
+export { highlightSearchMatch };
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  searchQuery?: string;
 }
 
-export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = '' }) => {
+export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = '', searchQuery }) => {
   // Découpage par blocs (paragraphes, tableaux, listes, titres, citations)
   const lines = content.split('\n');
   const elements: React.ReactNode[] = [];
@@ -28,7 +32,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
                 <tr>
                   {tableHeader.map((th, i) => (
                     <th key={i} className="px-3.5 py-2.5 whitespace-nowrap">
-                      {renderInlineFormatting(th)}
+                      {renderInlineFormatting(th, searchQuery)}
                     </th>
                   ))}
                 </tr>
@@ -39,7 +43,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
                 <tr key={ri} className="hover:bg-secondary/30 dark:hover:bg-white/[0.02] transition-colors">
                   {row.map((cell, ci) => (
                     <td key={ci} className="px-3.5 py-2 text-foreground/90">
-                      {renderInlineFormatting(cell)}
+                      {renderInlineFormatting(cell, searchQuery)}
                     </td>
                   ))}
                 </tr>
@@ -61,7 +65,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
           <ol key={`ol-${keyPrefix}`} className="list-decimal list-inside space-y-1 my-2 text-xs md:text-sm text-foreground/90 leading-relaxed pl-1">
             {listItems.map((item, idx) => (
               <li key={idx} className="marker:text-primary marker:font-bold">
-                {renderInlineFormatting(item)}
+                {renderInlineFormatting(item, searchQuery)}
               </li>
             ))}
           </ol>
@@ -72,7 +76,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
             {listItems.map((item, idx) => (
               <li key={idx} className="flex items-start gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
-                <span>{renderInlineFormatting(item)}</span>
+                <span>{renderInlineFormatting(item, searchQuery)}</span>
               </li>
             ))}
           </ul>
@@ -151,7 +155,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     if (trimmed.startsWith('### ')) {
       elements.push(
         <h4 key={`h4-${idx}`} className="text-sm md:text-base font-bold text-foreground mt-4 mb-1.5 flex items-center gap-2">
-          {renderInlineFormatting(trimmed.substring(4))}
+          {renderInlineFormatting(trimmed.substring(4), searchQuery)}
         </h4>
       );
       continue;
@@ -159,7 +163,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     if (trimmed.startsWith('## ')) {
       elements.push(
         <h3 key={`h3-${idx}`} className="text-base md:text-lg font-bold text-foreground mt-4 mb-2 flex items-center gap-2">
-          {renderInlineFormatting(trimmed.substring(3))}
+          {renderInlineFormatting(trimmed.substring(3), searchQuery)}
         </h3>
       );
       continue;
@@ -167,7 +171,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     if (trimmed.startsWith('# ')) {
       elements.push(
         <h2 key={`h2-${idx}`} className="text-lg md:text-xl font-extrabold text-foreground mt-4 mb-2">
-          {renderInlineFormatting(trimmed.substring(2))}
+          {renderInlineFormatting(trimmed.substring(2), searchQuery)}
         </h2>
       );
       continue;
@@ -177,7 +181,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     if (trimmed.startsWith('> ')) {
       elements.push(
         <div key={`bq-${idx}`} className="border-l-2 border-primary/70 bg-primary/[0.04] p-3 rounded-r-xl my-2 text-xs md:text-sm text-foreground/90 italic">
-          {renderInlineFormatting(trimmed.substring(2))}
+          {renderInlineFormatting(trimmed.substring(2), searchQuery)}
         </div>
       );
       continue;
@@ -186,7 +190,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     // Regular paragraph
     elements.push(
       <p key={`p-${idx}`} className="text-xs md:text-sm text-foreground/90 leading-relaxed my-1.5">
-        {renderInlineFormatting(trimmed)}
+        {renderInlineFormatting(trimmed, searchQuery)}
       </p>
     );
   }
@@ -198,7 +202,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
 };
 
 // Formateur de style en ligne pour le gras, l'italique, le code et les badges monétaires
-function renderInlineFormatting(text: string): React.ReactNode {
+function renderInlineFormatting(text: string, searchQuery?: string): React.ReactNode {
   if (!text) return null;
 
   // Split text by formatting tokens: **bold**, `code`, *italic*
@@ -210,7 +214,7 @@ function renderInlineFormatting(text: string): React.ReactNode {
 
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(highlightCurrencies(text.substring(lastIndex, match.index)));
+      parts.push(highlightCurrencies(text.substring(lastIndex, match.index), searchQuery));
     }
 
     const token = match[0];
@@ -218,33 +222,33 @@ function renderInlineFormatting(text: string): React.ReactNode {
       const inner = token.slice(2, -2);
       parts.push(
         <strong key={match.index} className="font-semibold text-foreground">
-          {highlightCurrencies(inner)}
+          {highlightCurrencies(inner, searchQuery)}
         </strong>
       );
     } else if (token.startsWith('`') && token.endsWith('`')) {
       const inner = token.slice(1, -1);
       parts.push(
         <code key={match.index} className="px-1.5 py-0.5 rounded-md bg-secondary/80 dark:bg-white/10 font-mono text-[11px] text-primary">
-          {inner}
+          {highlightSearchMatch(inner, searchQuery)}
         </code>
       );
     } else if (token.startsWith('*') && token.endsWith('*')) {
       const inner = token.slice(1, -1);
-      parts.push(<em key={match.index}>{highlightCurrencies(inner)}</em>);
+      parts.push(<em key={match.index}>{highlightCurrencies(inner, searchQuery)}</em>);
     }
 
     lastIndex = regex.lastIndex;
   }
 
   if (lastIndex < text.length) {
-    parts.push(highlightCurrencies(text.substring(lastIndex)));
+    parts.push(highlightCurrencies(text.substring(lastIndex), searchQuery));
   }
 
   return <>{parts}</>;
 }
 
 // Mise en valeur subtile des montants financiers (ex: 120,50 €, -45 €, 50/30/20)
-function highlightCurrencies(str: string): React.ReactNode {
+function highlightCurrencies(str: string, searchQuery?: string): React.ReactNode {
   // Regex pour repérer les montants monétaires comme 120,50 € ou -45 €
   const currencyRegex = /([+-]?\d+([.,]\d+)?\s*(?:€|EUR|CHF))/g;
   const parts: React.ReactNode[] = [];
@@ -253,7 +257,7 @@ function highlightCurrencies(str: string): React.ReactNode {
 
   while ((match = currencyRegex.exec(str)) !== null) {
     if (match.index > lastIdx) {
-      parts.push(str.substring(lastIdx, match.index));
+      parts.push(highlightSearchMatch(str.substring(lastIdx, match.index), searchQuery));
     }
     const val = match[0];
     const isNegative = val.startsWith('-');
@@ -270,14 +274,14 @@ function highlightCurrencies(str: string): React.ReactNode {
             : 'text-primary bg-primary/10'
         }`}
       >
-        {val}
+        {highlightSearchMatch(val, searchQuery)}
       </span>
     );
     lastIdx = currencyRegex.lastIndex;
   }
 
   if (lastIdx < str.length) {
-    parts.push(str.substring(lastIdx));
+    parts.push(highlightSearchMatch(str.substring(lastIdx), searchQuery));
   }
 
   return <>{parts}</>;
