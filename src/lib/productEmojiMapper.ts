@@ -128,15 +128,83 @@ export function getCategoryEmoji(category?: string): string {
   if (c.includes('boucherie') || c.includes('viande') || c.includes('poisson') || c.includes('volaille')) return '🥩';
   if (c.includes('fruit') || c.includes('legume') || c.includes('primeur')) return '🥗';
   if (c.includes('frais') || c.includes('cremerie') || c.includes('lait') || c.includes('fromage')) return '🥛';
+  if (c.includes('boulangerie') || c.includes('pain') || c.includes('viennoiserie')) return '🥖';
   if (c.includes('salee') || c.includes('epice')) return '🧂';
   if (c.includes('sucree') || c.includes('chocolat') || c.includes('biscuit') || c.includes('dessert')) return '🍪';
   if (c.includes('boisson') || c.includes('soda') || c.includes('eau') || c.includes('jus')) return '🥤';
+  if (c.includes('surgele') || c.includes('glace')) return '❄️';
   if (c.includes('hygiene') || c.includes('beaute') || c.includes('sanitaire')) return '🧴';
   if (c.includes('entretien') || c.includes('maison') || c.includes('menage')) return '🧼';
+  if (c.includes('bebe') || c.includes('enfant')) return '🍼';
+  if (c.includes('animal') || c.includes('animaux')) return '🐾';
+  if (c.includes('bio') || c.includes('dietetique')) return '🌱';
   if (c.includes('sante') || c.includes('pharmacie')) return '💊';
   if (c.includes('textile') || c.includes('culture') || c.includes('bazar')) return '📚';
   if (c.includes('fleur') || c.includes('cadeau')) return '💐';
   if (c.includes('papeterie') || c.includes('bureau')) return '📄';
   if (c.includes('sac') || c.includes('consigne')) return '🛍️';
   return '📦';
+}
+
+/**
+ * Retourne une description synthétique et explicite pour chaque rayon de supermarché.
+ */
+export function getCategoryDescription(category?: string): string {
+  if (!category) return 'Rayon de supermarché';
+  const c = category.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (c.includes('boucherie') || c.includes('viande') || c.includes('poisson') || c.includes('volaille')) {
+    return 'Viandes fraîches, volailles, poissons et produits de la mer';
+  }
+  if (c.includes('fruit') || c.includes('legume') || c.includes('primeur')) {
+    return 'Fruits frais, primeurs maraîchers, légumes et salades';
+  }
+  if (c.includes('frais') || c.includes('cremerie') || c.includes('lait') || c.includes('fromage')) {
+    return 'Laits, fromages, yaourts, beurres, œufs et crèmes';
+  }
+  if (c.includes('boulangerie') || c.includes('pain') || c.includes('viennoiserie')) {
+    return 'Pains, baguettes, viennoiseries et brioches';
+  }
+  if (c.includes('salee') || c.includes('epice')) {
+    return 'Pâtes, riz, conserves, huiles, assaisonnements et apéritifs';
+  }
+  if (c.includes('sucree') || c.includes('chocolat') || c.includes('biscuit') || c.includes('dessert')) {
+    return 'Biscuits, chocolats, cafés, thés, céréales et confitures';
+  }
+  if (c.includes('boisson') || c.includes('soda') || c.includes('eau') || c.includes('jus')) {
+    return 'Eaux minérales, sodas, jus de fruits et boissons rafraîchissantes';
+  }
+  if (c.includes('surgele') || c.includes('glace')) {
+    return 'Plats cuisinés surgelés, glaces, légumes et poissons surgelés';
+  }
+  if (c.includes('hygiene') || c.includes('beaute') || c.includes('sanitaire')) {
+    return 'Soins du corps, dentifrices, gels douche et shampoings';
+  }
+  if (c.includes('entretien') || c.includes('maison') || c.includes('menage')) {
+    return 'Lessives, nettoyants, liquides vaisselle et essuie-tout';
+  }
+  if (c.includes('bebe') || c.includes('enfant')) {
+    return 'Laits infantiles, couches, petits pots et lingettes';
+  }
+  if (c.includes('animal') || c.includes('animaux')) {
+    return 'Croquettes, pâtées, litières et friandises pour animaux';
+  }
+  if (c.includes('bio') || c.includes('dietetique')) {
+    return 'Alimentation biologique, diététique et nutrition saine';
+  }
+  if (c.includes('sante') || c.includes('pharmacie')) {
+    return 'Parapharmacie, premiers soins, vitamines et compléments';
+  }
+  if (c.includes('textile') || c.includes('culture') || c.includes('bazar')) {
+    return 'Articles maison, textile, cuisine et loisirs';
+  }
+  if (c.includes('fleur') || c.includes('cadeau')) {
+    return 'Plantes, bouquets, fleurs et idées cadeaux';
+  }
+  if (c.includes('papeterie') || c.includes('bureau')) {
+    return 'Cahiers, stylos, fournitures scolaires et de bureau';
+  }
+  if (c.includes('sac') || c.includes('consigne')) {
+    return 'Sacs cabas réutilisables et consignes de caisse';
+  }
+  return 'Articles et consommations du quotidien';
 }

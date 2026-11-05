@@ -53,7 +53,7 @@ import { ReceiptValidationModal } from './components/ReceiptValidationModal';
 import { ManualReceiptModal } from './components/ManualReceiptModal';
 import { PriceEvolutionModal } from './components/PriceEvolutionModal';
 import { DeleteConfirmDialog } from './components/DeleteConfirmDialog';
-import { getProductEmoji, getCategoryEmoji } from '../../lib/productEmojiMapper';
+import { getProductEmoji, getCategoryEmoji, getCategoryDescription } from '../../lib/productEmojiMapper';
 import { TARGET_PHYSICAL_STORES, resolvePhysicalStore } from '../../lib/storeRegistry';
 import { AISLE_CONFIGS, normalizeStoreName } from '../../lib/receiptClassifier';
 import { optimizeImageForOCR, formatFileSize, isPdfFile } from '../../lib/imageOptimizer';
@@ -154,6 +154,16 @@ export default function Receipts() {
     isCheapest: boolean;
     x: number;
     y: number;
+  } | null>(null);
+
+  // MODALE COMPLÈTE DE DÉTAIL D'OFFRE AU CLIC / TOUCH (STITCH MOBILE & PC)
+  const [activeOfferDetailModal, setActiveOfferDetailModal] = useState<{
+    offer: any;
+    storeName: string;
+    isCheapest: boolean;
+    productName: string;
+    category: string;
+    rawTicketName?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -640,6 +650,31 @@ export default function Receipts() {
     if (s.includes('monoprix')) return 'bg-rose-500';
     if (s.includes('auchan')) return 'bg-emerald-400';
     return 'bg-indigo-400';
+  };
+
+  // Extrait l'enseigne mère et la commune d'un magasin pour un affichage net et épuré
+  const getStoreEnseigne = (storeDisplayName: string): { brand: string; location: string } => {
+    if (!storeDisplayName) return { brand: 'Magasin', location: '' };
+    const s = storeDisplayName.trim();
+
+    if (s.includes(' - ')) {
+      const parts = s.split(' - ');
+      return { brand: parts[0].trim(), location: parts.slice(1).join(' - ').trim() };
+    }
+
+    const lower = s.toLowerCase();
+    if (lower.startsWith('carrefour market')) return { brand: 'Carrefour Market', location: s.slice(16).trim() };
+    if (lower.startsWith('carrefour')) return { brand: 'Carrefour', location: s.slice(9).trim() };
+    if (lower.startsWith('e.leclerc')) return { brand: 'E.Leclerc', location: s.slice(9).trim() };
+    if (lower.startsWith('intermarché') || lower.startsWith('intermarche')) return { brand: 'Intermarché', location: s.replace(/^intermarch[eé]/i, '').trim() };
+    if (lower.startsWith('super u')) return { brand: 'Super U', location: s.slice(7).trim() };
+    if (lower.startsWith('hyper u')) return { brand: 'Hyper U', location: s.slice(7).trim() };
+    if (lower.startsWith('lidl')) return { brand: 'Lidl', location: s.slice(4).trim() };
+    if (lower.startsWith('auchan')) return { brand: 'Auchan', location: s.slice(6).trim() };
+    if (lower.startsWith('monoprix')) return { brand: 'Monoprix', location: s.slice(8).trim() };
+    if (lower.startsWith('aldi')) return { brand: 'Aldi', location: s.slice(4).trim() };
+
+    return { brand: s, location: '' };
   };
 
   return (
@@ -1221,6 +1256,24 @@ export default function Receipts() {
 
 
           {/* ========================================================================= */}
+          {/* BANDEAU D'EXPLICATION DES PRIX & ASTUCE D'AUDIT                           */}
+          {/* ========================================================================= */}
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-slate-900/70 to-indigo-950/40 border border-cyan-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-lg backdrop-blur-md">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center shrink-0">
+                <Info size={15} className="text-cyan-300" />
+              </div>
+              <div className="text-xs text-slate-300 leading-snug">
+                <span className="font-bold text-white">Comprendre les prix :</span> Chaque case affiche le <span className="text-cyan-300 font-bold">prix unitaire standardisé</span> (€/pièce, €/kg ou €/L) pour comparer équitablement, ainsi que le <span className="text-white font-semibold">montant payé</span> sur le ticket.
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 rounded-xl shrink-0">
+              <Sparkles size={12} className="text-emerald-400" />
+              <span>Touchez un prix pour ouvrir le ticket</span>
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
           {/* TABLEAU CROISÉ COMPARATIF MULTI-ENSEIGNES LIQUID GLASS                   */}
           {/* ========================================================================= */}
           <div className="rounded-2xl border border-white/15 bg-slate-900/60 overflow-hidden shadow-xl backdrop-blur-md">
@@ -1233,16 +1286,20 @@ export default function Receipts() {
               <table className="w-full text-left border-collapse min-w-[550px] sm:min-w-[700px] text-xs">
                 <thead>
                   <tr className="border-b border-white/10 bg-white/5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-2.5 px-3 sm:py-3 sm:px-4 w-[28%] min-w-[130px] sm:min-w-[180px] font-bold">
+                    <th className="py-2.5 px-3 sm:py-3 sm:px-4 w-[28%] min-w-[140px] sm:min-w-[200px] font-bold sticky left-0 bg-[#0c1222] z-30 border-r border-white/10 shadow-md">
                       Produit & Rayon ({filteredRows.length})
                     </th>
 
-                      {allStores.map(st => (
-                        <th key={st.displayName} className="py-2.5 px-2 sm:py-3 sm:px-3 text-center min-w-[110px] sm:min-w-[130px] font-bold text-white">
+                    {allStores.map(st => {
+                      const enseigne = getStoreEnseigne(st.displayName);
+                      return (
+                        <th key={st.displayName} className="py-2.5 px-2 sm:py-3 sm:px-3 text-center min-w-[115px] sm:min-w-[140px] font-bold text-white">
                           <div className="flex flex-col items-center justify-center gap-0.5">
-                            <div className="flex items-center justify-center gap-1 flex-wrap">
-                              <span className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", getStoreDotColor(st.displayName))} />
-                              <span className="font-bold sm:font-extrabold text-[11px] sm:text-xs leading-tight" title={st.displayName}>{st.displayName}</span>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <span className={cn("w-2 h-2 rounded-full shrink-0", getStoreDotColor(st.displayName))} />
+                              <span className="font-black text-xs sm:text-sm tracking-wide uppercase leading-tight" title={st.displayName}>
+                                {enseigne.brand}
+                              </span>
                               {st.googleMapsUrl && (
                                 <a
                                   href={st.googleMapsUrl}
@@ -1255,246 +1312,326 @@ export default function Receipts() {
                                 </a>
                               )}
                             </div>
-                            {st.address && (
-                              <span className="text-[9px] font-normal text-slate-400 truncate max-w-[95px] sm:max-w-[120px] hidden xs:inline" title={st.address}>
-                                {st.address}
+                            {enseigne.location && (
+                              <span className="text-[9px] sm:text-[10px] font-medium text-slate-400 truncate max-w-[110px]" title={st.address || enseigne.location}>
+                                {enseigne.location}
                               </span>
                             )}
                           </div>
                         </th>
-                      ))}
+                      );
+                    })}
 
-                      <th className="py-3 px-3 text-right w-[15%] min-w-[110px] font-bold">
-                        Écart Audit
-                      </th>
-                      <th className="py-3 px-2 text-center w-[6%] font-bold">
-                        Action
-                      </th>
+                    <th className="py-3 px-3 text-right w-[15%] min-w-[110px] font-bold">
+                      Écart Audit
+                    </th>
+                    <th className="py-3 px-2 text-center w-[6%] font-bold">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-white/5 text-xs">
+                  {filteredRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={allStores.length + 3} className="py-12 text-center text-slate-400">
+                        <Package size={28} className="mx-auto mb-2 opacity-40 text-cyan-400" />
+                        <p className="font-semibold text-white">Aucun produit ne correspond à vos filtres.</p>
+                        <p className="text-[11px] mt-0.5">
+                          {hideUncomparable ? "Désactivez 'Comparer uniquement' pour revoir tous les articles." : "Importez d'autres tickets pour enrichir le comparatif."}
+                        </p>
+                      </td>
                     </tr>
-                  </thead>
+                  ) : (
+                    groupedRowsByCategory.map(({ category, rows }, groupIdx) => (
+                      <React.Fragment key={category}>
+                        {/* ESPACEMENT VISUEL MARQUÉ ENTRE LES CATÉGORIES (SAUF LA PREMIÈRE) */}
+                        {groupIdx > 0 && (
+                          <tr className="h-4 sm:h-6 bg-transparent border-none">
+                            <td colSpan={allStores.length + 3} className="p-0 border-none bg-transparent" />
+                          </tr>
+                        )}
 
-                  <tbody className="divide-y divide-white/5 text-xs">
-                    {filteredRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={allStores.length + 3} className="py-12 text-center text-slate-400">
-                          <Package size={28} className="mx-auto mb-2 opacity-40 text-cyan-400" />
-                          <p className="font-semibold text-white">Aucun produit ne correspond à vos filtres.</p>
-                          <p className="text-[11px] mt-0.5">
-                            {hideUncomparable ? "Désactivez 'Comparer uniquement' pour revoir tous les articles." : "Importez d'autres tickets pour enrichir le comparatif."}
-                          </p>
-                        </td>
-                      </tr>
-                    ) : (
-                      groupedRowsByCategory.map(({ category, rows }) => (
-                        <React.Fragment key={category}>
-                          {/* LIGNE D'EN-TÊTE DE SÉPARATION VISUELLE PAR CATÉGORIE (GOOGLE STITCH) */}
-                          <tr className="bg-slate-900/90 border-y-2 border-white/10 text-white backdrop-blur-md sticky top-0 z-2 shadow-sm">
-                            <td
-                              colSpan={allStores.length + 3}
-                              className="py-2.5 px-3 sm:px-4 bg-gradient-to-r from-slate-900 via-slate-800/80 to-slate-900/40"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2.5">
-                                  <span className="text-base sm:text-lg">{getCategoryEmoji(category)}</span>
-                                  <span className="font-extrabold text-xs sm:text-sm tracking-wide text-white uppercase">
-                                    {category}
-                                  </span>
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono">
-                                    {rows.length} article{rows.length > 1 ? 's' : ''}
-                                  </span>
+                        {/* LIGNE D'EN-TÊTE DE SÉPARATION VISUELLE MAJESTUEUSE PAR CATÉGORIE (GOOGLE STITCH) */}
+                        <tr className="border-t-2 border-b-2 border-cyan-500/30 bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 text-white backdrop-blur-md sticky top-0 z-20 shadow-lg">
+                          <td
+                            colSpan={allStores.length + 3}
+                            className="p-0"
+                          >
+                            {/* Conteneur sticky horizontal sur mobile : reste collé à gauche quand on fait défiler les colonnes */}
+                            <div className="sticky left-0 max-w-[calc(100vw-32px)] sm:max-w-none px-3.5 sm:px-5 py-3 sm:py-3.5 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                                {/* Grand médaillon illustratif avec fond glow */}
+                                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center text-xl sm:text-2xl shadow-inner shrink-0">
+                                  {getCategoryEmoji(category)}
                                 </div>
-                                <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-                                  {rows.filter(r => r.isComparable).length} produit{rows.filter(r => r.isComparable).length > 1 ? 's' : ''} comparable{rows.filter(r => r.isComparable).length > 1 ? 's' : ''}
+
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-black text-xs sm:text-base tracking-wider text-white uppercase truncate">
+                                      {category}
+                                    </span>
+                                    <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono shrink-0">
+                                      {rows.length} article{rows.length > 1 ? 's' : ''}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate mt-0.5">
+                                    {getCategoryDescription(category)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] sm:text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hidden md:inline-flex items-center gap-1.5">
+                                  <Trophy size={11} className="text-amber-300 fill-amber-300" />
+                                  {rows.filter(r => r.isComparable).length} comparables
                                 </span>
                               </div>
-                            </td>
-                          </tr>
+                            </div>
+                          </td>
+                        </tr>
 
-                          {/* LIGNES D'ARTICLES DE CETTE CATÉGORIE */}
-                          {rows.map(row => (
-                            <tr key={row.cleBesoin || row.nomGenerique} className="hover:bg-white/[0.03] transition-colors group">
-                              {/* 1. COLONNE PRODUIT AVEC DOUBLE AFFICHAGE (standardized_name en évidence + nom brut du ticket dessous) */}
-                              <td className="py-2.5 px-3 sm:py-3 sm:px-4 sticky left-0 bg-[#0c1222]/95 backdrop-blur-md z-1 border-r border-white/10 max-w-[140px] sm:max-w-[240px] align-middle">
-                                <div className="flex flex-col gap-1 min-w-0">
-                                  <div className="flex items-center gap-1.5 sm:gap-2">
-                                    <span className="text-sm sm:text-base shrink-0">{getProductEmoji(row.standardized_name || row.nomGenerique, row.rayon)}</span>
-                                    <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight leading-snug line-clamp-2">
-                                      {correctFrenchSpelling(row.standardized_name || row.nomGenerique)}
-                                    </span>
-                                  </div>
-
-                                  {/* Double affichage : nom original issu des tickets de caisse */}
-                                  {row.sampleRawNames && row.sampleRawNames.length > 0 ? (
-                                    <div className="text-[11px] text-slate-400 font-mono truncate pl-5 sm:pl-6" title={row.sampleRawNames.join(' · ')}>
-                                      <span className="text-slate-500 font-semibold mr-1">Ticket :</span>
-                                      <span>{row.sampleRawNames.slice(0, 2).join(' · ')}{row.sampleRawNames.length > 2 ? ` (+${row.sampleRawNames.length - 2})` : ''}</span>
-                                    </div>
-                                  ) : (
-                                    row.sampleRawRow?.rawName && row.sampleRawRow.rawName !== row.nomGenerique && (
-                                      <div className="text-[11px] text-slate-400 font-mono truncate pl-5 sm:pl-6">
-                                        <span className="text-slate-500 font-semibold mr-1">Ticket :</span>
-                                        <span>{row.sampleRawRow.rawName}</span>
-                                      </div>
-                                    )
-                                  )}
-
-                                  {row.sampleBrands.length > 0 && row.sampleBrands[0] !== 'Générique' && (
-                                    <div className="flex items-center gap-1 pl-5 sm:pl-6">
-                                      <span className="text-[9px] font-medium text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.2 rounded-md truncate max-w-[140px]" title={row.sampleBrands.join(', ')}>
-                                        {row.sampleBrands.join(', ')}
-                                      </span>
-                                    </div>
-                                  )}
+                        {/* LIGNES D'ARTICLES DE CETTE CATÉGORIE */}
+                        {rows.map(row => (
+                          <tr key={row.cleBesoin || row.nomGenerique} className="hover:bg-white/[0.03] transition-colors group">
+                            {/* 1. COLONNE PRODUIT AVEC DOUBLE AFFICHAGE & LISTE DES ENSEIGNES RÉPERTORIÉES */}
+                            <td className="py-2.5 px-3 sm:py-3 sm:px-4 sticky left-0 bg-[#0c1222]/95 backdrop-blur-md z-10 border-r border-white/10 max-w-[140px] sm:max-w-[240px] align-middle shadow-md">
+                              <div className="flex flex-col gap-1 min-w-0">
+                                <div className="flex items-center gap-1.5 sm:gap-2">
+                                  <span className="text-sm sm:text-base shrink-0">{getProductEmoji(row.standardized_name || row.nomGenerique, row.rayon)}</span>
+                                  <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight leading-snug line-clamp-2">
+                                    {correctFrenchSpelling(row.standardized_name || row.nomGenerique)}
+                                  </span>
                                 </div>
-                              </td>
 
-                              {/* 2. COLONNES MAGASINS : MISE EN ÉVIDENCE DE LA CELLULE LA MOINS CHÈRE */}
-                              {allStores.map(st => {
-                                const offer = row.storeOffers[st.displayName];
-                                if (!offer) {
-                                  return (
-                                    <td key={st.displayName} className="py-3 px-3 text-center text-slate-600 font-mono text-xs align-middle">
-                                      —
-                                    </td>
-                                  );
-                                }
-
-                                const isCheapestInRow = (row.isComparable || row.storeCount > 1) && offer.prixUnitaire === row.lowestPrice;
-
-                                return (
-                                  <td 
-                                    key={st.displayName}
-                                    className={cn(
-                                      "py-3 px-3 text-center transition-all align-middle",
-                                      isCheapestInRow && "bg-emerald-500/15 border-x border-emerald-500/30 shadow-[inset_0_0_12px_rgba(16,185,129,0.12)]"
-                                    )}
-                                  >
-                                    <div
-                                      className="flex flex-col items-center justify-center cursor-pointer py-1.5 px-2 rounded-xl transition-all hover:bg-white/5 select-none group/cell"
-                                      onMouseEnter={(e) => {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setFloatingTooltip({
-                                          offer,
-                                          storeName: st.displayName,
-                                          isCheapest: isCheapestInRow,
-                                          x: rect.left + rect.width / 2,
-                                          y: rect.top
-                                        });
-                                      }}
-                                      onMouseLeave={() => setFloatingTooltip(null)}
-                                      onClick={(e) => {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setFloatingTooltip(prev => prev ? null : {
-                                          offer,
-                                          storeName: st.displayName,
-                                          isCheapest: isCheapestInRow,
-                                          x: rect.left + rect.width / 2,
-                                          y: rect.top
-                                        });
-                                      }}
-                                      role="button"
-                                      tabIndex={0}
-                                    >
-                                      {offer.isPromo && offer.initialUnitPrice && offer.initialUnitPrice > offer.prixUnitaire && (
-                                        <span className="text-[10px] font-mono text-slate-400 line-through block leading-none mb-0.5">
-                                          {formatCurrency(offer.initialUnitPrice, { showSign: false })}
-                                        </span>
-                                      )}
-
-                                      {/* Prix au kilo/litre en vert fluo si le moins cher */}
-                                      <div className={cn(
-                                        "font-black font-mono text-sm sm:text-base flex items-baseline justify-center gap-0.5 tracking-tight transition-transform duration-150 group-hover/cell:scale-105",
-                                        isCheapestInRow 
-                                          ? "text-[#22c55e] font-black drop-shadow-[0_0_8px_rgba(34,197,94,0.4)]" 
-                                          : "text-white"
-                                      )}>
-                                        <span>{formatCurrency(offer.prixUnitaire, { showSign: false })}</span>
-                                        <span className={cn(
-                                          "text-[11px] font-bold",
-                                          isCheapestInRow ? "text-emerald-400/90" : "text-slate-400"
-                                        )}>
-                                          /{offer.unite}
-                                        </span>
-                                      </div>
-
-                                      <div className="flex flex-wrap items-center justify-center gap-1 mt-0.5">
-                                        {offer.isPromo && (
-                                          <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                            <Zap size={8} className="fill-amber-400" />
-                                            -{offer.discountRate || Math.round(((offer.discountAmount || 0) / (offer.initialPrice || 1)) * 100)}%
-                                          </span>
-                                        )}
-
-                                        {/* Badge et trophée pour le produit le moins cher */}
-                                        {isCheapestInRow && (
-                                          <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-400/40 shadow-xs">
-                                            <Trophy size={10} className="text-amber-300 fill-amber-300 shrink-0" />
-                                            <span>Moins cher</span>
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </td>
-                                );
-                              })}
-
-                              {/* 3. Statut & Écart Audit */}
-                              <td className="py-3 px-3 text-right align-middle">
-                                {row.isComparable ? (
-                                  <div className="flex flex-col items-end">
-                                    <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
-                                      {row.storeCount} magasins
-                                    </span>
-                                    {row.priceDiff > 0 && (
-                                      <span className="text-[10px] font-bold text-emerald-300 font-mono mt-1">
-                                        -{row.priceDiffPercent}% (+{formatCurrency(row.priceDiff, { showSign: false })})
-                                      </span>
-                                    )}
+                                {/* Double affichage : nom original issu des tickets de caisse */}
+                                {row.sampleRawNames && row.sampleRawNames.length > 0 ? (
+                                  <div className="text-[11px] text-slate-400 font-mono truncate pl-5 sm:pl-6" title={row.sampleRawNames.join(' · ')}>
+                                    <span className="text-slate-500 font-semibold mr-1">Ticket :</span>
+                                    <span>{row.sampleRawNames.slice(0, 2).join(' · ')}{row.sampleRawNames.length > 2 ? ` (+${row.sampleRawNames.length - 2})` : ''}</span>
                                   </div>
                                 ) : (
-                                  <div className="flex flex-col items-end">
-                                    <span className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10">
-                                      1 magasin
-                                    </span>
-                                    <span className="text-[9px] text-slate-400 mt-0.5">
-                                      Unique
+                                  row.sampleRawRow?.rawName && row.sampleRawRow.rawName !== row.nomGenerique && (
+                                    <div className="text-[11px] text-slate-400 font-mono truncate pl-5 sm:pl-6">
+                                      <span className="text-slate-500 font-semibold mr-1">Ticket :</span>
+                                      <span>{row.sampleRawRow.rawName}</span>
+                                    </div>
+                                  )
+                                )}
+
+                                {row.sampleBrands.length > 0 && row.sampleBrands[0] !== 'Générique' && (
+                                  <div className="flex items-center gap-1 pl-5 sm:pl-6">
+                                    <span className="text-[9px] font-medium text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.2 rounded-md truncate max-w-[140px]" title={row.sampleBrands.join(', ')}>
+                                      {row.sampleBrands.join(', ')}
                                     </span>
                                   </div>
                                 )}
-                              </td>
 
-                              {/* 4. Action */}
-                              <td className="py-3 px-2 text-center align-middle">
-                                <div className="flex items-center justify-center gap-1">
-                                  {row.sampleRawRow && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedProductForEvolution(row.sampleRawRow || null)}
-                                      className="p-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/15 transition-colors"
-                                      title="Voir la courbe d'évolution du prix"
-                                    >
-                                      <TrendingUp size={13} />
-                                    </button>
+                                {/* Enseignes répertoriées pour ce produit avec indicateur de meilleure offre */}
+                                <div className="flex flex-wrap items-center gap-1 pl-5 sm:pl-6 pt-0.5">
+                                  {allStores
+                                    .filter(st => Boolean(row.storeOffers[st.displayName]))
+                                    .map(st => {
+                                      const off = row.storeOffers[st.displayName];
+                                      const isBest = (row.isComparable || row.storeCount > 1) && off?.prixUnitaire === row.lowestPrice;
+                                      const { brand } = getStoreEnseigne(st.displayName);
+                                      return (
+                                        <span
+                                          key={st.displayName}
+                                          className={cn(
+                                            "inline-flex items-center gap-1 text-[8px] sm:text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border",
+                                            isBest
+                                              ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
+                                              : "bg-white/5 border-white/10 text-slate-300"
+                                          )}
+                                          title={`${st.displayName} : ${off.prixUnitaire.toFixed(2).replace('.', ',')} €/${off.unite}`}
+                                        >
+                                          <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", getStoreDotColor(st.displayName))} />
+                                          <span>{brand}</span>
+                                          {isBest && <Trophy size={8} className="text-amber-300 fill-amber-300 shrink-0" />}
+                                        </span>
+                                      );
+                                    })}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* 2. COLONNES MAGASINS : MISE EN ÉVIDENCE DE L'ENSEIGNE ET DU MEILLEUR PRIX */}
+                            {allStores.map(st => {
+                              const offer = row.storeOffers[st.displayName];
+                              if (!offer) {
+                                return (
+                                  <td key={st.displayName} className="py-3 px-3 text-center text-slate-600 font-mono text-xs align-middle">
+                                    —
+                                  </td>
+                                );
+                              }
+
+                              const isCheapestInRow = (row.isComparable || row.storeCount > 1) && offer.prixUnitaire === row.lowestPrice;
+                              const enseigneInfo = getStoreEnseigne(st.displayName);
+
+                              return (
+                                <td 
+                                  key={st.displayName}
+                                  className={cn(
+                                    "py-2.5 px-2 sm:py-3 sm:px-3 text-center transition-all align-middle min-w-[115px] sm:min-w-[140px]",
+                                    isCheapestInRow && "bg-emerald-500/15 border-x border-emerald-500/30 shadow-[inset_0_0_14px_rgba(16,185,129,0.14)]"
                                   )}
+                                >
+                                  <div
+                                    className={cn(
+                                      "flex flex-col items-center justify-center cursor-pointer p-2 rounded-xl transition-all select-none group/cell border",
+                                      isCheapestInRow 
+                                        ? "bg-emerald-950/30 border-emerald-500/30 hover:bg-emerald-900/40 hover:border-emerald-400/50" 
+                                        : "bg-white/[0.02] border-white/5 hover:bg-white/[0.06] hover:border-white/15"
+                                    )}
+                                    onMouseEnter={(e) => {
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setFloatingTooltip({
+                                        offer,
+                                        storeName: st.displayName,
+                                        isCheapest: isCheapestInRow,
+                                        x: rect.left + rect.width / 2,
+                                        y: rect.top
+                                      });
+                                    }}
+                                    onMouseLeave={() => setFloatingTooltip(null)}
+                                    onClick={() => {
+                                      setActiveOfferDetailModal({
+                                        offer,
+                                        storeName: st.displayName,
+                                        isCheapest: isCheapestInRow,
+                                        productName: correctFrenchSpelling(row.standardized_name || row.nomGenerique),
+                                        category: row.category || row.rayon,
+                                        rawTicketName: offer.rawName || (row.sampleRawNames && row.sampleRawNames[0]) || ''
+                                      });
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                  >
+                                    {/* ENSEIGNE DU MAGASIN (LIDL, E.LECLERC, INTERMARCHÉ, ETC.) */}
+                                    <div className="flex items-center justify-center gap-1 mb-1">
+                                      <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", getStoreDotColor(st.displayName))} />
+                                      <span className="font-extrabold text-[10px] sm:text-[11px] uppercase tracking-wider text-slate-300 group-hover/cell:text-white transition-colors truncate max-w-[105px]">
+                                        {enseigneInfo.brand}
+                                      </span>
+                                    </div>
+
+                                    {/* Prix barré si promo */}
+                                    {offer.isPromo && offer.initialUnitPrice && offer.initialUnitPrice > offer.prixUnitaire && (
+                                      <span className="text-[10px] font-mono text-slate-400 line-through block leading-none mb-0.5 whitespace-nowrap">
+                                        {offer.initialUnitPrice.toFixed(2).replace('.', ',')}&nbsp;€
+                                      </span>
+                                    )}
+
+                                    {/* PRIX UNITAIRE DE COMPARAISON SANS RETOUR À LA LIGNE */}
+                                    <div className={cn(
+                                      "whitespace-nowrap font-black font-mono text-xs sm:text-sm flex items-baseline justify-center gap-0.5 tracking-tight transition-transform duration-150 group-hover/cell:scale-105",
+                                      isCheapestInRow 
+                                        ? "text-[#22c55e] font-black drop-shadow-[0_0_8px_rgba(34,197,94,0.4)]" 
+                                        : "text-white"
+                                    )}>
+                                      <span>{offer.prixUnitaire.toFixed(2).replace('.', ',')}&nbsp;€</span>
+                                      <span className={cn(
+                                        "text-[10px] font-bold",
+                                        isCheapestInRow ? "text-emerald-400/90" : "text-slate-400"
+                                      )}>
+                                        /{offer.unite}
+                                      </span>
+                                    </div>
+
+                                    {/* PRIX RÉEL PAYÉ SUR LE TICKET DE CAISSE */}
+                                    {offer.prixPaye !== undefined && (
+                                      <div className="text-[9px] font-mono text-slate-400 whitespace-nowrap mt-0.5 flex items-center justify-center gap-0.5">
+                                        <span className="text-slate-500 font-semibold">Payé :</span>
+                                        <span className="font-bold text-slate-300">{offer.prixPaye.toFixed(2).replace('.', ',')}&nbsp;€</span>
+                                      </div>
+                                    )}
+
+                                    {/* BADGES PROMO & MOINS CHER */}
+                                    <div className="flex flex-wrap items-center justify-center gap-1 mt-1">
+                                      {offer.isPromo && (
+                                        <span className="inline-flex items-center gap-0.5 text-[8px] sm:text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                                          <Zap size={8} className="fill-amber-400 shrink-0" />
+                                          -{offer.discountRate || Math.round(((offer.discountAmount || 0) / (offer.initialPrice || 1)) * 100)}%
+                                        </span>
+                                      )}
+
+                                      {isCheapestInRow && (
+                                        <span className="inline-flex items-center gap-1 text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-400/40 shadow-xs whitespace-nowrap">
+                                          <Trophy size={9} className="text-amber-300 fill-amber-300 shrink-0" />
+                                          <span>Moins cher</span>
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* INDICATION EXPLICITE D'INTERACTIVITÉ : DÉTAIL ℹ️ */}
+                                    <div className="mt-1 flex items-center justify-center gap-0.5 text-[8px] sm:text-[9px] font-medium text-cyan-400/70 group-hover/cell:text-cyan-300 transition-colors">
+                                      <Info size={9} />
+                                      <span>Détail</span>
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            })}
+
+                            {/* 3. Statut & Écart Audit */}
+                            <td className="py-3 px-3 text-right align-middle">
+                              {row.isComparable ? (
+                                <div className="flex flex-col items-end">
+                                  <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
+                                    {row.storeCount} magasins
+                                  </span>
+                                  {row.priceDiff > 0 && (
+                                    <span className="text-[10px] font-bold text-emerald-300 font-mono mt-1">
+                                      -{row.priceDiffPercent}% (+{formatCurrency(row.priceDiff, { showSign: false })})
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-end">
+                                  <span className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10">
+                                    1 magasin
+                                  </span>
+                                  <span className="text-[9px] text-slate-400 mt-0.5">
+                                    Unique
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* 4. Action */}
+                            <td className="py-3 px-2 text-center align-middle">
+                              <div className="flex items-center justify-center gap-1">
+                                {row.sampleRawRow && (
                                   <button
                                     type="button"
-                                    onClick={() => setProductToDelete(row.nomGenerique)}
-                                    className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
-                                    title="Masquer ce produit du tableau comparatif"
+                                    onClick={() => setSelectedProductForEvolution(row.sampleRawRow || null)}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/15 transition-colors"
+                                    title="Voir la courbe d'évolution du prix"
                                   >
-                                    <Trash2 size={13} />
+                                    <TrendingUp size={13} />
                                   </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </React.Fragment>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setProductToDelete(row.nomGenerique)}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
+                                  title="Masquer ce produit du tableau comparatif"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
+          </div>
 
         </div>
       )}
@@ -1509,11 +1646,156 @@ export default function Receipts() {
       )}
 
       {/* ========================================================================= */}
+      {/* MODALE COMPLÈTE DE DÉTAIL D'OFFRE (STITCH MOBILE & PC)                    */}
+      {/* ========================================================================= */}
+      {activeOfferDetailModal && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
+          onClick={() => setActiveOfferDetailModal(null)}
+        >
+          <div 
+            className="w-full max-w-md bg-[#0c1222] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 text-slate-100 relative animate-in zoom-in-95 duration-150 select-text"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Bouton fermeture */}
+            <button
+              onClick={() => setActiveOfferDetailModal(null)}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 transition-colors"
+              aria-label="Fermer"
+            >
+              <X size={18} />
+            </button>
+
+            {/* En-tête : Produit et Rayon */}
+            <div className="space-y-1.5 pr-8">
+              <div className="flex items-center gap-2">
+                <span className="text-xl shrink-0">{getProductEmoji(activeOfferDetailModal.productName, activeOfferDetailModal.category)}</span>
+                <h3 className="font-black text-base sm:text-lg text-white leading-tight">
+                  {activeOfferDetailModal.productName}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  {activeOfferDetailModal.category}
+                </span>
+                {activeOfferDetailModal.isCheapest && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 border border-emerald-400/40">
+                    <Trophy size={11} className="text-amber-300 fill-amber-300" />
+                    Offre la moins chère 🏆
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Carte Enseigne & Magasin */}
+            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className={cn("w-3 h-3 rounded-full shrink-0", getStoreDotColor(activeOfferDetailModal.storeName))} />
+                <div>
+                  <div className="font-extrabold text-sm text-white uppercase tracking-wider">
+                    {getStoreEnseigne(activeOfferDetailModal.storeName).brand}
+                  </div>
+                  {getStoreEnseigne(activeOfferDetailModal.storeName).location && (
+                    <div className="text-[11px] text-slate-400">
+                      {getStoreEnseigne(activeOfferDetailModal.storeName).location}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <span className="text-xs font-mono font-semibold text-slate-400">
+                {formatDateFR(activeOfferDetailModal.offer.date)}
+              </span>
+            </div>
+
+            {/* Encart promotion si active */}
+            {activeOfferDetailModal.offer.isPromo && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 space-y-1.5">
+                <div className="flex items-center justify-between font-bold text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <Zap size={14} className="fill-amber-400 text-amber-400" />
+                    Remise promotionnelle :
+                  </span>
+                  <span className="font-mono text-sm font-black text-amber-300">
+                    -{activeOfferDetailModal.offer.discountRate || Math.round(((activeOfferDetailModal.offer.discountAmount || 0) / (activeOfferDetailModal.offer.initialPrice || 1)) * 100)}%
+                  </span>
+                </div>
+                {activeOfferDetailModal.offer.discountAmount > 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300">Économie constatée :</span>
+                    <span className="font-mono font-bold text-amber-300">
+                      -{formatCurrency(activeOfferDetailModal.offer.discountAmount, { showSign: false })}
+                    </span>
+                  </div>
+                )}
+                {activeOfferDetailModal.offer.initialUnitPrice && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300">Prix unitaire initial :</span>
+                    <span className="font-mono line-through text-slate-400">
+                      {formatCurrency(activeOfferDetailModal.offer.initialUnitPrice, { showSign: false })}/{activeOfferDetailModal.offer.unite}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Grille des tarifs détaillés */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="p-3 rounded-2xl bg-slate-900/80 border border-white/10 space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Prix standardisé</span>
+                <div className={cn(
+                  "text-base sm:text-lg font-black font-mono",
+                  activeOfferDetailModal.isCheapest ? "text-[#22c55e]" : "text-white"
+                )}>
+                  {activeOfferDetailModal.offer.prixUnitaire.toFixed(2).replace('.', ',')} €
+                  <span className="text-xs font-bold text-slate-400 ml-1">/{activeOfferDetailModal.offer.unite}</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-900/80 border border-white/10 space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant payé</span>
+                <div className="text-base sm:text-lg font-black font-mono text-white">
+                  {formatCurrency(activeOfferDetailModal.offer.prixPaye, { showSign: false })}
+                </div>
+              </div>
+            </div>
+
+            {/* Métadonnées du ticket */}
+            <div className="space-y-2 p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Format / Quantité :</span>
+                <span className="font-mono font-semibold text-white">{activeOfferDetailModal.offer.format || '1 pièce'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Marque relevée :</span>
+                <span className="font-semibold text-white">{activeOfferDetailModal.offer.marque || 'Générique'}</span>
+              </div>
+              {activeOfferDetailModal.rawTicketName && (
+                <div className="pt-2 border-t border-white/10">
+                  <span className="text-slate-500 font-semibold block text-[10px] uppercase tracking-wider mb-0.5">Libellé sur ticket :</span>
+                  <span className="font-mono text-slate-300 text-[11px] block break-words">
+                    {activeOfferDetailModal.rawTicketName}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Bouton de fermeture */}
+            <button
+              onClick={() => setActiveOfferDetailModal(null)}
+              className="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-extrabold text-sm shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* L'INFOBULLE FLOTTANTE (TOOLTIP) - STITCH DESIGN DNA                       */}
       {/* ========================================================================= */}
       {floatingTooltip && (
         <div
-          className="fixed z-[9999] pointer-events-none -translate-x-1/2 -translate-y-full mb-2.5 w-60 p-3.5 rounded-2xl bg-[#0c1222]/95 backdrop-blur-xl border border-white/20 shadow-2xl shadow-black/80 text-xs animate-in fade-in zoom-in-95 duration-150 select-none text-slate-100"
+          className="fixed z-[9999] pointer-events-none -translate-x-1/2 -translate-y-full mb-2.5 w-60 p-3.5 rounded-2xl bg-[#0c1222]/95 backdrop-blur-xl border border-white/20 shadow-2xl shadow-black/80 text-xs animate-in fade-in zoom-in-95 duration-150 select-none text-slate-100 hidden sm:block"
           style={{
             left: `${floatingTooltip.x}px`,
             top: `${floatingTooltip.y - 8}px`
@@ -1524,7 +1806,7 @@ export default function Receipts() {
             <div className="flex items-center gap-1.5 truncate">
               <span className={cn("w-2 h-2 rounded-full shrink-0", getStoreDotColor(floatingTooltip.storeName))} />
               <span className="font-black text-xs text-white truncate" title={floatingTooltip.storeName}>
-                {floatingTooltip.storeName}
+                {getStoreEnseigne(floatingTooltip.storeName).brand}
               </span>
             </div>
             {floatingTooltip.isCheapest && (
