@@ -25,24 +25,24 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
   const flushTable = (keyPrefix: string) => {
     if (tableHeader.length > 0 || tableRows.length > 0) {
       elements.push(
-        <div key={`table-${keyPrefix}`} className="overflow-x-auto my-3 rounded-xl border border-border/80 dark:border-white/10 shadow-sm bg-card/60 backdrop-blur-md">
-          <table className="w-full text-xs text-left">
+        <div key={`table-${keyPrefix}`} className="overflow-x-auto my-4 rounded-2xl border border-white/12 shadow-lg bg-[#151824]/70 backdrop-blur-xl">
+          <table className="w-full text-xs sm:text-sm text-left">
             {tableHeader.length > 0 && (
-              <thead className="bg-secondary/60 dark:bg-white/[0.04] text-foreground font-semibold border-b border-border/80 dark:border-white/10 uppercase tracking-wider text-[11px]">
+              <thead className="bg-white/[0.05] text-slate-200 font-bold border-b border-white/10 uppercase tracking-wider text-[11px] sm:text-xs">
                 <tr>
                   {tableHeader.map((th, i) => (
-                    <th key={i} className="px-3.5 py-2.5 whitespace-nowrap">
+                    <th key={i} className="px-4 py-3 whitespace-nowrap">
                       {renderInlineFormatting(th, searchQuery)}
                     </th>
                   ))}
                 </tr>
               </thead>
             )}
-            <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
+            <tbody className="divide-y divide-white/[0.06]">
               {tableRows.map((row, ri) => (
-                <tr key={ri} className="hover:bg-secondary/30 dark:hover:bg-white/[0.02] transition-colors">
+                <tr key={ri} className="hover:bg-white/[0.04] transition-colors">
                   {row.map((cell, ci) => (
-                    <td key={ci} className="px-3.5 py-2 text-foreground/90">
+                    <td key={ci} className="px-4 py-3 text-slate-100">
                       {renderInlineFormatting(cell, searchQuery)}
                     </td>
                   ))}
@@ -62,9 +62,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     if (listItems.length > 0) {
       if (listType === 'ol') {
         elements.push(
-          <ol key={`ol-${keyPrefix}`} className="list-decimal list-inside space-y-1 my-2 text-xs md:text-sm text-foreground/90 leading-relaxed pl-1">
+          <ol key={`ol-${keyPrefix}`} className="list-decimal list-inside space-y-2 my-3 text-[15px] sm:text-base text-slate-100 leading-relaxed pl-2">
             {listItems.map((item, idx) => (
-              <li key={idx} className="marker:text-primary marker:font-bold">
+              <li key={idx} className="marker:text-sky-400 marker:font-bold">
                 {renderInlineFormatting(item, searchQuery)}
               </li>
             ))}
@@ -72,10 +72,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
         );
       } else {
         elements.push(
-          <ul key={`ul-${keyPrefix}`} className="space-y-1.5 my-2 text-xs md:text-sm text-foreground/90 leading-relaxed">
+          <ul key={`ul-${keyPrefix}`} className="space-y-2 my-3 text-[15px] sm:text-base text-slate-100 leading-relaxed">
             {listItems.map((item, idx) => (
-              <li key={idx} className="flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
+              <li key={idx} className="flex items-start gap-2.5">
+                <span className="w-2 h-2 rounded-full bg-sky-400 mt-2 shrink-0 shadow-[0_0_6px_rgba(56,189,248,0.8)]" />
                 <span>{renderInlineFormatting(item, searchQuery)}</span>
               </li>
             ))}
@@ -154,7 +154,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     // Headings
     if (trimmed.startsWith('### ')) {
       elements.push(
-        <h4 key={`h4-${idx}`} className="text-sm md:text-base font-bold text-foreground mt-4 mb-1.5 flex items-center gap-2">
+        <h4 key={`h4-${idx}`} className="text-base sm:text-lg font-bold text-white mt-5 mb-2 flex items-center gap-2">
           {renderInlineFormatting(trimmed.substring(4), searchQuery)}
         </h4>
       );
@@ -162,7 +162,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     }
     if (trimmed.startsWith('## ')) {
       elements.push(
-        <h3 key={`h3-${idx}`} className="text-base md:text-lg font-bold text-foreground mt-4 mb-2 flex items-center gap-2">
+        <h3 key={`h3-${idx}`} className="text-lg sm:text-xl font-bold text-sky-300 mt-6 mb-2.5 flex items-center gap-2">
           {renderInlineFormatting(trimmed.substring(3), searchQuery)}
         </h3>
       );
@@ -170,7 +170,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     }
     if (trimmed.startsWith('# ')) {
       elements.push(
-        <h2 key={`h2-${idx}`} className="text-lg md:text-xl font-extrabold text-foreground mt-4 mb-2">
+        <h2 key={`h2-${idx}`} className="text-xl sm:text-2xl font-extrabold text-white mt-7 mb-3">
           {renderInlineFormatting(trimmed.substring(2), searchQuery)}
         </h2>
       );
@@ -180,7 +180,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
     // Blockquote
     if (trimmed.startsWith('> ')) {
       elements.push(
-        <div key={`bq-${idx}`} className="border-l-2 border-primary/70 bg-primary/[0.04] p-3 rounded-r-xl my-2 text-xs md:text-sm text-foreground/90 italic">
+        <div key={`bq-${idx}`} className="border-l-4 border-sky-400/80 bg-sky-500/[0.08] p-4 rounded-r-2xl my-3 text-[15px] sm:text-base text-slate-200 italic shadow-sm">
           {renderInlineFormatting(trimmed.substring(2), searchQuery)}
         </div>
       );
@@ -189,7 +189,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
 
     // Regular paragraph
     elements.push(
-      <p key={`p-${idx}`} className="text-xs md:text-sm text-foreground/90 leading-relaxed my-1.5">
+      <p key={`p-${idx}`} className="text-[15px] sm:text-base text-slate-100 leading-relaxed my-2.5">
         {renderInlineFormatting(trimmed, searchQuery)}
       </p>
     );
@@ -198,7 +198,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
   if (inTable) flushTable('end');
   if (inList) flushList('end');
 
-  return <div className={`space-y-1 ${className}`}>{elements}</div>;
+  return <div className={`space-y-2.5 ${className}`}>{elements}</div>;
 };
 
 // Formateur de style en ligne pour le gras, l'italique, le code et les badges monétaires
