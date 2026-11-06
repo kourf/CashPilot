@@ -442,10 +442,10 @@ export default function Coach() {
   };
 
   return (
-    <div className="flex flex-col flex-1 h-full min-h-[calc(100vh-4rem)] bg-[#070913] bg-[radial-gradient(ellipse_75%_55%_at_50%_35%,rgba(18,48,88,0.30),rgba(7,9,19,0)_80%)] text-white relative selection:bg-sky-500/30 selection:text-white overflow-x-hidden">
+    <div className="flex flex-col h-full w-full bg-[#070913] bg-[radial-gradient(ellipse_75%_55%_at_50%_35%,rgba(18,48,88,0.30),rgba(7,9,19,0)_80%)] text-white relative selection:bg-sky-500/30 selection:text-white overflow-hidden">
       
       {/* 1. TOP BAR ÉPURÉE STYLE GOOGLE GEMINI & APPLE GLASS */}
-      <div className="sticky top-0 z-30 px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 w-full">
+      <div className="shrink-0 z-30 px-3 sm:px-6 lg:px-8 py-2 sm:py-2.5 w-full">
         <div className="apple-glass rounded-full px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 max-w-6xl xl:max-w-7xl mx-auto shadow-2xl border border-white/15 bg-[#0b0f1e]/85 backdrop-blur-2xl">
           
           {/* Gauche: Historique & Mes Règles & Abonnements */}
@@ -460,21 +460,31 @@ export default function Coach() {
               <span>Historique</span>
             </button>
 
-            {/* Bouton Mes Règles & Abonnements épuré */}
-            <button
-              onClick={() => setIsRulesOpen(true)}
-              className="apple-glass-pill hover:bg-white/15 px-3.5 py-1.5 rounded-full text-xs font-semibold text-emerald-400 border-emerald-500/30 flex items-center gap-1.5 transition-all group cursor-pointer"
-              title="Gérer mes règles et abonnements récurrents"
-            >
-              <BookmarkCheck size={14} className="group-hover:scale-110 transition-transform shrink-0" />
-              <span className="hidden sm:inline">Règles & Abonnements</span>
-              <span className="sm:hidden">Règles</span>
-              {customRules.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                  {customRules.length}
-                </span>
-              )}
-            </button>
+            {/* Bouton Mes Règles & Abonnements épuré avec infobulle claire */}
+            <div className="relative group/tooltip">
+              <button
+                onClick={() => setIsRulesOpen(true)}
+                className="apple-glass-pill hover:bg-white/15 px-3.5 py-1.5 rounded-full text-xs font-semibold text-emerald-400 border-emerald-500/30 flex items-center gap-1.5 transition-all group cursor-pointer"
+              >
+                <BookmarkCheck size={14} className="group-hover:scale-110 transition-transform shrink-0" />
+                <span className="hidden sm:inline">Règles & Abonnements</span>
+                <span className="sm:hidden">Règles</span>
+                {customRules.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                    {customRules.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Infobulle explicative sur hover */}
+              <div className="absolute left-0 sm:left-1/2 sm:-translate-x-1/2 top-full mt-2 hidden group-hover/tooltip:flex flex-col items-center z-50 pointer-events-none w-64 animate-in fade-in zoom-in-95 duration-150">
+                <div className="w-2.5 h-2.5 bg-[#141724] border-t border-l border-white/20 rotate-45 -mb-1.5 hidden sm:block" />
+                <div className="rounded-xl bg-[#141724]/95 backdrop-blur-xl border border-white/20 p-2.5 shadow-2xl text-[11px] text-slate-200 text-center leading-relaxed">
+                  <span className="font-semibold text-emerald-400 block mb-0.5">Classification automatique</span>
+                  Associez vos prélèvements récurrents (loyer, Netflix, courses...) pour que le Coach les classe automatiquement.
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Droite: Loupe de recherche + Nouvelle Discussion */}
@@ -928,14 +938,14 @@ export default function Coach() {
       )}
 
       {/* 3. ZONE CENTRALE EXPANDED & AIRY (INSPIRÉE DE GOOGLE GEMINI) */}
-      <div className="flex-1 flex flex-col justify-between w-full max-w-6xl xl:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="flex-1 overflow-y-auto w-full min-h-0 px-4 sm:px-6 lg:px-8 flex flex-col">
         
         {messages.length === 0 ? (
           /* ÉCRAN D'ACCUEIL PLEINE LARGEUR INSPIRÉ DE GOOGLE GEMINI */
-          <div className="flex-1 flex flex-col justify-center py-8 sm:py-14 md:py-20 pb-52 animate-in fade-in duration-500 w-full space-y-8 sm:space-y-12">
+          <div className="flex-1 flex flex-col justify-center py-4 sm:py-6 lg:py-8 w-full max-w-5xl xl:max-w-6xl mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-300">
             
             {/* Header d'Accueil Inspiré de Google Gemini */}
-            <div className="space-y-3 sm:space-y-4 max-w-3xl">
+            <div className="space-y-2.5 sm:space-y-3.5 max-w-3xl">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-sky-500/15 via-indigo-500/15 to-purple-500/15 border border-sky-400/25 shadow-[0_0_15px_rgba(56,189,248,0.2)]">
                 <Sparkles size={14} className="text-sky-400 animate-pulse" />
                 <span className="text-xs font-semibold bg-gradient-to-r from-sky-300 via-indigo-200 to-rose-200 bg-clip-text text-transparent">
@@ -943,7 +953,7 @@ export default function Coach() {
                 </span>
               </div>
 
-              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-medium tracking-tight text-white leading-tight">
+              <h1 className="text-2xl sm:text-4xl lg:text-5xl font-medium tracking-tight text-white leading-tight">
                 <span className="bg-gradient-to-r from-sky-400 via-indigo-300 to-rose-300 bg-clip-text text-transparent font-semibold">
                   Bonjour,
                 </span>
@@ -953,13 +963,13 @@ export default function Coach() {
                 </span>
               </h1>
 
-              <p className="text-sm sm:text-base md:text-lg text-slate-400 font-light leading-relaxed max-w-2xl">
+              <p className="text-xs sm:text-sm md:text-base text-slate-400 font-light leading-relaxed max-w-2xl">
                 Auditez vos tickets de caisse, pilotez vos flux bancaires et optimisez vos abonnements en langage naturel.
               </p>
             </div>
 
             {/* Grille des 4 Cartes de Suggestions Pleine Largeur Google Gemini */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
               {geminiSuggestions.map((item, idx) => {
                 const Icon = item.icon;
                 return (
@@ -967,24 +977,24 @@ export default function Coach() {
                     key={idx}
                     type="button"
                     onClick={() => onSend(item.prompt)}
-                    className="group relative p-5 sm:p-6 rounded-3xl bg-[#13151f]/80 hover:bg-[#1a1d2c]/90 border border-white/10 hover:border-sky-400/40 shadow-lg hover:shadow-[0_16px_36px_-8px_rgba(56,189,248,0.25)] transition-all duration-300 text-left flex flex-col justify-between min-h-[145px] sm:min-h-[160px] active:scale-[0.98] cursor-pointer"
+                    className="group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#121422]/85 hover:bg-[#181c2f]/95 border border-white/10 hover:border-sky-400/40 shadow-md hover:shadow-[0_12px_28px_-6px_rgba(56,189,248,0.22)] transition-all duration-200 text-left flex flex-col justify-between min-h-[110px] sm:min-h-[125px] active:scale-[0.98] cursor-pointer"
                   >
-                    <div className="space-y-1.5">
-                      <h3 className="text-sm sm:text-base font-semibold text-white group-hover:text-sky-300 transition-colors">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-semibold text-white group-hover:text-sky-300 transition-colors">
                         {item.title}
                       </h3>
-                      <p className="text-xs sm:text-[13px] text-slate-400 font-light leading-relaxed line-clamp-2">
+                      <p className="text-xs text-slate-400 font-light leading-relaxed line-clamp-2">
                         {item.description}
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between pt-4 mt-auto">
+                    <div className="flex items-center justify-between pt-3 mt-auto">
                       <span className="text-[11px] font-semibold text-slate-500 group-hover:text-sky-400 transition-colors flex items-center gap-1">
                         Lancer l'audit
                         <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
                       </span>
-                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center border transition-all duration-300 ${item.bgGlow} ${item.iconColor} group-hover:scale-110 shadow-sm`}>
-                        <Icon size={18} />
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center border transition-all duration-200 ${item.bgGlow} ${item.iconColor} group-hover:scale-110 shadow-sm`}>
+                        <Icon size={16} />
                       </div>
                     </div>
                   </button>
@@ -995,8 +1005,8 @@ export default function Coach() {
           </div>
         ) : (
           /* VUE CONVERSATION AÉRÉE ET ÉLARGIE STYLE GOOGLE GEMINI */
-          <div className="flex-1 flex flex-col py-6 space-y-8 w-full">
-            <div className="space-y-8 pb-64 md:pb-52 w-full">
+          <div className="flex-1 flex flex-col py-4 sm:py-6 space-y-6 w-full max-w-4xl xl:max-w-5xl mx-auto">
+            <div className="space-y-6 pb-6 w-full">
               {messages.map((msg) => {
                 const isUser = msg.role === 'user';
                 const isCurrentTargetMsg = isSearchOpen && searchMatches[currentMatchIndex]?.messageId === msg.id;
@@ -1011,7 +1021,7 @@ export default function Coach() {
                       }`}
                     >
                       <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl space-y-1.5">
-                        <div className="px-5 sm:px-6 py-4 sm:py-5 rounded-[26px] bg-[#282a2c]/90 hover:bg-[#282a2c] border border-white/10 text-white shadow-lg text-[15px] sm:text-base leading-relaxed">
+                        <div className="px-5 sm:px-6 py-3.5 sm:py-4 rounded-[24px] bg-[#282a2c]/90 hover:bg-[#282a2c] border border-white/10 text-white shadow-lg text-[15px] sm:text-base leading-relaxed">
                           <p className="whitespace-pre-wrap">{highlightSearchMatch(msg.content, searchQuery)}</p>
                         </div>
                         <div className="flex items-center justify-end gap-2 text-xs text-slate-400 pr-2">
@@ -1044,7 +1054,7 @@ export default function Coach() {
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-2.5">
-                      <div className="p-6 sm:p-7 sm:px-8 rounded-[28px] bg-[#141724]/75 backdrop-blur-2xl border border-white/10 text-slate-100 shadow-xl space-y-4">
+                      <div className="p-5 sm:p-7 rounded-[26px] bg-[#141724]/75 backdrop-blur-2xl border border-white/10 text-slate-100 shadow-xl space-y-4">
                         <MarkdownRenderer content={msg.content} searchQuery={searchQuery} />
                         {msg.proposedAction && renderValidationCard(msg.id, msg.proposedAction)}
                       </div>
@@ -1115,28 +1125,30 @@ export default function Coach() {
         )}
       </div>
 
-      {/* 4. BARRE DE SAISIE PROMPT GEMINI PINNED EN BAS (PLEINE LARGEUR AÉRÉE) */}
-      <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 px-4 sm:px-6 lg:px-8 py-2.5 bg-gradient-to-t from-[#070913] via-[#070913]/92 to-transparent backdrop-blur-md">
-        <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-2.5">
+      {/* 4. BARRE DE SAISIE PROMPT GEMINI (FLEX SIBLING NON-FIXED) */}
+      <div className="shrink-0 z-30 w-full px-4 sm:px-6 lg:px-8 pt-2 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] bg-gradient-to-t from-[#070913] via-[#070913]/95 to-transparent">
+        <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-2">
           
-          {/* Pilules d'audit rapide épurées horizontales */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs touch-pan-x px-1">
-            <span className="text-slate-400 text-xs font-semibold shrink-0 flex items-center gap-1.5 pr-1">
-              <Sparkles size={12} className="text-sky-400" /> Suggestions :
-            </span>
-            {geminiSuggestions.map((item, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => onSend(item.prompt)}
-                className="px-3.5 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 hover:border-sky-400/40 text-slate-300 hover:text-sky-300 shrink-0 transition-all text-xs font-medium cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-sm"
-              >
-                <span>{item.title}</span>
-              </button>
-            ))}
-          </div>
+          {/* Pilules d'audit rapide épurées horizontales (UNIQUEMENT EN MODE DISCUSSION) */}
+          {messages.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs touch-pan-x px-1 animate-in fade-in duration-200">
+              <span className="text-slate-400 text-xs font-semibold shrink-0 flex items-center gap-1.5 pr-1">
+                <Sparkles size={12} className="text-sky-400" /> Suggestions :
+              </span>
+              {geminiSuggestions.map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => onSend(item.prompt)}
+                  className="px-3 py-1 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 hover:border-sky-400/40 text-slate-300 hover:text-sky-300 shrink-0 transition-all text-xs font-medium cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-sm"
+                >
+                  <span>{item.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
-          {/* Capsule de Saisie Prompt Flottante Style Google Gemini */}
+          {/* Capsule de Saisie Prompt Style Google Gemini */}
           <div className="bg-[#1e1f20]/95 backdrop-blur-2xl rounded-[32px] border border-white/15 p-2 sm:p-2.5 pl-4 sm:pl-6 flex items-center gap-2.5 sm:gap-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.65)] focus-within:border-sky-400/70 focus-within:ring-2 focus-within:ring-sky-400/25 transition-all duration-300">
             
             {/* Bouton '+' (Connecteurs / Règles) */}
@@ -1164,12 +1176,6 @@ export default function Coach() {
               disabled={isLoading}
               className="flex-1 bg-transparent border-none text-sm sm:text-base text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
             />
-
-            {/* Pillule Modèle Gemini */}
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] border border-white/10 text-slate-300 text-xs font-medium select-none cursor-default shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-              <span>Gemini 3.8</span>
-            </div>
 
             {/* Microphone Vocal */}
             <button

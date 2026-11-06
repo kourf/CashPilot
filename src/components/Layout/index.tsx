@@ -191,12 +191,17 @@ export default function Layout() {
         </div>
       </header>
 
-      {/* Main Content Area (Full screen canvas, harmonieux sur grand écran PC) */}
-      <main className="flex-1 overflow-y-auto pb-32 sm:pb-36 relative touch-scroll w-full">
+      {/* Main Content Area */}
+      <main className={cn(
+        "flex-1 relative w-full",
+        location.pathname === '/coach'
+          ? "overflow-hidden h-[calc(100vh-4rem)] p-0"
+          : "overflow-y-auto pb-32 sm:pb-36 touch-scroll"
+      )}>
         <div className={cn(
-          "w-full transition-all duration-300",
+          "w-full h-full transition-all duration-300",
           location.pathname === '/coach'
-            ? "h-full flex flex-col"
+            ? "flex flex-col"
             : "px-4 sm:px-6 lg:px-8"
         )}>
           <Outlet />
