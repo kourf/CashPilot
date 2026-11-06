@@ -1886,7 +1886,7 @@ export const BankStatements: React.FC = () => {
 
       } else {
         // Fast direct multimodal analysis with Gemini 3.8 Flash (100% Free, zero server lag)
-        setFileStatusMessage("Analyse directe et intelligente par Gemini 3.8 Flash (ultra-rapide)...");
+        setFileStatusMessage("Analyse directe et intelligente par IA CashPilot (ultra-rapide)...");
         let directSuccess = false;
 
         try {

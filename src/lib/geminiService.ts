@@ -29,7 +29,7 @@ export const AVAILABLE_FREE_GEMINI_MODELS = [
   },
   {
     id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
+    name: 'Gemini Pro Intelligence',
     badge: '🚀 Dernière Génération',
     description: 'Modèle recommandé par Google API pour les fonctionnalités avancées et analyses financières.',
     quota: 'Dernière version Google',
@@ -1034,7 +1034,7 @@ export async function generateDeepAuditReport(
   const markdownReport = `# Analyse du relevé bancaire (${periodLabel})
 
 *Méthode : comme demandé, analyse sémantique approfondie du libellé brut des opérations (et non des catégories du fichier, manifestement erronées).*
-*Chronomètre d'audit : **${elapsedSec}s** | Moteur : **Gemini 3.8 Flash (Free Tier)**.*
+*Chronomètre d'audit : **${elapsedSec}s** | Moteur : **CashPilot IA Intelligence**.*
 
 ---
 

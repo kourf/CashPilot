@@ -4,8 +4,26 @@ import './index.css'
 import App from './App.tsx'
 import { registerSW } from 'virtual:pwa-register'
 
-// Version d'application unique pour forcer la synchronisation mobile
-export const APP_BUILD_ID = '2026.11.01-v2.7';
+// Version d'application unique pour forcer la synchronisation mobile et PC
+export const APP_BUILD_ID = '2026.11.06-v2.8';
+
+// Détection automatique d'ancienne version : purge et recharge transparente
+if (typeof window !== 'undefined') {
+  const storedBuild = localStorage.getItem('cashpilot_build_id');
+  if (storedBuild && storedBuild !== APP_BUILD_ID) {
+    localStorage.setItem('cashpilot_build_id', APP_BUILD_ID);
+    if ('caches' in window) {
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
+    }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.unregister());
+      }).catch(() => {});
+    }
+  } else if (!storedBuild) {
+    localStorage.setItem('cashpilot_build_id', APP_BUILD_ID);
+  }
+}
 
 /**
  * Purge complète du CacheStorage et réinitialisation du Service Worker

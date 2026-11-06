@@ -442,10 +442,10 @@ export default function Coach() {
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#070913] bg-[radial-gradient(ellipse_75%_55%_at_50%_35%,rgba(18,48,88,0.30),rgba(7,9,19,0)_80%)] text-white relative selection:bg-sky-500/30 selection:text-white overflow-hidden">
+    <div className="flex flex-col min-h-full w-full bg-[#070913] bg-[radial-gradient(ellipse_75%_55%_at_50%_35%,rgba(18,48,88,0.30),rgba(7,9,19,0)_80%)] text-white relative selection:bg-sky-500/30 selection:text-white">
       
       {/* 1. TOP BAR ÉPURÉE STYLE GOOGLE GEMINI & APPLE GLASS */}
-      <div className="shrink-0 z-30 px-3 sm:px-6 lg:px-8 py-2 sm:py-2.5 w-full">
+      <div className="sticky top-0 z-30 px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 w-full backdrop-blur-xl bg-[#070913]/70">
         <div className="apple-glass rounded-full px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 max-w-6xl xl:max-w-7xl mx-auto shadow-2xl border border-white/15 bg-[#0b0f1e]/85 backdrop-blur-2xl">
           
           {/* Gauche: Historique & Mes Règles & Abonnements */}
@@ -937,23 +937,24 @@ export default function Coach() {
         </div>
       )}
 
-      {/* 3. ZONE CENTRALE EXPANDED & AIRY (INSPIRÉE DE GOOGLE GEMINI) */}
-      <div className="flex-1 overflow-y-auto w-full min-h-0 px-4 sm:px-6 lg:px-8 flex flex-col">
+      {/* 3. ZONE PRINCIPALE FLUIDE & SCROLLABLE (STYLE GOOGLE GEMINI & APPLE VISIONOS) */}
+      <div className="flex-1 w-full flex flex-col">
         
         {messages.length === 0 ? (
-          /* ÉCRAN D'ACCUEIL PLEINE LARGEUR INSPIRÉ DE GOOGLE GEMINI */
-          <div className="flex-1 flex flex-col justify-center py-4 sm:py-6 lg:py-8 w-full max-w-5xl xl:max-w-6xl mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-300">
+          /* ÉCRAN D'ACCUEIL EPURÉ INSPIRÉ DE STITCH & GEMINI (FLUX NATUREL SANS CHEVAUCHEMENT) */
+          <div className="w-full max-w-4xl xl:max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-8 space-y-6 sm:space-y-7 pb-36 animate-in fade-in duration-300">
             
-            {/* Header d'Accueil Inspiré de Google Gemini */}
-            <div className="space-y-2.5 sm:space-y-3.5 max-w-3xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-sky-500/15 via-indigo-500/15 to-purple-500/15 border border-sky-400/25 shadow-[0_0_15px_rgba(56,189,248,0.2)]">
+            {/* 1. HERO GEMINI & STITCH */}
+            <div className="text-center space-y-2.5 sm:space-y-3 max-w-2xl mx-auto pt-2">
+              {/* Luminescent Star Capsule */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-sky-500/15 via-indigo-500/15 to-purple-500/15 border border-sky-400/30 shadow-[0_0_20px_rgba(56,189,248,0.25)]">
                 <Sparkles size={14} className="text-sky-400 animate-pulse" />
                 <span className="text-xs font-semibold bg-gradient-to-r from-sky-300 via-indigo-200 to-rose-200 bg-clip-text text-transparent">
                   Copilote Financier IA • CashPilot Intelligence
                 </span>
               </div>
 
-              <h1 className="text-2xl sm:text-4xl lg:text-5xl font-medium tracking-tight text-white leading-tight">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white leading-tight">
                 <span className="bg-gradient-to-r from-sky-400 via-indigo-300 to-rose-300 bg-clip-text text-transparent font-semibold">
                   Bonjour,
                 </span>
@@ -963,50 +964,110 @@ export default function Coach() {
                 </span>
               </h1>
 
-              <p className="text-xs sm:text-sm md:text-base text-slate-400 font-light leading-relaxed max-w-2xl">
-                Auditez vos tickets de caisse, pilotez vos flux bancaires et optimisez vos abonnements en langage naturel.
+              <p className="text-xs sm:text-sm md:text-base text-slate-300/80 font-light leading-relaxed max-w-lg mx-auto">
+                Votre coach analyse vos comptes, optimise vos postes de dépenses et répond à vos questions en temps réel.
               </p>
             </div>
 
-            {/* Grille des 4 Cartes de Suggestions Pleine Largeur Google Gemini */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
-              {geminiSuggestions.map((item, idx) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => onSend(item.prompt)}
-                    className="group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#121422]/85 hover:bg-[#181c2f]/95 border border-white/10 hover:border-sky-400/40 shadow-md hover:shadow-[0_12px_28px_-6px_rgba(56,189,248,0.22)] transition-all duration-200 text-left flex flex-col justify-between min-h-[110px] sm:min-h-[125px] active:scale-[0.98] cursor-pointer"
-                  >
-                    <div className="space-y-1">
-                      <h3 className="text-sm font-semibold text-white group-hover:text-sky-300 transition-colors">
-                        {item.title}
-                      </h3>
-                      <p className="text-xs text-slate-400 font-light leading-relaxed line-clamp-2">
-                        {item.description}
-                      </p>
-                    </div>
+            {/* 2. CAPSULE DE SAISIE PROMPT EN PLEIN CENTRE (STITCH & GEMINI) */}
+            <div className="max-w-2xl sm:max-w-3xl mx-auto w-full space-y-2">
+              <div className="bg-[#171926]/90 hover:bg-[#1c1f30]/95 backdrop-blur-2xl rounded-full border border-white/20 p-2 sm:p-2.5 pl-3.5 sm:pl-5 flex items-center gap-2 sm:gap-3 shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus-within:border-sky-400/60 focus-within:ring-2 focus-within:ring-sky-400/20 transition-all duration-300">
+                
+                {/* Bouton '+' (Connecteurs / Règles & Abonnements) */}
+                <button
+                  type="button"
+                  onClick={() => setIsRulesOpen(true)}
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
+                  title="Mes règles & abonnements personnalisés"
+                >
+                  <Plus size={16} />
+                </button>
 
-                    <div className="flex items-center justify-between pt-3 mt-auto">
-                      <span className="text-[11px] font-semibold text-slate-500 group-hover:text-sky-400 transition-colors flex items-center gap-1">
-                        Lancer l'audit
-                        <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
-                      </span>
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center border transition-all duration-200 ${item.bgGlow} ${item.iconColor} group-hover:scale-110 shadow-sm`}>
-                        <Icon size={16} />
+                {/* Champ de saisie prompt épuré & large */}
+                <input
+                  type="text"
+                  value={inputPrompt}
+                  onChange={(e) => setInputPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      onSend();
+                    }
+                  }}
+                  placeholder="Posez une question sur vos relevés, demandez un audit, comparez vos prix..."
+                  disabled={isLoading}
+                  className="flex-1 bg-transparent border-none text-xs sm:text-sm md:text-base text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
+                />
+
+                {/* Microphone Vocal */}
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                    isListening 
+                      ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse' 
+                      : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={isListening ? "Écoute en cours... Cliquez pour terminer" : "Activer la saisie vocale"}
+                >
+                  {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+
+                {/* Bouton Envoyer Google Gemini */}
+                <button
+                  type="button"
+                  onClick={() => onSend()}
+                  disabled={!inputPrompt.trim() || isLoading}
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-20 disabled:scale-100 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                  title="Envoyer"
+                >
+                  <ArrowUp size={16} className="stroke-[2.5]" />
+                </button>
+              </div>
+
+              {/* Ligne discrète de confiance & avertissement */}
+              <p className="text-[11px] text-center text-slate-500 font-light">
+                CashPilot IA peut faire des erreurs. Vérifiez les informations financières importantes.
+              </p>
+            </div>
+
+            {/* 3. GRILLE DE SUGGESTIONS ÉPURÉES EN DESSOUS (GRILLE 2x2 APPLE / GEMINI) */}
+            <div className="max-w-2xl sm:max-w-3xl mx-auto w-full pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full">
+                {geminiSuggestions.map((item, idx) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => onSend(item.prompt)}
+                      className="group relative p-4 sm:p-4.5 rounded-2xl bg-[#121422]/85 hover:bg-[#181c2f]/95 border border-white/10 hover:border-sky-400/40 shadow-md hover:shadow-[0_12px_28px_-6px_rgba(56,189,248,0.22)] transition-all duration-200 text-left flex items-start gap-3.5 active:scale-[0.98] cursor-pointer"
+                    >
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all duration-200 ${item.bgGlow} ${item.iconColor} group-hover:scale-110 shadow-sm shrink-0 mt-0.5`}>
+                        <Icon size={18} />
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <h3 className="text-xs sm:text-sm font-semibold text-white group-hover:text-sky-300 transition-colors">
+                            {item.title}
+                          </h3>
+                          <ArrowRight size={13} className="text-slate-500 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-all shrink-0" />
+                        </div>
+                        <p className="text-[11px] sm:text-xs text-slate-400 font-light leading-relaxed line-clamp-2">
+                          {item.description}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
           </div>
         ) : (
           /* VUE CONVERSATION AÉRÉE ET ÉLARGIE STYLE GOOGLE GEMINI */
-          <div className="flex-1 flex flex-col py-4 sm:py-6 space-y-6 w-full max-w-4xl xl:max-w-5xl mx-auto">
-            <div className="space-y-6 pb-6 w-full">
+          <div className="w-full max-w-3xl xl:max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6 pb-36">
+            <div className="space-y-6 pb-4 w-full">
               {messages.map((msg) => {
                 const isUser = msg.role === 'user';
                 const isCurrentTargetMsg = isSearchOpen && searchMatches[currentMatchIndex]?.messageId === msg.id;
@@ -1121,94 +1182,85 @@ export default function Coach() {
 
               <div ref={messagesEndRef} />
             </div>
+
+            {/* BARRE DE SAISIE STICKY EN BAS EN MODE CONVERSATION */}
+            <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-40 w-full pt-2">
+              <div className="space-y-2">
+                {/* Pilules d'audit rapide épurées horizontales */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs touch-pan-x px-1 animate-in fade-in duration-200">
+                  <span className="text-slate-400 text-xs font-semibold shrink-0 flex items-center gap-1.5 pr-1">
+                    <Sparkles size={12} className="text-sky-400" /> Suggestions :
+                  </span>
+                  {geminiSuggestions.map((item, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => onSend(item.prompt)}
+                      className="px-3 py-1 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 hover:border-sky-400/40 text-slate-300 hover:text-sky-300 shrink-0 transition-all text-xs font-medium cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-sm"
+                    >
+                      <span>{item.title}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Capsule de Saisie Prompt Style Google Gemini */}
+                <div className="bg-[#171926]/95 backdrop-blur-2xl rounded-full border border-white/20 p-2 sm:p-2.5 pl-3.5 sm:pl-5 flex items-center gap-2 sm:gap-3 shadow-[0_20px_50px_rgba(0,0,0,0.65)] focus-within:border-sky-400/60 focus-within:ring-2 focus-within:ring-sky-400/20 transition-all duration-300">
+                  <button
+                    type="button"
+                    onClick={() => setIsRulesOpen(true)}
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
+                    title="Mes règles & abonnements personnalisés"
+                  >
+                    <Plus size={16} />
+                  </button>
+
+                  <input
+                    type="text"
+                    value={inputPrompt}
+                    onChange={(e) => setInputPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        onSend();
+                      }
+                    }}
+                    placeholder="Posez une question sur vos relevés, demandez un audit, comparez vos prix..."
+                    disabled={isLoading}
+                    className="flex-1 bg-transparent border-none text-xs sm:text-sm md:text-base text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={toggleListening}
+                    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                      isListening 
+                        ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse' 
+                        : 'text-slate-300 hover:text-white hover:bg-white/10'
+                    }`}
+                    title={isListening ? "Écoute en cours... Cliquez pour terminer" : "Activer la saisie vocale"}
+                  >
+                    {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onSend()}
+                    disabled={!inputPrompt.trim() || isLoading}
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-20 disabled:scale-100 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                    title="Envoyer"
+                  >
+                    <ArrowUp size={16} className="stroke-[2.5]" />
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-center text-slate-500 font-light">
+                  CashPilot IA peut faire des erreurs. Vérifiez les informations financières importantes.
+                </p>
+              </div>
+            </div>
+
           </div>
         )}
-      </div>
-
-      {/* 4. BARRE DE SAISIE PROMPT GEMINI (FLEX SIBLING NON-FIXED) */}
-      <div className="shrink-0 z-30 w-full px-4 sm:px-6 lg:px-8 pt-2 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] bg-gradient-to-t from-[#070913] via-[#070913]/95 to-transparent">
-        <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-2">
-          
-          {/* Pilules d'audit rapide épurées horizontales (UNIQUEMENT EN MODE DISCUSSION) */}
-          {messages.length > 0 && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs touch-pan-x px-1 animate-in fade-in duration-200">
-              <span className="text-slate-400 text-xs font-semibold shrink-0 flex items-center gap-1.5 pr-1">
-                <Sparkles size={12} className="text-sky-400" /> Suggestions :
-              </span>
-              {geminiSuggestions.map((item, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => onSend(item.prompt)}
-                  className="px-3 py-1 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 hover:border-sky-400/40 text-slate-300 hover:text-sky-300 shrink-0 transition-all text-xs font-medium cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-sm"
-                >
-                  <span>{item.title}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Capsule de Saisie Prompt Style Google Gemini */}
-          <div className="bg-[#1e1f20]/95 backdrop-blur-2xl rounded-[32px] border border-white/15 p-2 sm:p-2.5 pl-4 sm:pl-6 flex items-center gap-2.5 sm:gap-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.65)] focus-within:border-sky-400/70 focus-within:ring-2 focus-within:ring-sky-400/25 transition-all duration-300">
-            
-            {/* Bouton '+' (Connecteurs / Règles) */}
-            <button
-              type="button"
-              onClick={() => setIsRulesOpen(true)}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
-              title="Mes règles & abonnements personnalisés"
-            >
-              <Plus size={16} />
-            </button>
-
-            {/* Champ de saisie prompt épuré & large */}
-            <input
-              type="text"
-              value={inputPrompt}
-              onChange={(e) => setInputPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  onSend();
-                }
-              }}
-              placeholder="Posez une question sur vos relevés, demandez un audit, comparez vos prix..."
-              disabled={isLoading}
-              className="flex-1 bg-transparent border-none text-sm sm:text-base text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
-            />
-
-            {/* Microphone Vocal */}
-            <button
-              type="button"
-              onClick={toggleListening}
-              className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
-                isListening 
-                  ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse' 
-                  : 'text-slate-300 hover:text-white hover:bg-white/10'
-              }`}
-              title={isListening ? "Écoute en cours... Cliquez pour terminer" : "Activer la saisie vocale"}
-            >
-              {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-            </button>
-
-            {/* Bouton Envoyer Google Gemini */}
-            <button
-              type="button"
-              onClick={() => onSend()}
-              disabled={!inputPrompt.trim() || isLoading}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-20 disabled:scale-100 disabled:cursor-not-allowed cursor-pointer shrink-0"
-              title="Envoyer"
-            >
-              <ArrowUp size={18} className="stroke-[2.5]" />
-            </button>
-
-          </div>
-
-          <p className="text-[11px] text-center text-slate-500 font-light">
-            CashPilot IA peut faire des erreurs. Vérifiez les informations financières importantes.
-          </p>
-
-        </div>
       </div>
     </div>
   );
