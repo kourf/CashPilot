@@ -258,7 +258,7 @@ export const GlobalEvolutionChart: React.FC<GlobalEvolutionChartProps> = ({
                   : "text-slate-400 hover:text-white"
               )}
             >
-              Tous flux
+              Tous les flux
             </button>
             <button
               type="button"
@@ -270,7 +270,7 @@ export const GlobalEvolutionChart: React.FC<GlobalEvolutionChartProps> = ({
                   : "text-slate-400 hover:text-cyan-300"
               )}
             >
-              <Sparkles className="w-3 h-3 text-cyan-400" /> Cashflow Net
+              <Sparkles className="w-3 h-3 text-cyan-400" /> Flux Net
             </button>
             <button
               type="button"
@@ -299,34 +299,75 @@ export const GlobalEvolutionChart: React.FC<GlobalEvolutionChartProps> = ({
           </div>
         </div>
 
-        {/* Dynamic Context Bar (KPI capsules above chart) */}
+        {/* Dynamic Context Bar (KPI capsules above chart) avec Flèches explicites */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-3 border-b border-white/5 my-2">
-          <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-2.5">
-            <span className="text-[10px] text-slate-400 font-medium block">Total Entrées</span>
-            <span className="text-xs sm:text-sm font-black text-emerald-400">
+          <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-2.5">
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+              <span>Total Entrées</span>
+              <ArrowUpRight size={13} className="text-emerald-400" />
+            </div>
+            <span className="text-xs sm:text-sm font-black text-emerald-400 block mt-1">
               +{formatCurrency(stats.totalRevenus, { showSign: false })}
             </span>
           </div>
-          <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-2.5">
-            <span className="text-[10px] text-slate-400 font-medium block">Total Sorties</span>
-            <span className="text-xs sm:text-sm font-black text-rose-400">
+          <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-2.5">
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+              <span>Total Sorties</span>
+              <ArrowDownRight size={13} className="text-rose-400" />
+            </div>
+            <span className="text-xs sm:text-sm font-black text-rose-400 block mt-1">
               -{formatCurrency(stats.totalDepenses, { showSign: false })}
             </span>
           </div>
-          <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-2.5">
-            <span className="text-[10px] text-slate-400 font-medium block">Cashflow Net</span>
+          <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-2.5">
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+              <span>Flux Net</span>
+              {stats.soldeNet >= 0 ? (
+                <TrendingUp size={13} className="text-emerald-400" />
+              ) : (
+                <TrendingDown size={13} className="text-rose-400" />
+              )}
+            </div>
             <span className={cn(
-              "text-xs sm:text-sm font-black",
+              "text-xs sm:text-sm font-black block mt-1",
               stats.soldeNet >= 0 ? "text-emerald-400" : "text-rose-400"
             )}>
               {stats.soldeNet >= 0 ? '+' : ''}{formatCurrency(stats.soldeNet, { showSign: false })}
             </span>
           </div>
-          <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-2.5">
-            <span className="text-[10px] text-slate-400 font-medium block">Taux d'Épargne</span>
-            <span className="text-xs sm:text-sm font-black text-cyan-400">
+          <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-2.5">
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+              <span>Taux d'Épargne</span>
+              <Sparkles size={13} className="text-cyan-400" />
+            </div>
+            <span className="text-xs sm:text-sm font-black text-cyan-400 block mt-1">
               {stats.epargneRate.toFixed(1)} %
             </span>
+          </div>
+        </div>
+
+        {/* Légende Visuelle Explicite avec Flèches de visualisation */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl bg-slate-900/60 border border-white/10 text-xs my-2">
+          <div className="flex items-center gap-1.5 text-slate-300 font-bold">
+            <Activity size={14} className="text-cyan-400" />
+            <span>Légende du graphique :</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-5 text-xs font-semibold">
+            <div className="flex items-center gap-1.5 text-emerald-300">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+              <ArrowUpRight size={14} className="text-emerald-400" />
+              <span>Courbe Verte : Entrées (Revenus)</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-rose-300">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.9)]" />
+              <ArrowDownRight size={14} className="text-rose-400" />
+              <span>Courbe Rouge : Sorties (Dépenses)</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-cyan-300">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(56,189,248,0.9)]" />
+              <TrendingUp size={14} className="text-cyan-400" />
+              <span>Courbe Bleue : Solde / Flux Net</span>
+            </div>
           </div>
         </div>
       </div>
@@ -435,7 +476,7 @@ export const GlobalEvolutionChart: React.FC<GlobalEvolutionChartProps> = ({
                   <Area 
                     type="monotone" 
                     dataKey="net" 
-                    name="Cashflow Net"
+                    name="Flux Net"
                     stroke="#06B6D4" 
                     strokeWidth={3} 
                     fillOpacity={1} 

@@ -9,8 +9,7 @@ import {
   ShieldCheck, 
   Check, 
   Eye, 
-  EyeOff, 
-  ArrowLeftRight 
+  EyeOff
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
@@ -19,8 +18,6 @@ import { formatCurrency } from '../../lib/bankUtils';
 import { useTransactions } from '../../context/TransactionsContext';
 import { 
   calculateCategoryStats, 
-  calculateInternalTransfers, 
-  calculatePeerTransfers, 
   type CategoryStatsItem 
 } from '../../lib/categorizationRules';
 import { CategoryAuditDrawer } from '../../components/CategoryAuditDrawer';
@@ -60,15 +57,16 @@ export default function Dashboard() {
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isPeriodMenuOpen, setIsPeriodMenuOpen] = useState(false);
 
-  // Audit Drawer
+  // Audit Drawer étendu pour les catégories et les 4 piliers
   const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
-  const [auditType, setAuditType] = useState<'category' | 'inter-accounts' | 'peer-transfers'>('category');
+  const [auditType, setAuditType] = useState<'category' | 'inter-accounts' | 'peer-transfers' | 'kpi-income' | 'kpi-expenses' | 'kpi-savings' | 'kpi-essential' | 'kpi-comfort' | 'subscriptions'>('category');
   const [selectedCategoryData, setSelectedCategoryData] = useState<CategoryStatsItem | null>(null);
+  const [customAuditTitle, setCustomAuditTitle] = useState<string>('');
+  const [customAuditTransactions, setCustomAuditTransactions] = useState<any[]>([]);
+  const [customAuditAmount, setCustomAuditAmount] = useState<number | undefined>(undefined);
 
-  // Statistiques de ventilation et neutralisation inter-comptes
+  // Statistiques de ventilation
   const categoryStats = useMemo(() => calculateCategoryStats(filteredTransactions), [filteredTransactions]);
-  const interAccountsSummary = useMemo(() => calculateInternalTransfers(filteredTransactions), [filteredTransactions]);
-  const peerTransfersSummary = useMemo(() => calculatePeerTransfers(filteredTransactions), [filteredTransactions]);
 
   // Montant Reste à vivre décomposé en 2 tons
   const displayReste = kpis.resteAVivre;
@@ -77,17 +75,52 @@ export default function Dashboard() {
   const integerPart = Math.abs(Number(formattedResteParts[0])).toLocaleString('fr-FR');
   const decimalPart = formattedResteParts[1] || '00';
 
-  const handleOpenCategoryAuditByName = (catName: string) => {
-    const found = categoryStats.categories.find(c => c.category === catName);
-    if (found) {
-      setSelectedCategoryData(found);
-      setAuditType('category');
-      setIsAuditDrawerOpen(true);
-    }
+  // Handlers pour les 4 piliers financiers réels et synchronisés
+  const handleOpenPillarIncome = () => {
+    const incomeTxs = filteredTransactions.filter(t => (Number(t.amount) || 0) > 0 && !t.isInternalTransfer);
+    setCustomAuditTitle("Revenus & Entrées d'argent");
+    setCustomAuditTransactions(incomeTxs);
+    setCustomAuditAmount(kpis.revenus);
+    setSelectedCategoryData(null);
+    setAuditType('kpi-income');
+    setIsAuditDrawerOpen(true);
+  };
+
+  const handleOpenPillarFixed = () => {
+    const fixedTxs = filteredTransactions.filter(t => (Number(t.amount) || 0) < 0 && (t.nature === 'fixe' || t.isSubscription));
+    setCustomAuditTitle("Charges Fixes & Dépenses Incompressibles");
+    setCustomAuditTransactions(fixedTxs);
+    setCustomAuditAmount(kpis.fixe);
+    setSelectedCategoryData(null);
+    setAuditType('kpi-essential');
+    setIsAuditDrawerOpen(true);
+  };
+
+  const handleOpenPillarVariable = () => {
+    const variableTxs = filteredTransactions.filter(t => (Number(t.amount) || 0) < 0 && t.nature === 'variable');
+    setCustomAuditTitle("Dépenses Variables & Quotidien");
+    setCustomAuditTransactions(variableTxs);
+    setCustomAuditAmount(kpis.variable);
+    setSelectedCategoryData(null);
+    setAuditType('kpi-comfort');
+    setIsAuditDrawerOpen(true);
+  };
+
+  const handleOpenPillarSavings = () => {
+    const savingsTxs = filteredTransactions.filter(t => t.isSavings || t.category === 'Épargne & Investissement' || t.category === 'Épargne');
+    setCustomAuditTitle("Épargne Nette & Investissements");
+    setCustomAuditTransactions(savingsTxs);
+    setCustomAuditAmount(kpis.epargne);
+    setSelectedCategoryData(null);
+    setAuditType('kpi-savings');
+    setIsAuditDrawerOpen(true);
   };
 
   const handleOpenCategoryAuditItem = (catItem: CategoryStatsItem) => {
     setSelectedCategoryData(catItem);
+    setCustomAuditTransactions([]);
+    setCustomAuditTitle('');
+    setCustomAuditAmount(undefined);
     setAuditType('category');
     setIsAuditDrawerOpen(true);
   };
@@ -161,9 +194,14 @@ export default function Dashboard() {
                     className="fixed inset-0 z-[90]" 
                     onClick={() => setIsPeriodMenuOpen(false)} 
                   />
-                  <div className="absolute left-0 top-full mt-2 w-72 rounded-3xl bg-[#0B0F19]/98 backdrop-blur-3xl border border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.7)] p-2.5 z-[100] animate-in fade-in zoom-in-95 duration-150">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1.5">
-                      Sélectionner la période
+                  <div className="absolute left-0 top-full mt-2 w-80 rounded-3xl bg-[#0B101D] border border-white/25 shadow-[0_25px_70px_rgba(0,0,0,0.95)] p-3 z-[100] animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between px-3 py-1.5 mb-1">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        Sélectionner la période
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-400">
+                        {availableMonths.length > 0 ? `${availableMonths.length} mois archivés` : 'Temps réel'}
+                      </span>
                     </div>
                     
                     {/* Option Tous les mois */}
@@ -173,22 +211,22 @@ export default function Dashboard() {
                         setIsPeriodMenuOpen(false);
                       }}
                       className={cn(
-                        "w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all text-left cursor-pointer",
+                        "w-full flex items-center justify-between px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all text-left cursor-pointer",
                         isAllMonths 
-                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" 
-                          : "text-slate-200 hover:bg-white/10"
+                          ? "bg-gradient-to-r from-[#DCF5E9] via-[#D1FAE5] to-[#B9F1DC] text-[#06331E] font-black border border-white/90 shadow-md" 
+                          : "text-slate-100 hover:bg-white/10 hover:text-white"
                       )}
                     >
-                      <span>Tous les mois (Consolidé)</span>
-                      {isAllMonths && <Check size={16} className="text-emerald-400" />}
+                      <span>Tous les mois (Vue consolidée)</span>
+                      {isAllMonths && <Check size={16} className="text-[#06331E] stroke-[3]" />}
                     </button>
 
-                    <div className="h-px bg-white/10 my-1.5" />
+                    <div className="h-px bg-white/15 my-2" />
 
                     {/* Liste des mois archivés réels */}
-                    <div className="max-h-56 overflow-y-auto space-y-1 custom-scrollbar">
+                    <div className="max-h-60 overflow-y-auto space-y-1 custom-scrollbar pr-1">
                       {availableMonths.length === 0 ? (
-                        <div className="px-3.5 py-3 text-xs text-slate-400 text-center italic">
+                        <div className="px-3.5 py-4 text-xs text-slate-400 text-center italic">
                           Aucun mois archivé
                         </div>
                       ) : (
@@ -202,14 +240,14 @@ export default function Dashboard() {
                                 setIsPeriodMenuOpen(false);
                               }}
                               className={cn(
-                                "w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all text-left cursor-pointer",
+                                "w-full flex items-center justify-between px-4 py-2.5 rounded-2xl text-xs sm:text-sm transition-all text-left cursor-pointer",
                                 isSel 
-                                  ? "bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30" 
-                                  : "text-slate-300 hover:bg-white/10 font-medium"
+                                  ? "bg-gradient-to-r from-[#DCF5E9] via-[#D1FAE5] to-[#B9F1DC] text-[#06331E] font-black border border-white/90 shadow-md" 
+                                  : "text-slate-200 hover:bg-white/10 hover:text-white font-medium"
                               )}
                             >
-                              <span>{formatMonthLabel(m)}</span>
-                              {isSel && <Check size={14} className="text-emerald-400" />}
+                              <span className="capitalize">{formatMonthLabel(m)}</span>
+                              {isSel && <Check size={16} className="text-[#06331E] stroke-[3]" />}
                             </button>
                           );
                         })
@@ -297,11 +335,11 @@ export default function Dashboard() {
               </p>
             </div>
 
-            {/* Barre de métadonnées OpenBanking & Sécurité */}
+            {/* Barre de métadonnées Sécurité */}
             <div className="pt-4 mt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
               <span className="flex items-center gap-1.5">
                 <ShieldCheck size={14} className="text-emerald-400" />
-                Synchronisation chiffrée
+                Connexion bancaire chiffrée
               </span>
               <span className="font-medium text-slate-300">
                 {transactions.length} transactions analysées
@@ -379,25 +417,25 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
             
-            {/* CARTE 1 : REV (Revenus) - Halo Doré / Ambre Chaud */}
+            {/* CARTE 1 : Revenus (Entrées d'argent) */}
             <article 
-              onClick={() => handleOpenCategoryAuditByName('Revenus')}
-              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-amber-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden"
+              onClick={handleOpenPillarIncome}
+              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-amber-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden active:scale-[0.98]"
             >
               {/* Halo d'ambiance doré interne */}
               <div className="absolute -top-10 -left-10 w-32 h-32 rounded-full bg-amber-500/25 blur-3xl group-hover:bg-amber-500/35 transition-colors pointer-events-none" />
 
               <div className="relative z-10 flex items-start justify-between">
                 <div>
-                  <span className="text-xl sm:text-2xl font-bold text-white tracking-tight block">
-                    REV
+                  <span className="text-lg sm:text-xl font-black text-white tracking-tight block">
+                    Revenus
                   </span>
-                  <span className="text-xs text-white/65 font-normal">
-                    Revenus & Salaires
+                  <span className="text-xs text-white/70 font-normal">
+                    Entrées & Salaires
                   </span>
                 </div>
-                <span className="text-xs font-semibold text-white/80">
-                  +5.76%
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                  {filteredTransactions.filter(t => (Number(t.amount) || 0) > 0 && !t.isInternalTransfer).length} virements
                 </span>
               </div>
 
@@ -417,33 +455,33 @@ export default function Dashboard() {
                   €
                 </div>
                 <div className="text-right">
-                  <div className="text-[10px] text-white/50 font-light leading-none">Total Entrées</div>
-                  <div className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight mt-1">
+                  <div className="text-[10px] text-white/60 font-medium leading-none">Total des entrées</div>
+                  <div className="text-base sm:text-lg font-black text-white tracking-tight leading-tight mt-1">
                     {hideBalances ? "•••• €" : `+${formatCurrency(kpis.revenus, { showSign: false })}`}
                   </div>
                 </div>
               </div>
             </article>
 
-            {/* CARTE 2 : FIX (Charges fixes) - Halo Violet / Améthyste */}
+            {/* CARTE 2 : Charges Fixes */}
             <article 
-              onClick={() => handleOpenCategoryAuditByName('Logement & Charges')}
-              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-purple-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden"
+              onClick={handleOpenPillarFixed}
+              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-purple-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden active:scale-[0.98]"
             >
               {/* Halo d'ambiance violet interne */}
               <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-purple-500/25 blur-3xl group-hover:bg-purple-500/35 transition-colors pointer-events-none" />
 
               <div className="relative z-10 flex items-start justify-between">
                 <div>
-                  <span className="text-xl sm:text-2xl font-bold text-white tracking-tight block">
-                    FIX
+                  <span className="text-lg sm:text-xl font-black text-white tracking-tight block">
+                    Charges Fixes
                   </span>
-                  <span className="text-xs text-white/65 font-normal">
-                    Charges Fixes & Loyer
+                  <span className="text-xs text-white/70 font-normal">
+                    Dépenses incompressibles
                   </span>
                 </div>
-                <span className="text-xs font-semibold text-white/80">
-                  -12.00%
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300">
+                  {kpis.revenus > 0 ? `${((kpis.fixe / kpis.revenus) * 100).toFixed(0)}% des revenus` : 'Incompressible'}
                 </span>
               </div>
 
@@ -463,33 +501,33 @@ export default function Dashboard() {
                   €
                 </div>
                 <div className="text-right">
-                  <div className="text-[10px] text-white/50 font-light leading-none">Total Fixe</div>
-                  <div className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight mt-1">
+                  <div className="text-[10px] text-white/60 font-medium leading-none">Total charges fixes</div>
+                  <div className="text-base sm:text-lg font-black text-white tracking-tight leading-tight mt-1">
                     {hideBalances ? "•••• €" : `-${formatCurrency(kpis.fixe, { showSign: false })}`}
                   </div>
                 </div>
               </div>
             </article>
 
-            {/* CARTE 3 : VAR (Dépenses Variables) - Halo Vert Émeraude Profond */}
+            {/* CARTE 3 : Dépenses Variables */}
             <article 
-              onClick={() => handleOpenCategoryAuditByName('Alimentation & Courses')}
-              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-emerald-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden"
+              onClick={handleOpenPillarVariable}
+              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-emerald-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden active:scale-[0.98]"
             >
               {/* Halo d'ambiance émeraude interne */}
               <div className="absolute -bottom-10 -left-10 w-32 h-32 rounded-full bg-emerald-500/25 blur-3xl group-hover:bg-emerald-500/35 transition-colors pointer-events-none" />
 
               <div className="relative z-10 flex items-start justify-between">
                 <div>
-                  <span className="text-xl sm:text-2xl font-bold text-white tracking-tight block">
-                    VAR
+                  <span className="text-lg sm:text-xl font-black text-white tracking-tight block">
+                    Dépenses Variables
                   </span>
-                  <span className="text-xs text-white/65 font-normal">
-                    Tickets & Achats Courants
+                  <span className="text-xs text-white/70 font-normal">
+                    Consommation & Quotidien
                   </span>
                 </div>
-                <span className="text-xs font-semibold text-white/80">
-                  +3.28%
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
+                  {kpis.revenus > 0 ? `${((kpis.variable / kpis.revenus) * 100).toFixed(0)}% des revenus` : 'Quotidien'}
                 </span>
               </div>
 
@@ -509,33 +547,33 @@ export default function Dashboard() {
                   €
                 </div>
                 <div className="text-right">
-                  <div className="text-[10px] text-white/50 font-light leading-none">Total Variable</div>
-                  <div className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight mt-1">
+                  <div className="text-[10px] text-white/60 font-medium leading-none">Total variable</div>
+                  <div className="text-base sm:text-lg font-black text-white tracking-tight leading-tight mt-1">
                     {hideBalances ? "•••• €" : `-${formatCurrency(kpis.variable, { showSign: false })}`}
                   </div>
                 </div>
               </div>
             </article>
 
-            {/* CARTE 4 : EPA (Épargne Nette & Invest) - Halo Glace / Cyan */}
+            {/* CARTE 4 : Épargne Nette */}
             <article 
-              onClick={() => handleOpenCategoryAuditByName('Épargne & Investissement')}
-              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-cyan-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden"
+              onClick={handleOpenPillarSavings}
+              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-cyan-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden active:scale-[0.98]"
             >
               {/* Halo d'ambiance cyan interne */}
               <div className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full bg-cyan-500/25 blur-3xl group-hover:bg-cyan-500/35 transition-colors pointer-events-none" />
 
               <div className="relative z-10 flex items-start justify-between">
                 <div>
-                  <span className="text-xl sm:text-2xl font-bold text-white tracking-tight block">
-                    EPA
+                  <span className="text-lg sm:text-xl font-black text-white tracking-tight block">
+                    Épargne Nette
                   </span>
-                  <span className="text-xs text-white/65 font-normal">
-                    Épargne Nette & Invest
+                  <span className="text-xs text-white/70 font-normal">
+                    Capacité d'épargne réelle
                   </span>
                 </div>
-                <span className="text-xs font-semibold text-white/80">
-                  +9.36%
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
+                  {kpis.tauxEpargne.toFixed(1)}% du budget
                 </span>
               </div>
 
@@ -555,8 +593,8 @@ export default function Dashboard() {
                   €
                 </div>
                 <div className="text-right">
-                  <div className="text-[10px] text-white/50 font-light leading-none">Épargne Constituée</div>
-                  <div className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight mt-1">
+                  <div className="text-[10px] text-white/60 font-medium leading-none">Épargne constituée</div>
+                  <div className="text-base sm:text-lg font-black text-white tracking-tight leading-tight mt-1">
                     {hideBalances ? "•••• €" : `+${formatCurrency(kpis.epargne, { showSign: false })}`}
                   </div>
                 </div>
@@ -591,63 +629,6 @@ export default function Dashboard() {
           />
         </section>
 
-        {/* =========================================================================
-            ROW 6 : RAPPROCHEMENT INTER-COMPTES & FLUX NEUTRALISÉS (PLEINE LARGEUR)
-           ========================================================================= */}
-        <section className="w-full rounded-[32px] bg-slate-900/70 backdrop-blur-2xl p-6 sm:p-7 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.35)]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                <ArrowLeftRight size={20} />
-              </div>
-              <div>
-                <h4 className="text-sm sm:text-base font-bold text-white">
-                  Rapprochement Inter-Comptes & Flux Neutralisés
-                </h4>
-                <p className="text-xs text-slate-400">
-                  Évite les doubles comptabilisations entre vos comptes courants, cartes à débit différé et livrets.
-                </p>
-              </div>
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setAuditType('inter-accounts');
-                setIsAuditDrawerOpen(true);
-              }}
-              className="rounded-full border-white/20 text-slate-200 hover:text-white hover:bg-white/10 text-xs self-start sm:self-auto cursor-pointer"
-            >
-              Auditer les flux ({interAccountsSummary.transactions.length})
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
-            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5">
-              <span className="text-[11px] text-slate-400 block font-medium">Virements Débit</span>
-              <span className="text-sm sm:text-base font-bold text-slate-200 mt-1 block">
-                {hideBalances ? "•••• €" : formatCurrency(interAccountsSummary.debit, { showSign: false })}
-              </span>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5">
-              <span className="text-[11px] text-slate-400 block font-medium">Virements Crédit</span>
-              <span className="text-sm sm:text-base font-bold text-slate-200 mt-1 block">
-                {hideBalances ? "•••• €" : formatCurrency(interAccountsSummary.credit, { showSign: false })}
-              </span>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5">
-              <span className="text-[11px] text-slate-400 block font-medium">Écart de Rapprochement</span>
-              <span className={cn(
-                "text-sm sm:text-base font-bold mt-1 block",
-                Math.abs(interAccountsSummary.diff) < 1 ? "text-emerald-400" : "text-amber-400"
-              )}>
-                {hideBalances ? "•••• €" : `${Math.abs(interAccountsSummary.diff) < 1 ? 'Équilibré (0,00 €)' : formatCurrency(interAccountsSummary.diff)}`}
-              </span>
-            </div>
-          </div>
-        </section>
-
       </div>
 
       {/* =========================================================================
@@ -668,15 +649,16 @@ export default function Dashboard() {
         onClose={() => setIsScanModalOpen(false)}
       />
 
-      {/* Drawer 3 : Audit approfondi de catégorie */}
+      {/* Drawer 3 : Audit approfondi de catégorie ou pilier financier */}
       <CategoryAuditDrawer 
         isOpen={isAuditDrawerOpen}
         onClose={() => setIsAuditDrawerOpen(false)}
         auditType={auditType}
-        categoryItem={selectedCategoryData}
+        categoryData={selectedCategoryData}
         allTransactions={filteredTransactions}
-        internalTransfers={interAccountsSummary}
-        peerTransfers={peerTransfersSummary}
+        customTransactions={customAuditTransactions.length > 0 ? customAuditTransactions : undefined}
+        customTitle={customAuditTitle || undefined}
+        customTotalAmount={customAuditAmount}
         onCategoryChange={handleTransactionCategoryChange}
       />
 

@@ -179,7 +179,10 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
   const hasHiddenCategories = filteredCategories.length > 6 && !isExpandedAll;
 
   return (
-    <div className="w-full rounded-[32px] bg-slate-900/80 hover:bg-slate-900/90 backdrop-blur-3xl border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.35)] p-6 sm:p-8 space-y-6">
+    <div className="w-full rounded-[32px] bg-slate-900/80 hover:bg-slate-900/90 backdrop-blur-3xl border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1.5px_rgba(255,255,255,0.2)] p-6 sm:p-8 space-y-6 relative overflow-hidden">
+      
+      {/* Specular line */}
+      <div className="absolute top-0 inset-x-12 h-[1px] bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
       
       {/* =========================================================================
           HEADER UNIFIÉ : TITRE, STATS MACRO & JAUGE GLOBALE PLEINE LARGEUR
@@ -467,15 +470,15 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
                   <div
                     key={catItem.category}
                     onClick={() => onSelectCategory(catItem)}
-                    className="rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] backdrop-blur-xl p-3.5 border border-white/10 hover:border-cyan-500/40 transition-all duration-300 cursor-pointer group flex flex-col justify-between shadow-xs relative overflow-hidden"
+                    className="rounded-[24px] bg-white/[0.05] hover:bg-white/[0.10] backdrop-blur-2xl p-4 sm:p-5 border border-white/15 hover:border-white/35 shadow-[0_10px_25px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)] transition-all duration-300 cursor-pointer group flex flex-col justify-between relative overflow-hidden active:scale-[0.99]"
                   >
                     <div>
-                      {/* Top card header */}
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
+                      {/* En-tête de carte catégorie */}
+                      <div className="flex items-start justify-between gap-2 mb-2.5">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div 
-                            className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-white font-black text-xs shadow-md border border-white/20 transition-transform group-hover:scale-105"
-                            style={{ backgroundColor: catItem.color }}
+                            className="w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 text-white font-black text-xs shadow-md border border-white/25 transition-transform group-hover:scale-105"
+                            style={{ backgroundColor: catItem.color || '#06b6d4' }}
                           >
                             {catItem.category.charAt(0)}
                           </div>
@@ -483,52 +486,53 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
                             <h4 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-cyan-200 transition-colors" title={catItem.category}>
                               {catItem.category}
                             </h4>
-                            <span className="text-[10px] text-slate-400 block mt-0.5">
-                              {catItem.txCount} op. • {catItem.percentage.toFixed(1)}% du budget
+                            <span className="text-[11px] text-slate-400 block mt-0.5">
+                              {catItem.txCount} opérations • {catItem.percentage.toFixed(1)}% du budget
                             </span>
                           </div>
                         </div>
 
                         <span className={cn(
-                          "text-[9px] font-extrabold px-2 py-0.5 rounded-full shrink-0 border uppercase tracking-wider",
+                          "text-[10px] font-bold px-2.5 py-0.5 rounded-full shrink-0 border uppercase tracking-wider",
                           isFixe 
-                            ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" 
-                            : "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                            ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/35" 
+                            : "bg-amber-500/20 text-amber-300 border-amber-500/35"
                         )}>
-                          {catItem.defaultNature}
+                          {isFixe ? 'Charge Fixe' : 'Dépense Variable'}
                         </span>
                       </div>
 
-                      {/* Main Amount */}
-                      <div className="mt-2.5 flex items-baseline justify-between">
+                      {/* Montant principal */}
+                      <div className="mt-3 flex items-baseline justify-between">
                         <span className="text-xs text-slate-400 font-medium">Total débité</span>
-                        <span className="text-sm sm:text-base font-black text-white group-hover:text-cyan-300 transition-colors">
+                        <span className="text-base sm:text-lg font-black text-white group-hover:text-cyan-300 transition-colors">
                           {hideBalances ? "•••• €" : formatCurrency(catItem.totalAmount, { showSign: false })}
                         </span>
                       </div>
 
-                      {/* Fixe vs Variable mini progress bar */}
-                      <div className="mt-2 w-full h-1.5 rounded-full bg-white/[0.08] overflow-hidden flex">
+                      {/* Jauge bicolore Fixe vs Variable */}
+                      <div className="mt-2.5 w-full h-2 rounded-full bg-white/[0.08] overflow-hidden flex shadow-inner">
                         <div 
-                          className="h-full bg-cyan-400 transition-all shadow-[0_0_8px_rgba(56,189,248,0.8)]" 
+                          className="h-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-500 shadow-[0_0_8px_rgba(56,189,248,0.8)]" 
                           style={{ width: `${fixedRatioCategory}%` }}
-                          title={`Part Fixe: ${formatCurrency(catItem.fixedAmount, { showSign: false })} (${fixedRatioCategory.toFixed(0)}%)`}
+                          title={`Part Fixe : ${formatCurrency(catItem.fixedAmount, { showSign: false })} (${fixedRatioCategory.toFixed(0)}%)`}
                         />
                         <div 
-                          className="h-full bg-amber-400 transition-all shadow-[0_0_8px_rgba(251,191,36,0.8)]" 
+                          className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-500 shadow-[0_0_8px_rgba(251,191,36,0.8)]" 
                           style={{ width: `${variableRatioCategory}%` }}
-                          title={`Part Variable: ${formatCurrency(catItem.variableAmount, { showSign: false })} (${variableRatioCategory.toFixed(0)}%)`}
+                          title={`Part Variable : ${formatCurrency(catItem.variableAmount, { showSign: false })} (${variableRatioCategory.toFixed(0)}%)`}
                         />
                       </div>
                     </div>
 
-                    {/* Footer details & direct audit link */}
-                    <div className="mt-3 pt-2 border-t border-white/10 flex items-center justify-between text-[10px]">
-                      <span className="text-slate-400">
-                        {isFixe ? 'Charge Fixe' : 'Consommation'}
+                    {/* Pied de carte avec pilule d'action */}
+                    <div className="mt-3.5 pt-2.5 border-t border-white/10 flex items-center justify-between text-xs">
+                      <span className="text-[11px] text-slate-400">
+                        {isFixe ? 'Dépense récurrente' : 'Consommation courante'}
                       </span>
-                      <span className="text-cyan-400 font-bold flex items-center gap-0.5 group-hover:translate-x-1 transition-transform">
-                        <Eye size={12} /> Auditer
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 group-hover:bg-cyan-500/25 group-hover:text-cyan-200 text-white font-bold text-[11px] border border-white/20 transition-all">
+                        <span>Détails & audit</span>
+                        <Eye size={12} />
                       </span>
                     </div>
                   </div>
@@ -543,10 +547,10 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
               <button
                 type="button"
                 onClick={() => setIsExpandedAll(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/15 text-xs font-bold text-white transition-all shadow-md hover:border-cyan-500/40"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-[#DCF5E9] to-[#C6EFE0] hover:from-white hover:to-[#DCF5E9] text-[#06331E] font-black text-xs shadow-md border border-white/80 transition-all active:scale-95 cursor-pointer"
               >
                 <span>Afficher toutes les catégories ({filteredCategories.length})</span>
-                <ChevronDown className="w-4 h-4 text-cyan-400 animate-bounce" />
+                <ChevronDown className="w-4 h-4 text-[#06331E] animate-bounce" />
               </button>
             </div>
           )}
