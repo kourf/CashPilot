@@ -1,12 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
-  Landmark, 
-  Receipt, 
-  MessageSquareHeart, 
-  Settings,
-  Sparkles,
   ShieldCheck,
   Loader2,
   LogOut,
@@ -17,14 +11,7 @@ import { ThemeToggle } from '../ThemeToggle';
 import { useTransactions } from '../../context/TransactionsContext';
 import { useCoach } from '../../context/CoachContext';
 import { useAuth } from '../../context/AuthContext';
-
-const navItems = [
-  { icon: LayoutDashboard, label: 'Accueil', shortLabel: 'Accueil', path: '/' },
-  { icon: Landmark, label: 'Relevé bancaire', shortLabel: 'Relevés', path: '/releves' },
-  { icon: Receipt, label: 'Ticket de caisse', shortLabel: 'Tickets', path: '/tickets' },
-  { icon: MessageSquareHeart, label: 'Coach IA', shortLabel: 'Coach IA', path: '/coach', badge: 'IA' },
-  { icon: Settings, label: 'Paramètres', shortLabel: 'Paramètres', path: '/parametres' },
-];
+import { FloatingNavDock } from '../../pages/Dashboard/components/FloatingNavDock';
 
 export default function Layout() {
   const location = useLocation();
@@ -86,115 +73,117 @@ export default function Layout() {
   return (
     <div className="flex h-screen overflow-hidden flex-col antialiased liquid-mesh text-slate-100 selection:bg-cyan-500/20 selection:text-cyan-400 transition-colors duration-300">
       
-      {/* Top Sticky Header avec Logo CashPilot, Navigation Info & Profil Apple VisionOS */}
-      <header className="h-16 px-4 sm:px-6 lg:px-8 border-b border-white/10 backdrop-blur-xl z-30 shrink-0 bg-slate-950/40 text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex items-center">
-        <div className="w-full flex items-center justify-between">
-          {/* Gauche : Logo CashPilot PRO & Titre de page */}
-          <div className="flex items-center gap-3 sm:gap-6">
-            <Link to="/" className="flex items-center gap-2.5 sm:gap-3 group">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-transform duration-300 border border-white/20 shrink-0">
-                <Landmark size={18} className="stroke-[2.5]" />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base sm:text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
-                    CashPilot
-                  </span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                    PRO
-                  </span>
+      {/* Top Sticky Header avec Logo CashPilot, Navigation Info & Profil Apple VisionOS (Masqué sur l'Accueil pour laisser place à la DA épurée Capture 1) */}
+      {location.pathname !== '/' && (
+        <header className="h-16 px-4 sm:px-6 lg:px-8 border-b border-white/10 backdrop-blur-xl z-30 shrink-0 bg-slate-950/40 text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex items-center">
+          <div className="w-full flex items-center justify-between">
+            {/* Gauche : Logo CashPilot PRO & Titre de page */}
+            <div className="flex items-center gap-3 sm:gap-6">
+              <Link to="/" className="flex items-center gap-2.5 sm:gap-3 group">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-primary to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-transform duration-300 border border-white/20 shrink-0">
+                  <Landmark size={18} className="stroke-[2.5]" />
                 </div>
-                <p className="text-[10px] sm:text-[11px] font-medium text-slate-400">Finance & Patrimoine</p>
-              </div>
-            </Link>
-
-            <div className="hidden lg:block h-6 w-px bg-white/10" />
-
-            <div className="hidden lg:block">
-              <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-                {pageInfo.title}
-              </h2>
-              <p className="text-xs text-slate-400">
-                {pageInfo.subtitle}
-              </p>
-            </div>
-          </div>
-
-          {/* Droite : Outils, Mode Sombre & Profil Utilisateur */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Badge UID Chiffré discret */}
-            <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-slate-300 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
-              <span className="text-[11px] font-medium">UID Chiffré</span>
-              <ShieldCheck size={13} className="text-emerald-400 ml-0.5" />
-            </div>
-
-            {/* Bouton de mise à jour instantanée & purge cache */}
-            <button
-              onClick={handleForceRefresh}
-              title="Vider le cache et charger la dernière version"
-              disabled={isRefreshingApp}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-300 hover:text-cyan-300 hover:bg-white/[0.08] border border-white/10 flex items-center gap-1.5 text-xs transition-all active:scale-95 cursor-pointer bg-white/[0.04]"
-            >
-              <RefreshCw size={14} className={cn("text-cyan-400 shrink-0", isRefreshingApp && "animate-spin")} />
-              <span className="text-[11px] font-bold text-cyan-300 sm:inline">v2.8</span>
-            </button>
-
-            <ThemeToggle variant="compact" />
-
-            {/* Profil utilisateur & Déconnexion */}
-            <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-white/10">
-              {userProfile && (
-                <div className="flex items-center gap-2">
-                  {userProfile.photoURL ? (
-                    <img
-                      src={userProfile.photoURL}
-                      alt={userProfile.displayName || 'Profil'}
-                      className="w-8 h-8 rounded-full object-cover border border-cyan-500/30"
-                    />
-                  ) : (
-                    <div
-                      title={userProfile?.email || 'Compte connecté'}
-                      className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500/20 to-primary/20 border border-cyan-500/30 flex items-center justify-center text-xs font-bold text-cyan-300"
-                    >
-                      {userInitials}
-                    </div>
-                  )}
-
-                  <div className="hidden sm:block text-left min-w-0 max-w-[130px]">
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs font-bold truncate text-white block">
-                        {userProfile.displayName || 'Utilisateur'}
-                      </span>
-                      {userProfile.isAdmin && (
-                        <span className="text-[8px] font-bold px-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                          Admin
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] truncate text-slate-400 block">
-                      {userProfile.activeWorkspace ? `Espace : ${userProfile.activeWorkspace}` : userProfile.email}
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base sm:text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+                      CashPilot
+                    </span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                      PRO
                     </span>
                   </div>
+                  <p className="text-[10px] sm:text-[11px] font-medium text-slate-400">Finance & Patrimoine</p>
                 </div>
-              )}
+              </Link>
 
+              <div className="hidden lg:block h-6 w-px bg-white/10" />
+
+              <div className="hidden lg:block">
+                <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                  {pageInfo.title}
+                </h2>
+                <p className="text-xs text-slate-400">
+                  {pageInfo.subtitle}
+                </p>
+              </div>
+            </div>
+
+            {/* Droite : Outils, Mode Sombre & Profil Utilisateur */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Badge UID Chiffré discret */}
+              <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-slate-300 text-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+                <span className="text-[11px] font-medium">UID Chiffré</span>
+                <ShieldCheck size={13} className="text-emerald-400 ml-0.5" />
+              </div>
+
+              {/* Bouton de mise à jour instantanée & purge cache */}
               <button
-                onClick={handleLogout}
-                title="Se déconnecter"
-                className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                onClick={handleForceRefresh}
+                title="Vider le cache et charger la dernière version"
+                disabled={isRefreshingApp}
+                className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-300 hover:text-cyan-300 hover:bg-white/[0.08] border border-white/10 flex items-center gap-1.5 text-xs transition-all active:scale-95 cursor-pointer bg-white/[0.04]"
               >
-                <LogOut size={16} />
+                <RefreshCw size={14} className={cn("text-cyan-400 shrink-0", isRefreshingApp && "animate-spin")} />
+                <span className="text-[11px] font-bold text-cyan-300 sm:inline">v2.8</span>
               </button>
+
+              <ThemeToggle variant="compact" />
+
+              {/* Profil utilisateur & Déconnexion */}
+              <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-white/10">
+                {userProfile && (
+                  <div className="flex items-center gap-2">
+                    {userProfile.photoURL ? (
+                      <img
+                        src={userProfile.photoURL}
+                        alt={userProfile.displayName || 'Profil'}
+                        className="w-8 h-8 rounded-full object-cover border border-cyan-500/30"
+                      />
+                    ) : (
+                      <div
+                        title={userProfile?.email || 'Compte connecté'}
+                        className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500/20 to-primary/20 border border-cyan-500/30 flex items-center justify-center text-xs font-bold text-cyan-300"
+                      >
+                        {userInitials}
+                      </div>
+                    )}
+
+                    <div className="hidden sm:block text-left min-w-0 max-w-[130px]">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-bold truncate text-white block">
+                          {userProfile.displayName || 'Utilisateur'}
+                        </span>
+                        {userProfile.isAdmin && (
+                          <span className="text-[8px] font-bold px-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] truncate text-slate-400 block">
+                        {userProfile.activeWorkspace ? `Espace : ${userProfile.activeWorkspace}` : userProfile.email}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleLogout}
+                  title="Se déconnecter"
+                  className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Main Content Area (Scrollable naturellement sur toutes les pages y compris Coach) */}
       <main className={cn(
         "flex-1 relative w-full overflow-y-auto touch-scroll",
-        location.pathname === '/coach'
+        (location.pathname === '/' || location.pathname === '/coach')
           ? "p-0"
           : "px-4 sm:px-6 lg:px-8 pb-32 sm:pb-36"
       )}>
@@ -203,73 +192,8 @@ export default function Layout() {
         </div>
       </main>
 
-      {/* Barre Flottante Apple visionOS / macOS Liquid Glass en Bas (Desktop & Mobile Unifié) */}
-      <nav className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-50 pointer-events-none select-none max-w-lg sm:max-w-2xl w-full sm:w-auto">
-        <div className="pointer-events-auto rounded-[28px] apple-glass bg-[#080a14]/90 backdrop-blur-2xl border border-white/20 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8),inset_0_1px_1.5px_0_rgba(255,255,255,0.4)] px-2 sm:px-3 py-1.5 flex items-center justify-between sm:justify-center gap-1 sm:gap-2">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path || 
-              (item.path !== '/' && location.pathname.startsWith(item.path));
-            const isCoachTab = item.path === '/coach';
-              
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "flex-1 sm:flex-initial sm:min-w-[84px] relative flex flex-col items-center justify-center py-2 px-2 sm:px-3 rounded-2xl transition-all duration-300 group cursor-pointer active:scale-95",
-                  isActive
-                    ? "apple-glass-active text-white shadow-[0_2px_14px_rgba(56,189,248,0.3)] border border-white/30"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.08] border border-transparent"
-                )}
-              >
-                {/* Active Indicator Top Specular Glow */}
-                {isActive && (
-                  <span className="absolute -top-[1px] inset-x-3 sm:inset-x-4 h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_8px_rgba(56,189,248,0.9)] rounded-full" />
-                )}
-
-                <div className="relative flex items-center justify-center">
-                  <item.icon 
-                    size={20} 
-                    className={cn(
-                      "transition-all duration-300",
-                      isActive 
-                        ? "text-cyan-400 scale-110 stroke-[2.4] drop-shadow-[0_0_8px_rgba(56,189,248,0.6)]" 
-                        : "text-slate-400 group-hover:text-slate-200 stroke-[1.8] group-hover:scale-105"
-                    )} 
-                  />
-                  {isCoachTab && isCoachLoading && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 animate-ping shadow-[0_0_6px_rgba(56,189,248,1)]" />
-                  )}
-                  {item.badge && !isCoachLoading && (
-                    <span className={cn(
-                      "absolute -top-1.5 -right-3 text-[8px] font-black px-1 py-0.2 rounded-full uppercase leading-none tracking-wider",
-                      isActive 
-                        ? "bg-gradient-to-r from-cyan-500 to-indigo-500 text-white shadow-[0_0_6px_rgba(56,189,248,0.6)]" 
-                        : "bg-white/15 text-slate-300 border border-white/10"
-                    )}>
-                      {item.badge}
-                    </span>
-                  )}
-                </div>
-
-                <span className={cn(
-                  "text-[10px] mt-1 transition-colors duration-200 leading-tight whitespace-nowrap",
-                  isActive 
-                    ? "font-bold text-white tracking-tight" 
-                    : "font-medium text-slate-400 group-hover:text-slate-200"
-                )}>
-                  {item.label}
-                </span>
-
-                {/* Subtile Active Pill Dot */}
-                {isActive && (
-                  <span className="absolute bottom-1 w-4 h-0.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(56,189,248,0.8)]" />
-                )}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      {/* Barre Flottante Universelle Ron Design : 5 Onglets (Accueil, Relevés, Tickets, Coach IA, Paramètres) */}
+      <FloatingNavDock />
       
       {/* Badge Flottant Persistant : Indique l'avancement du relevé même en changeant d'onglet */}
       {Boolean(importState?.isImporting) && location.pathname !== '/releves' && (

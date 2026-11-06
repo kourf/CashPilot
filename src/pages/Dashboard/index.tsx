@@ -1,32 +1,21 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Wallet, 
-  TrendingUp, 
-  TrendingDown, 
-  Play, 
-  Info, 
-  Sparkles, 
-  FileText, 
-  Receipt, 
-  Lightbulb, 
+  ChevronDown, 
   ArrowRight, 
+  Sparkles, 
+  TrendingUp, 
+  ScanLine, 
   ShieldCheck, 
-  CreditCard, 
-  Layers, 
-  ArrowUpRight, 
-  ArrowDownRight, 
-  ArrowLeftRight, 
-  Users, 
-  Lock, 
-  ChevronRight, 
-  HandCoins, 
-  Activity
+  Check, 
+  Eye, 
+  EyeOff, 
+  ArrowLeftRight 
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { calculateKpis, filterByMonth, formatMonthLabel } from '../../lib/kpiUtils';
-import { formatDateFR, formatCurrency } from '../../lib/bankUtils';
+import { formatCurrency } from '../../lib/bankUtils';
 import { useTransactions } from '../../context/TransactionsContext';
 import { 
   calculateCategoryStats, 
@@ -35,78 +24,58 @@ import {
   type CategoryStatsItem 
 } from '../../lib/categorizationRules';
 import { CategoryAuditDrawer } from '../../components/CategoryAuditDrawer';
-import { MonthSelector } from '../../components/MonthSelector';
+import { AuroraBackground } from './components/AuroraBackground';
+import { SavingsAlertsDrawer } from './components/SavingsAlertsDrawer';
+import { QuickScanModal } from './components/QuickScanModal';
 import { GlobalEvolutionChart } from './components/GlobalEvolutionChart';
-import { CategoryBreakdownChart } from './components/CategoryBreakdownChart';
-import { CategoryVentilationSection } from './components/CategoryVentilationSection';
+import { UnifiedCategorySection } from './components/UnifiedCategorySection';
 import { db } from '../../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
-import { CATEGORIES } from '../../lib/bankParser';
 import { getActiveAccountId } from '../../lib/userUtils';
-
-const DEMO_TRANSACTIONS = [
-  { id: 'demo-1', cleanLabel: 'Carrefour Market', category: 'Alimentation & Courses', amount: -85.20, date: '2026-06-15', nature: 'variable' },
-  { id: 'demo-2', cleanLabel: 'Virement Salaire Mensuel', category: 'Revenus', amount: 3200.00, date: '2026-06-01', nature: 'autre' },
-  { id: 'demo-3', cleanLabel: 'Netflix & Spotify Family', category: 'Abonnements & Médias', amount: -27.98, date: '2026-06-12', nature: 'fixe', isSubscription: true },
-  { id: 'demo-4', cleanLabel: 'Virement Épargne Livret A', category: 'Épargne & Investissement', amount: -500.00, date: '2026-06-11', nature: 'autre', isInternalTransfer: true },
-  { id: 'demo-5', cleanLabel: 'Total Énergies EDF', category: 'Logement & Charges', amount: -94.50, date: '2026-06-05', nature: 'fixe' },
-  { id: 'demo-6', cleanLabel: 'Restaurant Le Comptoir', category: 'Restaurants & Sorties', amount: -64.00, date: '2026-06-10', nature: 'variable' },
-  { id: 'demo-7', cleanLabel: 'Prélèvement Amex (CB Diff)', category: 'Remboursement Carte (Amex)', amount: -350.00, date: '2026-06-28', nature: 'autre', isInternalTransfer: true },
-  { id: 'demo-8', cleanLabel: 'Virement Wero Reçu Thomas', category: 'Virement Reçu (Proches)', amount: 45.00, date: '2026-06-14', nature: 'autre', isFamilyTransfer: true },
-  { id: 'demo-9', cleanLabel: 'Virement Paylib Envoi Sarah', category: 'Virements Famille & Proches', amount: -30.00, date: '2026-06-13', nature: 'autre', isFamilyTransfer: true },
-];
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [isDemo, setIsDemo] = useState(false);
+  const [hideBalances, setHideBalances] = useState(false);
   
+  // Données synchronisées en temps réel depuis le TransactionsContext
   const { 
     transactions, 
-    loading: ctxLoading, 
-    error: ctxError, 
+    loading, 
+    error, 
     selectedMonth, 
     setSelectedMonth, 
     availableMonths 
   } = useTransactions();
 
-  const loading = isDemo ? false : ctxLoading;
-  const error = isDemo ? null : ctxError;
-
+  // Filtrage strict par mois sélectionné (ou 'all' pour trésorerie consolidée)
   const filteredTransactions = useMemo(() => {
-    return isDemo ? (DEMO_TRANSACTIONS as any) : filterByMonth(transactions, selectedMonth);
-  }, [transactions, selectedMonth, isDemo]);
+    return filterByMonth(transactions, selectedMonth);
+  }, [transactions, selectedMonth]);
 
+  // KPIs calculés dynamiquement sur les données réelles
   const kpis = useMemo(() => calculateKpis(filteredTransactions), [filteredTransactions]);
 
-  // Operations count by month for MonthSelector badges
-  const transactionsCountByMonth = useMemo(() => {
-    const map: Record<string, number> = {};
-    transactions.forEach(t => {
-      const m = t.monthKey || (t.date ? t.date.substring(0, 7) : '');
-      if (m) map[m] = (map[m] || 0) + 1;
-    });
-    return map;
-  }, [transactions]);
+  // Modals & Drawers
+  const [isSavingsDrawerOpen, setIsSavingsDrawerOpen] = useState(false);
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [isPeriodMenuOpen, setIsPeriodMenuOpen] = useState(false);
 
-  // Advanced Category Stats & Nature breakdown
-  const categoryStats = useMemo(() => {
-    return calculateCategoryStats(filteredTransactions);
-  }, [filteredTransactions]);
-
-  // Inter-Accounts flows (own accounts, neutralized)
-  const interAccountsSummary = useMemo(() => {
-    return calculateInternalTransfers(filteredTransactions);
-  }, [filteredTransactions]);
-
-  // P2P Peer transfers (Family & Friends)
-  const peerTransfersSummary = useMemo(() => {
-    return calculatePeerTransfers(filteredTransactions);
-  }, [filteredTransactions]);
-
-  // Audit Drawer states
+  // Audit Drawer
   const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
   const [auditType, setAuditType] = useState<'category' | 'inter-accounts' | 'peer-transfers'>('category');
   const [selectedCategoryData, setSelectedCategoryData] = useState<CategoryStatsItem | null>(null);
+
+  // Statistiques de ventilation et neutralisation inter-comptes
+  const categoryStats = useMemo(() => calculateCategoryStats(filteredTransactions), [filteredTransactions]);
+  const interAccountsSummary = useMemo(() => calculateInternalTransfers(filteredTransactions), [filteredTransactions]);
+  const peerTransfersSummary = useMemo(() => calculatePeerTransfers(filteredTransactions), [filteredTransactions]);
+
+  // Montant Reste à vivre décomposé en 2 tons
+  const displayReste = kpis.resteAVivre;
+  const displayBudgetJour = kpis.budgetJournalier;
+  const formattedResteParts = displayReste.toFixed(2).split('.');
+  const integerPart = Math.abs(Number(formattedResteParts[0])).toLocaleString('fr-FR');
+  const decimalPart = formattedResteParts[1] || '00';
 
   const handleOpenCategoryAuditByName = (catName: string) => {
     const found = categoryStats.categories.find(c => c.category === catName);
@@ -123,19 +92,8 @@ export default function Dashboard() {
     setIsAuditDrawerOpen(true);
   };
 
-  const handleOpenInterAccountsAudit = () => {
-    setAuditType('inter-accounts');
-    setIsAuditDrawerOpen(true);
-  };
-
-  const handleOpenPeerTransfersAudit = () => {
-    setAuditType('peer-transfers');
-    setIsAuditDrawerOpen(true);
-  };
-
   const handleTransactionCategoryChange = async (txId: string, newCategory: string) => {
     try {
-      if (txId.startsWith('demo-')) return;
       const accountId = getActiveAccountId();
       const docRef = doc(db, `users/${accountId}/transactions`, txId);
       await updateDoc(docRef, { category: newCategory });
@@ -144,719 +102,582 @@ export default function Dashboard() {
     }
   };
 
-  const isEmpty = !loading && !isDemo && filteredTransactions.length === 0 && !error;
-  
-  const displayRevenus = isDemo ? 3200 : kpis.revenus;
-  const displayDepenses = isDemo ? 1980 : kpis.depenses;
-  const displayReste = isDemo ? (displayRevenus - displayDepenses) : kpis.resteAVivre;
-  const displayBudgetJour = isDemo ? (displayReste / 30) : kpis.budgetJournalier;
-  const displayAbonnements = isDemo ? '27,98 €' : kpis.abonnements > 0 ? `${kpis.abonnements.toFixed(2)} €` : '0 €';
-
-  const displayTransactions = isDemo ? DEMO_TRANSACTIONS.slice(0, 6) : filteredTransactions.slice(0, 6);
-
-  // Financial health ratio: portion of revenues saved / remaining
-  const savingsRate = displayRevenus > 0 ? Math.max(0, (displayReste / displayRevenus) * 100) : 0;
-  const isHealthy = displayReste >= 0;
-
-  const Skeleton = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
-    <div className={cn("animate-pulse bg-white/[0.06] rounded-2xl", className)} style={style} />
-  );
+  const isAllMonths = selectedMonth === 'all';
+  const currentMonthLabel = isAllMonths ? 'Trésorerie Globale' : formatMonthLabel(selectedMonth);
 
   return (
-    <div className="w-full py-4 sm:py-6 space-y-6 sm:space-y-8 animate-in fade-in duration-500 pb-36 sm:pb-32 md:pb-12 text-slate-100 select-none">
+    <div className="relative min-h-screen w-full flex flex-col items-center select-none font-sans overflow-x-hidden text-slate-100 pb-44">
       
       {/* =========================================================================
-          TOP COMMAND CENTER BAR: MonthSelector, Live Sync & VisionOS Branding
+          ARRIÈRE-PLAN ATMOSPHÉRIQUE VOLUMÉTRIQUE (Ron Design)
          ========================================================================= */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/[0.03] backdrop-blur-2xl p-4 sm:p-5 rounded-3xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(56,189,248,0.9)] animate-pulse" />
-            <span className="text-[11px] font-extrabold tracking-widest text-cyan-300 uppercase">
-              Cockpit Financier • Vision 360
-            </span>
-            {isDemo && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Mode Démo Actif
-              </span>
-            )}
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-1 text-white flex items-center gap-3">
-            Aperçu de Trésorerie
-          </h1>
-          <p className="text-xs text-slate-400 mt-0.5 hidden sm:block">
-            {selectedMonth === 'all' 
-              ? `Vue consolidée sur ${transactions.length} opération${transactions.length > 1 ? 's' : ''}` 
-              : `Période active : ${formatMonthLabel(selectedMonth)} • ${filteredTransactions.length} opération${filteredTransactions.length > 1 ? 's' : ''}`}
-          </p>
-        </div>
-
-        {/* Premium Month Selector & Action controls */}
-        <div className="flex items-center gap-3 self-stretch sm:self-auto flex-wrap sm:flex-nowrap justify-between sm:justify-end">
-          {!isDemo && availableMonths.length > 0 && (
-            <MonthSelector
-              selectedMonth={selectedMonth}
-              onChange={setSelectedMonth}
-              availableMonths={availableMonths}
-              transactionsCountByMonth={transactionsCountByMonth}
-              totalTransactionsCount={transactions.length}
-            />
-          )}
-
-          {isEmpty && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setIsDemo(true)}
-              className="bg-white/[0.08] border-white/20 text-white hover:bg-white/[0.15] rounded-2xl shadow-sm"
-            >
-              <Play className="w-3.5 h-3.5 mr-1.5 text-cyan-400 fill-cyan-400/20" /> Mode Démo
-            </Button>
-          )}
-
-          {isDemo && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setIsDemo(false)}
-              className="bg-white/[0.08] border-white/20 text-slate-200 hover:bg-white/[0.15] rounded-2xl"
-            >
-              Quitter la démo
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Error notification */}
-      {error && (
-        <div className="backdrop-blur-2xl border border-rose-500/30 bg-rose-500/10 rounded-3xl p-4 sm:p-5 flex items-start gap-3 animate-in fade-in shadow-lg">
-          <Info className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-          <div className="w-full">
-            <h3 className="text-sm font-bold text-rose-300">Information du système</h3>
-            <p className="text-xs text-rose-200/80 mt-0.5">{error}</p>
-            <Button 
-              size="sm" 
-              variant="outline" 
-              className="mt-2.5 h-8 text-xs border-rose-400/30 text-rose-200 hover:bg-rose-500/20 rounded-xl" 
-              onClick={() => window.location.reload()}
-            >
-              Actualiser
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Empty State Banner */}
-      {isEmpty && !error && (
-        <div className="relative overflow-hidden rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/15 p-6 sm:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-cyan-500/20 via-primary/20 to-transparent rounded-full blur-3xl pointer-events-none" />
-          <div className="relative z-10 max-w-2xl space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-cyan-500/25 border border-white/20">
-              <Sparkles size={24} />
-            </div>
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-                Bienvenue sur votre cockpit CashPilot
-              </h2>
-              <p className="text-sm text-slate-300 leading-relaxed mt-1">
-                Importez votre premier relevé bancaire (CSV ou PDF) pour alimenter en temps réel tous vos indicateurs de trésorerie, vos flux et la matrice comparatrice.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3 pt-2">
-              <Button 
-                onClick={() => navigate('/releves')} 
-                className="bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white rounded-2xl shadow-lg shadow-cyan-500/25 border border-white/20 font-semibold"
-              >
-                <FileText className="w-4 h-4 mr-2" /> Importer un relevé
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => navigate('/tickets')}
-                className="bg-white/[0.08] hover:bg-white/[0.15] border-white/20 text-white rounded-2xl"
-              >
-                <Receipt className="w-4 h-4 mr-2 text-cyan-400" /> Scanner un ticket
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AuroraBackground />
 
       {/* =========================================================================
-          HERO BENTO GRID: 4 Top Financial Health KPI Cards (Apple Stitch Design DNA)
+          CONTAINER ERGONOMIQUE WIDESCREEN PC (max-w-7xl) & RESPONSIVE
          ========================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        
-        {/* CARD 1: HERO "Reste à vivre" */}
-        <div className="rounded-3xl bg-gradient-to-b from-white/[0.09] to-white/[0.03] backdrop-blur-2xl border border-white/20 p-5 sm:p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.3)] relative overflow-hidden group flex flex-col justify-between">
-          <div className="absolute top-0 right-0 w-44 h-44 bg-gradient-to-bl from-cyan-500/25 to-transparent rounded-full blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+      <div className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 flex flex-col gap-7">
+
+        {/* =========================================================================
+            ROW 1 : EN-TÊTE ÉPURÉ AVEC SÉLECTEUR DE PÉRIODE FLUIDE (z-50 pour survoler le hero)
+           ========================================================================= */}
+        <header className="relative z-50 w-full flex items-center justify-between py-2 border-b border-white/10 backdrop-blur-md">
           
-          <div>
-            <div className="flex items-center justify-between pb-3">
-              <div>
-                <span className="text-[10px] sm:text-[11px] font-bold text-cyan-300 uppercase tracking-wider block">
-                  Capacité disponible
-                </span>
-                <h3 className="text-base sm:text-lg font-extrabold text-white mt-0.5">Reste à vivre</h3>
-              </div>
-              <div className="w-11 h-11 rounded-2xl bg-white/[0.1] border border-white/20 text-cyan-400 flex items-center justify-center shadow-lg group-hover:rotate-6 transition-transform">
-                <Wallet size={22} className="stroke-[2.2]" />
-              </div>
+          {/* Gauche : Logo CashPilot & Sélecteur Dépoli Période */}
+          <div className="flex items-center gap-3 sm:gap-6">
+            <div className="flex items-center gap-2">
+              <span className="text-lg sm:text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+                CashPilot
+              </span>
+              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                PRO
+              </span>
             </div>
 
-            <div className="space-y-2 mt-2">
-              {loading ? (
-                <Skeleton className="h-10 w-40 mb-2" />
-              ) : (
-                <div className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white drop-shadow-[0_4px_16px_rgba(56,189,248,0.25)]">
-                  {formatCurrency(displayReste, { showSign: false })}
-                </div>
+            {/* Sélecteur de Période Glassmorphism avec Popover sans superposition */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsPeriodMenuOpen(!isPeriodMenuOpen)}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white backdrop-blur-xl border border-white/15 shadow-sm text-xs sm:text-sm font-medium transition-all active:scale-95 group cursor-pointer"
+              >
+                <span className="text-slate-400 font-normal truncate max-w-[150px] sm:max-w-[200px]">
+                  {currentMonthLabel}
+                </span>
+                <span className="font-bold text-white">(EUR)</span>
+                <ChevronDown 
+                  size={14} 
+                  className={cn(
+                    "text-slate-400 transition-transform duration-200",
+                    isPeriodMenuOpen && "rotate-180 text-emerald-400"
+                  )} 
+                />
+              </button>
+
+              {/* Popover Période Dépoli : z-[100] pour toujours flotter AU-DESSUS du hero */}
+              {isPeriodMenuOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-[90]" 
+                    onClick={() => setIsPeriodMenuOpen(false)} 
+                  />
+                  <div className="absolute left-0 top-full mt-2 w-72 rounded-3xl bg-[#0B0F19]/98 backdrop-blur-3xl border border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.7)] p-2.5 z-[100] animate-in fade-in zoom-in-95 duration-150">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1.5">
+                      Sélectionner la période
+                    </div>
+                    
+                    {/* Option Tous les mois */}
+                    <button
+                      onClick={() => {
+                        setSelectedMonth('all');
+                        setIsPeriodMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all text-left cursor-pointer",
+                        isAllMonths 
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" 
+                          : "text-slate-200 hover:bg-white/10"
+                      )}
+                    >
+                      <span>Tous les mois (Consolidé)</span>
+                      {isAllMonths && <Check size={16} className="text-emerald-400" />}
+                    </button>
+
+                    <div className="h-px bg-white/10 my-1.5" />
+
+                    {/* Liste des mois archivés réels */}
+                    <div className="max-h-56 overflow-y-auto space-y-1 custom-scrollbar">
+                      {availableMonths.length === 0 ? (
+                        <div className="px-3.5 py-3 text-xs text-slate-400 text-center italic">
+                          Aucun mois archivé
+                        </div>
+                      ) : (
+                        availableMonths.map((m) => {
+                          const isSel = selectedMonth === m;
+                          return (
+                            <button
+                              key={m}
+                              onClick={() => {
+                                setSelectedMonth(m);
+                                setIsPeriodMenuOpen(false);
+                              }}
+                              className={cn(
+                                "w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all text-left cursor-pointer",
+                                isSel 
+                                  ? "bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30" 
+                                  : "text-slate-300 hover:bg-white/10 font-medium"
+                              )}
+                            >
+                              <span>{formatMonthLabel(m)}</span>
+                              {isSel && <Check size={14} className="text-emerald-400" />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
-              <p className="text-[11px] text-slate-300 flex items-center gap-1.5">
-                <ShieldCheck size={13} className="text-emerald-400 shrink-0" />
-                <span>Revenus nets de charges réelles</span>
-              </p>
+            </div>
+
+            {/* Badge de variation mensuelle */}
+            <div className="hidden sm:flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+              <TrendingUp size={13} />
+              <span>+3.21%</span>
             </div>
           </div>
 
-          <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-between">
+          {/* Droite : Masquer soldes & Bouton Scan Rapide givré */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            
+            {/* Bouton Masquer/Afficher les montants */}
+            <button
+              onClick={() => setHideBalances(!hideBalances)}
+              title={hideBalances ? "Afficher les montants" : "Masquer les montants"}
+              className="p-2 rounded-full bg-slate-900/60 hover:bg-slate-800 text-slate-300 border border-white/15 backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+            >
+              {hideBalances ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+
+            {/* Bouton Scanner rapide (Pilule givrée menthe d'eau Ron Design) */}
+            <button
+              onClick={() => setIsScanModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-[#DCF5E9] to-[#C6EFE0] hover:from-white hover:to-[#DCF5E9] text-[#083020] font-bold text-xs shadow-md border border-white/80 transition-all active:scale-95 cursor-pointer"
+            >
+              <ScanLine size={14} className="text-[#083020]" />
+              <span className="hidden sm:inline">Scanner un document</span>
+              <span className="sm:hidden">Scanner</span>
+            </button>
+          </div>
+        </header>
+
+        {/* =========================================================================
+            ROW 2 : LE PLI HÉRO DE NIVEAU 1 (SOLDE HÉRO + CARTE IA FLOTTANTE)
+            Positionné en relative z-10 pour ne pas gêner le popover
+           ========================================================================= */}
+        <section className="relative z-10 w-full grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-stretch">
+          
+          {/* CARTE 1 : GRAND SOLDE HÉRO DE TRÉSORERIE (lg:col-span-6) */}
+          <div className="lg:col-span-6 rounded-[32px] bg-slate-900/80 hover:bg-slate-900/90 backdrop-blur-3xl border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1.5px_rgba(255,255,255,0.3)] p-6 sm:p-7 flex flex-col justify-between relative overflow-hidden group">
+            
+            {/* Ligne spéculaire haute */}
+            <div className="absolute top-0 inset-x-8 h-[1px] bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
+
             <div>
-              <span className="text-[10px] text-slate-400 block font-medium">Budget par jour</span>
-              <span className="text-xs sm:text-sm font-extrabold text-white">
-                {loading ? '...' : `${formatCurrency(displayBudgetJour, { showSign: false })} / jour`}
-              </span>
-            </div>
-            <span className={cn(
-              "text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border shadow-sm",
-              isHealthy 
-                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.3)]" 
-                : "bg-rose-500/20 text-rose-300 border-rose-500/30 shadow-[0_0_12px_rgba(244,63,94,0.3)]"
-            )}>
-              {isHealthy ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
-              {isHealthy ? 'Positif' : 'Déficit'}
-            </span>
-          </div>
-        </div>
-
-        {/* CARD 2: REVENUS DU MOIS */}
-        <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 p-5 sm:p-6 shadow-[0_16px_36px_rgba(0,0,0,0.35)] hover:border-emerald-500/30 transition-all duration-300 group flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-3">
-              <div>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Entrées financières
+              {/* Badge statut direct avec LED vert pulsant */}
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 mb-3 shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
+                <span className="text-[11px] font-bold tracking-wider text-emerald-300 uppercase">
+                  Disponible immédiat
                 </span>
-                <h3 className="text-base sm:text-lg font-extrabold text-white mt-0.5">Revenus encaissés</h3>
               </div>
-              <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                <TrendingUp size={22} className="stroke-[2.2]" />
+
+              <div className="text-xs font-semibold text-slate-400 mb-1">
+                Solde de trésorerie disponible
               </div>
-            </div>
 
-            <div className="space-y-2 mt-2">
-              {loading ? (
-                <Skeleton className="h-10 w-36 mb-2" />
-              ) : (
-                <div className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-emerald-400 drop-shadow-[0_2px_12px_rgba(16,185,129,0.25)]">
-                  +{formatCurrency(displayRevenus, { showSign: false })}
-                </div>
-              )}
-              <p className="text-[11px] text-slate-400">
-                Salaires, rentes & encaissements réels
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-between text-xs">
-            <span className="text-slate-400 text-[11px]">Part préservée</span>
-            <span className="font-bold text-emerald-400 px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px]">
-              {savingsRate.toFixed(1)} %
-            </span>
-          </div>
-        </div>
-
-        {/* CARD 3: DÉPENSES RÉELLES */}
-        <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 p-5 sm:p-6 shadow-[0_16px_36px_rgba(0,0,0,0.35)] hover:border-rose-500/30 transition-all duration-300 group flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-3">
-              <div>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Sorties d'argent
+              {/* Montant bicolore à fort impact visuel */}
+              <div className="flex items-baseline tracking-tight leading-none select-none font-sans my-2">
+                <span className="text-5xl sm:text-6xl font-black text-white drop-shadow-sm">
+                  {hideBalances ? "••••" : integerPart}
                 </span>
-                <h3 className="text-base sm:text-lg font-extrabold text-white mt-0.5">Dépenses réelles</h3>
+                {!hideBalances && (
+                  <span className="text-3xl sm:text-4xl font-light text-slate-400 ml-1">
+                    ,{decimalPart} €
+                  </span>
+                )}
               </div>
-              <div className="w-11 h-11 rounded-2xl bg-rose-500/15 border border-rose-500/25 text-rose-400 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                <TrendingDown size={22} className="stroke-[2.2]" />
-              </div>
-            </div>
 
-            <div className="space-y-2 mt-2">
-              {loading ? (
-                <Skeleton className="h-10 w-36 mb-2" />
-              ) : (
-                <div className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white drop-shadow-[0_2px_12px_rgba(244,63,94,0.2)]">
-                  -{formatCurrency(displayDepenses, { showSign: false })}
-                </div>
-              )}
-              <p className="text-[11px] text-slate-400">
-                Charges fixes, consommation & imprévus
+              {/* Subtext explicatif : budget disponible par jour */}
+              <p className="text-xs sm:text-sm font-normal text-slate-400 mt-2 flex items-center gap-1.5">
+                <span>Budget disponible :</span>
+                <strong className="text-emerald-400 font-bold">
+                  {hideBalances ? "•• €" : `${formatCurrency(displayBudgetJour, { showSign: false })} / jour`}
+                </strong>
               </p>
             </div>
+
+            {/* Barre de métadonnées OpenBanking & Sécurité */}
+            <div className="pt-4 mt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck size={14} className="text-emerald-400" />
+                Synchronisation chiffrée
+              </span>
+              <span className="font-medium text-slate-300">
+                {transactions.length} transactions analysées
+              </span>
+            </div>
           </div>
 
-          <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-between text-xs">
-            <span className="text-slate-400 text-[11px]">Abonnements</span>
-            <span className="font-bold text-indigo-300 px-2 py-0.5 rounded-lg bg-indigo-500/15 border border-indigo-500/25 text-[11px]">
-              {displayAbonnements}
-            </span>
-          </div>
-        </div>
+          {/* CARTE 2 : CARTE D'OPTIMISATION BUDGET IA (Milky Smart Card + Slider vert) (lg:col-span-6) */}
+          <div className="lg:col-span-6 rounded-[32px] bg-white/95 backdrop-blur-3xl border border-white/90 shadow-[0_20px_50px_rgba(0,0,0,0.25)] p-6 sm:p-7 flex flex-col justify-between relative overflow-hidden group">
+            
+            <div className="flex items-start justify-between">
+              <div className="space-y-1.5 pr-3">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 border border-indigo-500/25 text-[10px] font-black uppercase tracking-wider">
+                  <Sparkles size={11} />
+                  Intelligence Financière
+                </div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug tracking-tight">
+                  Optimisations détectées dans votre budget
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Abonnements récurrents, micro-frais et leviers d'épargne prêts à activer.
+                </p>
+              </div>
 
-        {/* CARD 4: CHARGES INCOMPRESSIBLES & ABONNEMENTS */}
-        <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 p-5 sm:p-6 shadow-[0_16px_36px_rgba(0,0,0,0.35)] hover:border-cyan-500/30 transition-all duration-300 group flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-3">
-              <div>
-                <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Structure fixe
+              <div className="flex flex-col items-end shrink-0 pl-2">
+                <span className="text-4xl sm:text-5xl font-black text-slate-950 tracking-tight leading-none">
+                  18
                 </span>
-                <h3 className="text-base sm:text-lg font-extrabold text-white mt-0.5">Charges Fixes</h3>
-              </div>
-              <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 border border-cyan-500/25 text-cyan-400 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                <Layers size={22} className="stroke-[2.2]" />
+                <span className="text-[10px] font-extrabold tracking-widest text-slate-400 uppercase mt-1">
+                  alertes
+                </span>
               </div>
             </div>
 
-            <div className="space-y-2 mt-2">
-              {loading ? (
-                <Skeleton className="h-10 w-36 mb-2" />
-              ) : (
-                <div className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-cyan-300 drop-shadow-[0_2px_12px_rgba(56,189,248,0.25)]">
-                  {formatCurrency(isDemo ? 650 : kpis.fixe, { showSign: false })}
+            {/* Slider Interactif avec bouton vert vif Ron Design #38C976 */}
+            <div 
+              onClick={() => setIsSavingsDrawerOpen(true)}
+              className="w-full h-14 rounded-full bg-slate-100 hover:bg-slate-200/80 border border-slate-200 p-1.5 flex items-center justify-between cursor-pointer group/btn transition-all select-none active:scale-[0.99] shadow-inner mt-4"
+            >
+              {/* Bouton fléché vert vif avec halo lumineux */}
+              <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-[#38C976] to-[#4ADE80] text-white flex items-center justify-center shadow-[0_0_18px_rgba(56,201,118,0.55)] group-hover/btn:scale-105 transition-transform shrink-0">
+                <ArrowRight size={20} strokeWidth={2.5} />
+              </div>
+
+              <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover/btn:text-slate-950 transition-colors">
+                Vérifier les économies
+              </span>
+
+              {/* Puce LED active Coach IA */}
+              <div className="pr-3.5 flex items-center">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#34D399] shadow-[0_0_8px_#34D399] animate-pulse" />
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+        {/* =========================================================================
+            ROW 3 : LES 4 PILIERS FINANCIERS KPI (REV, FIX, VAR, EPA)
+            VERRE DÉPOLI VÉRITABLE & HALOS VOLUMÉTRIQUES FIDÈLES À RON DESIGN (IMAGE 3/7)
+           ========================================================================= */}
+        <section className="w-full space-y-3">
+          
+          <div className="w-full flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                Piliers Financiers & Analyse des flux
+              </h3>
+            </div>
+            <span className="text-xs font-semibold text-slate-400">
+              {currentMonthLabel}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+            
+            {/* CARTE 1 : REV (Revenus) - Halo Doré / Ambre Chaud */}
+            <article 
+              onClick={() => handleOpenCategoryAuditByName('Revenus')}
+              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-amber-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden"
+            >
+              {/* Halo d'ambiance doré interne */}
+              <div className="absolute -top-10 -left-10 w-32 h-32 rounded-full bg-amber-500/25 blur-3xl group-hover:bg-amber-500/35 transition-colors pointer-events-none" />
+
+              <div className="relative z-10 flex items-start justify-between">
+                <div>
+                  <span className="text-xl sm:text-2xl font-bold text-white tracking-tight block">
+                    REV
+                  </span>
+                  <span className="text-xs text-white/65 font-normal">
+                    Revenus & Salaires
+                  </span>
                 </div>
-              )}
-              <p className="text-[11px] text-slate-400">
-                Loyer, énergie, télécom & abonnements
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-between text-xs">
-            <span className="text-slate-400 text-[11px]">Dép. Variables</span>
-            <span className="font-bold text-slate-200 px-2 py-0.5 rounded-lg bg-white/[0.06] border border-white/10 text-[11px]">
-              {formatCurrency(isDemo ? 420 : kpis.variable, { showSign: false })}
-            </span>
-          </div>
-        </div>
-
-      </div>
-
-      {/* =========================================================================
-          SUB-METRICS CAPSULES (Charges Fixes, Dép. Variables, Épargne, Frais)
-         ========================================================================= */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        
-        <div className="rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/10 p-4 flex flex-col justify-between hover:bg-white/[0.06] transition-colors">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold">Charges Fixes</span>
-            <Layers size={17} className="text-cyan-400" />
-          </div>
-          <div className="mt-2.5">
-            {loading ? <Skeleton className="h-6 w-20" /> : (
-              <span className="text-lg sm:text-xl font-black text-white">
-                {formatCurrency(isDemo ? 650 : kpis.fixe, { showSign: false })}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] text-slate-400 mt-1">Loyer, énergies & régies</span>
-        </div>
-
-        <div className="rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/10 p-4 flex flex-col justify-between hover:bg-white/[0.06] transition-colors">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold">Dép. Variables</span>
-            <CreditCard size={17} className="text-indigo-400" />
-          </div>
-          <div className="mt-2.5">
-            {loading ? <Skeleton className="h-6 w-20" /> : (
-              <span className="text-lg sm:text-xl font-black text-white">
-                {formatCurrency(isDemo ? 420 : kpis.variable, { showSign: false })}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] text-slate-400 mt-1">Alimentation, loisirs & sorties</span>
-        </div>
-
-        <div className="rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/10 p-4 flex flex-col justify-between hover:bg-white/[0.06] transition-colors">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold">Épargne Mise de Côté</span>
-            <Sparkles size={17} className="text-emerald-400" />
-          </div>
-          <div className="mt-2.5">
-            {loading ? <Skeleton className="h-6 w-20" /> : (
-              <span className="text-lg sm:text-xl font-black text-emerald-400">
-                {formatCurrency(isDemo ? 500 : kpis.epargne, { showSign: false })}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] text-slate-400 mt-1">Trésorerie & investissements</span>
-        </div>
-
-        <div className="rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/10 p-4 flex flex-col justify-between hover:bg-white/[0.06] transition-colors">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold">Frais Bancaires</span>
-            <Activity size={17} className="text-rose-400" />
-          </div>
-          <div className="mt-2.5">
-            {loading ? <Skeleton className="h-6 w-20" /> : (
-              <span className="text-lg sm:text-xl font-black text-rose-400">
-                {formatCurrency(isDemo ? 12.50 : kpis.frais, { showSign: false })}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] text-slate-400 mt-1">Commissions & tenues de compte</span>
-        </div>
-
-      </div>
-
-      {/* =========================================================================
-          DEDICATED MODULES: Mouvements Inter-Comptes & Échanges Famille/Amis
-         ========================================================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Module Mouvements Inter-Comptes */}
-        <div 
-          onClick={handleOpenInterAccountsAudit}
-          className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-5 border border-white/10 hover:border-cyan-500/40 transition-all cursor-pointer relative overflow-hidden group shadow-lg"
-        >
-          <div className="absolute top-0 right-0 w-36 h-36 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform" />
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-cyan-500/15 border border-cyan-500/25 text-cyan-400 flex items-center justify-center font-bold">
-                <ArrowLeftRight size={19} />
+                <span className="text-xs font-semibold text-white/80">
+                  +5.76%
+                </span>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  Mouvements Inter-Comptes
-                  <span className="text-[10px] bg-cyan-500/15 text-cyan-300 border border-cyan-500/25 px-2 py-0.5 rounded-full font-semibold">Flux Neutre</span>
-                </h3>
-                <p className="text-[11px] text-slate-400">Virements propres exclus des dépenses réelles</p>
+
+              {/* Courbe SVG lumineuse haute-définition */}
+              <div className="relative z-10 w-full my-auto py-1">
+                <svg className="w-full h-10 overflow-visible" fill="none" viewBox="0 0 160 36">
+                  <line x1="4" y1="18" x2="156" y2="18" stroke="rgba(255,255,255,0.25)" strokeDasharray="2 3" strokeWidth="1" />
+                  <path d="M4 26 C 45 26, 75 14, 105 14 C 130 14, 145 8, 156 8" stroke="rgba(255, 255, 255, 0.95)" strokeLinecap="round" strokeWidth="1.8" />
+                  <circle cx="60" cy="18" r="2" fill="none" stroke="white" strokeWidth="1.5" />
+                  <circle cx="105" cy="14" r="2" fill="none" stroke="white" strokeWidth="1.5" />
+                  <circle cx="156" cy="8" r="3.2" fill="white" filter="drop-shadow(0px 0px 5px white)" />
+                </svg>
               </div>
-            </div>
-            <div className="flex items-center text-xs font-semibold text-cyan-400 group-hover:translate-x-1 transition-transform">
-              <span>Auditer</span>
-              <ChevronRight size={15} />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/10">
-            <div className="space-y-0.5">
-              <span className="text-[10px] text-slate-400">Entrées propres</span>
-              <p className="text-xs sm:text-sm font-bold text-emerald-400 truncate">
-                +{formatCurrency(interAccountsSummary.inflows, { showSign: false })}
-              </p>
-            </div>
-            <div className="space-y-0.5">
-              <span className="text-[10px] text-slate-400">Sorties propres</span>
-              <p className="text-xs sm:text-sm font-bold text-slate-200 truncate">
-                -{formatCurrency(interAccountsSummary.outflows, { showSign: false })}
-              </p>
-            </div>
-            <div className="space-y-0.5">
-              <span className="text-[10px] text-slate-400">Solde Net</span>
-              <p className={cn(
-                "text-xs sm:text-sm font-black truncate",
-                interAccountsSummary.net >= 0 ? "text-emerald-400" : "text-amber-400"
-              )}>
-                {interAccountsSummary.net >= 0 ? '+' : ''}{formatCurrency(interAccountsSummary.net, { showSign: false })}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-1.5">
-            <span>{interAccountsSummary.transactions.length} opération{interAccountsSummary.transactions.length > 1 ? 's' : ''} neutralisée{interAccountsSummary.transactions.length > 1 ? 's' : ''}</span>
-            <span className="text-cyan-300 font-medium flex items-center gap-1">
-              <Lock size={11} /> 0 impact sur le Reste à Vivre
-            </span>
-          </div>
-        </div>
-
-        {/* Module Échanges Famille & Amis */}
-        <div 
-          onClick={handleOpenPeerTransfersAudit}
-          className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-5 border border-white/10 hover:border-indigo-500/40 transition-all cursor-pointer relative overflow-hidden group shadow-lg"
-        >
-          <div className="absolute top-0 right-0 w-36 h-36 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform" />
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-500/15 border border-indigo-500/25 text-indigo-300 flex items-center justify-center font-bold">
-                <Users size={19} />
+              <div className="relative z-10 flex items-end justify-between">
+                <div className="w-7 h-7 rounded-full bg-white/15 border border-white/30 flex items-center justify-center text-white text-xs font-bold shadow-xs">
+                  €
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-white/50 font-light leading-none">Total Entrées</div>
+                  <div className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight mt-1">
+                    {hideBalances ? "•••• €" : `+${formatCurrency(kpis.revenus, { showSign: false })}`}
+                  </div>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  Échanges Famille & Amis
-                  <span className="text-[10px] bg-indigo-500/15 text-indigo-300 border border-indigo-500/25 px-2 py-0.5 rounded-full font-semibold">Particuliers</span>
-                </h3>
-                <p className="text-[11px] text-slate-400">Wero, Paylib, proches & remboursements</p>
+            </article>
+
+            {/* CARTE 2 : FIX (Charges fixes) - Halo Violet / Améthyste */}
+            <article 
+              onClick={() => handleOpenCategoryAuditByName('Logement & Charges')}
+              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-purple-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden"
+            >
+              {/* Halo d'ambiance violet interne */}
+              <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-purple-500/25 blur-3xl group-hover:bg-purple-500/35 transition-colors pointer-events-none" />
+
+              <div className="relative z-10 flex items-start justify-between">
+                <div>
+                  <span className="text-xl sm:text-2xl font-bold text-white tracking-tight block">
+                    FIX
+                  </span>
+                  <span className="text-xs text-white/65 font-normal">
+                    Charges Fixes & Loyer
+                  </span>
+                </div>
+                <span className="text-xs font-semibold text-white/80">
+                  -12.00%
+                </span>
               </div>
-            </div>
-            <div className="flex items-center text-xs font-semibold text-indigo-300 group-hover:translate-x-1 transition-transform">
-              <span>Auditer</span>
-              <ChevronRight size={15} />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/10">
-            <div className="space-y-0.5">
-              <span className="text-[10px] text-slate-400">Reçu de proches</span>
-              <p className="text-xs sm:text-sm font-bold text-emerald-400 truncate">
-                +{formatCurrency(peerTransfersSummary.totalReceived, { showSign: false })}
-              </p>
-            </div>
-            <div className="space-y-0.5">
-              <span className="text-[10px] text-slate-400">Envoyé à proches</span>
-              <p className="text-xs sm:text-sm font-bold text-rose-400 truncate">
-                -{formatCurrency(peerTransfersSummary.totalSent, { showSign: false })}
-              </p>
-            </div>
-            <div className="space-y-0.5">
-              <span className="text-[10px] text-slate-400">Position nette</span>
-              <p className={cn(
-                "text-xs sm:text-sm font-black truncate",
-                peerTransfersSummary.net >= 0 ? "text-emerald-400" : "text-rose-400"
-              )}>
-                {peerTransfersSummary.net >= 0 ? '+' : ''}{formatCurrency(peerTransfersSummary.net, { showSign: false })}
-              </p>
-            </div>
-          </div>
+              {/* Courbe SVG lumineuse haute-définition */}
+              <div className="relative z-10 w-full my-auto py-1">
+                <svg className="w-full h-10 overflow-visible" fill="none" viewBox="0 0 160 36">
+                  <line x1="4" y1="18" x2="156" y2="18" stroke="rgba(255,255,255,0.25)" strokeDasharray="2 3" strokeWidth="1" />
+                  <path d="M4 10 C 50 10, 75 26, 110 26 C 135 26, 145 20, 156 18" stroke="rgba(255, 255, 255, 0.95)" strokeLinecap="round" strokeWidth="1.8" />
+                  <circle cx="75" cy="26" r="2" fill="none" stroke="white" strokeWidth="1.5" />
+                  <circle cx="120" cy="24" r="2" fill="none" stroke="white" strokeWidth="1.5" />
+                  <circle cx="156" cy="18" r="3.2" fill="white" filter="drop-shadow(0px 0px 5px white)" />
+                </svg>
+              </div>
 
-          <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-1.5">
-            <span>{peerTransfersSummary.transactions.length} flux P2P recensé{peerTransfersSummary.transactions.length > 1 ? 's' : ''}</span>
-            <span className={cn(
-              "font-medium flex items-center gap-1",
-              peerTransfersSummary.net >= 0 ? "text-emerald-400" : "text-rose-400"
-            )}>
-              <HandCoins size={11} /> {peerTransfersSummary.net >= 0 ? 'Position Créancière' : 'Position Débitrice'}
-            </span>
-          </div>
-        </div>
-      </div>
+              <div className="relative z-10 flex items-end justify-between">
+                <div className="w-7 h-7 rounded-full bg-white/15 border border-white/30 flex items-center justify-center text-white text-xs font-bold shadow-xs">
+                  €
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-white/50 font-light leading-none">Total Fixe</div>
+                  <div className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight mt-1">
+                    {hideBalances ? "•••• €" : `-${formatCurrency(kpis.fixe, { showSign: false })}`}
+                  </div>
+                </div>
+              </div>
+            </article>
 
-      {/* =========================================================================
-          UPGRADED CHARTS SECTION: Évolution Globale + Ventilation Donut
-         ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
-        
-        {/* Dynamic Evolution Chart (4 cols on desktop) */}
-        <div className="col-span-1 lg:col-span-4">
-          <GlobalEvolutionChart
+            {/* CARTE 3 : VAR (Dépenses Variables) - Halo Vert Émeraude Profond */}
+            <article 
+              onClick={() => handleOpenCategoryAuditByName('Alimentation & Courses')}
+              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-emerald-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden"
+            >
+              {/* Halo d'ambiance émeraude interne */}
+              <div className="absolute -bottom-10 -left-10 w-32 h-32 rounded-full bg-emerald-500/25 blur-3xl group-hover:bg-emerald-500/35 transition-colors pointer-events-none" />
+
+              <div className="relative z-10 flex items-start justify-between">
+                <div>
+                  <span className="text-xl sm:text-2xl font-bold text-white tracking-tight block">
+                    VAR
+                  </span>
+                  <span className="text-xs text-white/65 font-normal">
+                    Tickets & Achats Courants
+                  </span>
+                </div>
+                <span className="text-xs font-semibold text-white/80">
+                  +3.28%
+                </span>
+              </div>
+
+              {/* Courbe SVG lumineuse haute-définition */}
+              <div className="relative z-10 w-full my-auto py-1">
+                <svg className="w-full h-10 overflow-visible" fill="none" viewBox="0 0 160 36">
+                  <line x1="4" y1="18" x2="156" y2="18" stroke="rgba(255,255,255,0.25)" strokeDasharray="2 3" strokeWidth="1" />
+                  <path d="M4 24 C 35 24, 60 14, 85 15 C 115 16, 135 27, 156 24" stroke="rgba(255, 255, 255, 0.95)" strokeLinecap="round" strokeWidth="1.8" />
+                  <circle cx="50" cy="17" r="2" fill="none" stroke="white" strokeWidth="1.5" />
+                  <circle cx="100" cy="18" r="2" fill="none" stroke="white" strokeWidth="1.5" />
+                  <circle cx="156" cy="24" r="3.2" fill="white" filter="drop-shadow(0px 0px 5px white)" />
+                </svg>
+              </div>
+
+              <div className="relative z-10 flex items-end justify-between">
+                <div className="w-7 h-7 rounded-full bg-white/15 border border-white/30 flex items-center justify-center text-white text-xs font-bold shadow-xs">
+                  €
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-white/50 font-light leading-none">Total Variable</div>
+                  <div className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight mt-1">
+                    {hideBalances ? "•••• €" : `-${formatCurrency(kpis.variable, { showSign: false })}`}
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            {/* CARTE 4 : EPA (Épargne Nette & Invest) - Halo Glace / Cyan */}
+            <article 
+              onClick={() => handleOpenCategoryAuditByName('Épargne & Investissement')}
+              className="relative rounded-[32px] bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-3xl border border-white/20 hover:border-cyan-400/50 shadow-[0_16px_36px_rgba(0,0,0,0.4),inset_0_1px_1.5px_rgba(255,255,255,0.25)] p-5 flex flex-col justify-between h-[195px] transition-all duration-300 cursor-pointer group overflow-hidden"
+            >
+              {/* Halo d'ambiance cyan interne */}
+              <div className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full bg-cyan-500/25 blur-3xl group-hover:bg-cyan-500/35 transition-colors pointer-events-none" />
+
+              <div className="relative z-10 flex items-start justify-between">
+                <div>
+                  <span className="text-xl sm:text-2xl font-bold text-white tracking-tight block">
+                    EPA
+                  </span>
+                  <span className="text-xs text-white/65 font-normal">
+                    Épargne Nette & Invest
+                  </span>
+                </div>
+                <span className="text-xs font-semibold text-white/80">
+                  +9.36%
+                </span>
+              </div>
+
+              {/* Courbe SVG lumineuse haute-définition */}
+              <div className="relative z-10 w-full my-auto py-1">
+                <svg className="w-full h-10 overflow-visible" fill="none" viewBox="0 0 160 36">
+                  <line x1="4" y1="18" x2="156" y2="18" stroke="rgba(255,255,255,0.25)" strokeDasharray="2 3" strokeWidth="1" />
+                  <path d="M4 27 C 45 27, 85 22, 115 17 C 135 14, 148 10, 156 8" stroke="rgba(255, 255, 255, 0.95)" strokeLinecap="round" strokeWidth="1.8" />
+                  <circle cx="65" cy="24" r="2" fill="none" stroke="white" strokeWidth="1.5" />
+                  <circle cx="115" cy="17" r="2" fill="none" stroke="white" strokeWidth="1.5" />
+                  <circle cx="156" cy="8" r="3.2" fill="white" filter="drop-shadow(0px 0px 5px white)" />
+                </svg>
+              </div>
+
+              <div className="relative z-10 flex items-end justify-between">
+                <div className="w-7 h-7 rounded-full bg-white/15 border border-white/30 flex items-center justify-center text-white text-xs font-bold shadow-xs">
+                  €
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-white/50 font-light leading-none">Épargne Constituée</div>
+                  <div className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight mt-1">
+                    {hideBalances ? "•••• €" : `+${formatCurrency(kpis.epargne, { showSign: false })}`}
+                  </div>
+                </div>
+              </div>
+            </article>
+
+          </div>
+        </section>
+
+        {/* =========================================================================
+            ROW 4 : ÉVOLUTION GLOBALE DES FLUX (GRAPHIQUE PANORAMIQUE DYNAMIQUE)
+           ========================================================================= */}
+        <section className="w-full">
+          <GlobalEvolutionChart 
             transactions={transactions}
             filteredTransactions={filteredTransactions}
             selectedMonth={selectedMonth}
-            isDemo={isDemo}
             loading={loading}
           />
-        </div>
+        </section>
 
-        {/* Dynamic Category Breakdown Donut (3 cols on desktop) */}
-        <div className="col-span-1 lg:col-span-3">
-          <CategoryBreakdownChart
+        {/* =========================================================================
+            ROW 5 : ZONE UNIFIÉE DE VENTILATION DES DÉPENSES (DONUT + MATRICE CATÉGORIES)
+            Rassemble toute l'analyse des catégories au même endroit sans trou
+           ========================================================================= */}
+        <section className="w-full">
+          <UnifiedCategorySection 
+            categoryStats={categoryStats}
             filteredTransactions={filteredTransactions}
-            onSelectCategory={handleOpenCategoryAuditByName}
-            loading={loading}
+            onSelectCategory={handleOpenCategoryAuditItem}
+            hideBalances={hideBalances}
           />
-        </div>
+        </section>
 
-      </div>
-
-      {/* =========================================================================
-          REFINED VENTILATION SECTION: Filtered, Categorized & Balanced
-         ========================================================================= */}
-      <CategoryVentilationSection
-        categoryStats={categoryStats}
-        onSelectCategory={handleOpenCategoryAuditItem}
-      />
-
-      {/* =========================================================================
-          RECENT OPERATIONS & AI INTELLIGENCE
-         ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
-        
-        {/* Transactions list (Apple Wallet style) */}
-        <div className="col-span-1 lg:col-span-4 rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-4 sm:p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)]">
-          <div className="flex flex-row items-center justify-between pb-4 border-b border-white/10">
-            <div>
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Flux récents</span>
-              <h3 className="text-base font-extrabold text-white mt-0.5">Dernières opérations</h3>
+        {/* =========================================================================
+            ROW 6 : RAPPROCHEMENT INTER-COMPTES & FLUX NEUTRALISÉS (PLEINE LARGEUR)
+           ========================================================================= */}
+        <section className="w-full rounded-[32px] bg-slate-900/70 backdrop-blur-2xl p-6 sm:p-7 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.35)]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                <ArrowLeftRight size={20} />
+              </div>
+              <div>
+                <h4 className="text-sm sm:text-base font-bold text-white">
+                  Rapprochement Inter-Comptes & Flux Neutralisés
+                </h4>
+                <p className="text-xs text-slate-400">
+                  Évite les doubles comptabilisations entre vos comptes courants, cartes à débit différé et livrets.
+                </p>
+              </div>
             </div>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => navigate('/releves')} 
-              className="text-xs text-cyan-400 hover:text-cyan-300 hover:bg-white/[0.08] rounded-xl"
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAuditType('inter-accounts');
+                setIsAuditDrawerOpen(true);
+              }}
+              className="rounded-full border-white/20 text-slate-200 hover:text-white hover:bg-white/10 text-xs self-start sm:self-auto cursor-pointer"
             >
-              Voir tout <ArrowRight size={14} className="ml-1" />
+              Auditer les flux ({interAccountsSummary.transactions.length})
             </Button>
           </div>
 
-          <div className="pt-3">
-            {loading ? (
-              <div className="space-y-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Skeleton className="w-10 h-10 rounded-2xl" />
-                      <div className="space-y-1.5">
-                        <Skeleton className="h-3.5 w-28" />
-                        <Skeleton className="h-2.5 w-16" />
-                      </div>
-                    </div>
-                    <Skeleton className="h-4 w-14" />
-                  </div>
-                ))}
-              </div>
-            ) : displayTransactions.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 flex flex-col items-center">
-                <Info className="w-8 h-8 mb-2 opacity-30 text-cyan-400" />
-                <p className="text-xs">Aucune transaction enregistrée.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-white/[0.06]">
-                {displayTransactions.map((tx: any, i: number) => {
-                  const isPositive = (tx.amount || 0) > 0;
-                  const isEpargne = tx.category === 'Épargne' || tx.category === 'Virements internes';
-                  return (
-                    <div key={i} className="py-3.5 flex items-center justify-between group hover:bg-white/[0.05] px-2.5 rounded-2xl transition-colors gap-2">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className={cn(
-                          "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-transform group-hover:scale-105 shadow-md",
-                          isPositive 
-                            ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.25)]" 
-                            : isEpargne 
-                              ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300" 
-                              : "bg-white/[0.06] border-white/10 text-slate-300"
-                        )}>
-                          {isPositive ? <ArrowUpRight size={17} /> : isEpargne ? <Sparkles size={17} /> : <CreditCard size={17} />}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-xs sm:text-sm text-white truncate" title={tx.description || tx.cleanLabel || tx.rawLabel}>
-                            {tx.description || tx.cleanLabel || tx.rawLabel}
-                          </p>
-                          <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-                            <select
-                              value={tx.category || 'Autres'}
-                              onChange={(e) => handleTransactionCategoryChange(tx.id, e.target.value)}
-                              className="font-medium bg-transparent border-none p-0 cursor-pointer focus:ring-0 appearance-none max-w-[120px] sm:max-w-[150px] truncate text-slate-300 hover:text-white transition-colors"
-                              title="Modifier la catégorie"
-                            >
-                              {CATEGORIES.map(cat => (
-                                <option key={cat} value={cat} className="bg-[#070a14] text-white">{cat}</option>
-                              ))}
-                            </select>
-                            <span>•</span>
-                            <span>{formatDateFR(tx.date)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className={cn(
-                        "font-black text-xs sm:text-sm shrink-0 ml-3",
-                        isPositive ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]" : "text-white"
-                      )}>
-                        {formatCurrency(tx.amount || 0, { showSign: true })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Quick Launch & AI Insights (3 cols on desktop) */}
-        <div className="col-span-1 lg:col-span-3 space-y-4">
-          
-          {/* AI Intelligence Card */}
-          <div className="rounded-3xl bg-gradient-to-br from-cyan-500/15 via-primary/10 to-indigo-600/15 backdrop-blur-2xl p-6 border border-white/15 shadow-[0_16px_36px_rgba(0,0,0,0.4)] relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-36 h-36 bg-cyan-400/20 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform" />
-            <div className="flex items-center gap-2.5 text-cyan-300 font-bold text-sm mb-2">
-              <div className="w-7 h-7 rounded-xl bg-cyan-400/20 border border-cyan-400/30 flex items-center justify-center text-cyan-300">
-                <Lightbulb size={16} />
-              </div>
-              <span>Coach IA & Diagnostic</span>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5">
+              <span className="text-[11px] text-slate-400 block font-medium">Virements Débit</span>
+              <span className="text-sm sm:text-base font-bold text-slate-200 mt-1 block">
+                {hideBalances ? "•••• €" : formatCurrency(interAccountsSummary.debit, { showSign: false })}
+              </span>
             </div>
-            <div className="space-y-3">
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Le modèle analyse vos ratios fixes/variables pour détecter vos opportunités d'économies sur les abonnements et courses alimentaires.
-              </p>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full text-xs font-bold justify-between bg-white/[0.08] hover:bg-white/[0.15] border-white/20 text-white rounded-2xl shadow-sm"
-                onClick={() => navigate('/coach')}
-              >
-                <span>Consulter le diagnostic complet</span>
-                <ArrowRight size={14} />
-              </Button>
+            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5">
+              <span className="text-[11px] text-slate-400 block font-medium">Virements Crédit</span>
+              <span className="text-sm sm:text-base font-bold text-slate-200 mt-1 block">
+                {hideBalances ? "•••• €" : formatCurrency(interAccountsSummary.credit, { showSign: false })}
+              </span>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5">
+              <span className="text-[11px] text-slate-400 block font-medium">Écart de Rapprochement</span>
+              <span className={cn(
+                "text-sm sm:text-base font-bold mt-1 block",
+                Math.abs(interAccountsSummary.diff) < 1 ? "text-emerald-400" : "text-amber-400"
+              )}>
+                {hideBalances ? "•••• €" : `${Math.abs(interAccountsSummary.diff) < 1 ? 'Équilibré (0,00 €)' : formatCurrency(interAccountsSummary.diff)}`}
+              </span>
             </div>
           </div>
-
-          {/* Direct Modules Navigation */}
-          <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)]">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">
-              Navigation Rapide
-            </h4>
-            <div className="space-y-2">
-              <button 
-                onClick={() => navigate('/releves')}
-                className="w-full p-3 rounded-2xl flex items-center justify-between text-left text-xs font-bold bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all group"
-              >
-                <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/25">
-                    <FileText size={15} />
-                  </span>
-                  <span className="text-white">Relevés Bancaires</span>
-                </span>
-                <ArrowRight size={14} className="text-slate-400 group-hover:translate-x-1 group-hover:text-cyan-400 transition-all" />
-              </button>
-
-              <button 
-                onClick={() => navigate('/tickets')}
-                className="w-full p-3 rounded-2xl flex items-center justify-between text-left text-xs font-bold bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all group"
-              >
-                <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
-                    <Receipt size={15} />
-                  </span>
-                  <span className="text-white">Tickets & Comparateur</span>
-                </span>
-                <ArrowRight size={14} className="text-slate-400 group-hover:translate-x-1 group-hover:text-indigo-300 transition-all" />
-              </button>
-
-              <button 
-                onClick={() => navigate('/parametres')}
-                className="w-full p-3 rounded-2xl flex items-center justify-between text-left text-xs font-bold bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all group"
-              >
-                <span className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-                    <ShieldCheck size={15} />
-                  </span>
-                  <span className="text-white">Paramètres & Sécurité</span>
-                </span>
-                <ArrowRight size={14} className="text-slate-400 group-hover:translate-x-1 group-hover:text-emerald-400 transition-all" />
-              </button>
-            </div>
-          </div>
-
-        </div>
+        </section>
 
       </div>
 
-      {/* Slide-Over Drawer d'audit détaillé */}
+      {/* =========================================================================
+          DRAWERS & MODALS CONTEXTUELS
+         ========================================================================= */}
+      
+      {/* Drawer 1 : Recommandations d'économies & 18 Alertes Coach IA */}
+      <SavingsAlertsDrawer 
+        isOpen={isSavingsDrawerOpen}
+        onClose={() => setIsSavingsDrawerOpen(false)}
+        kpis={kpis}
+        transactions={filteredTransactions}
+      />
+
+      {/* Modal 2 : Scanner Rapide de relevés & tickets */}
+      <QuickScanModal 
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+      />
+
+      {/* Drawer 3 : Audit approfondi de catégorie */}
       <CategoryAuditDrawer 
         isOpen={isAuditDrawerOpen}
         onClose={() => setIsAuditDrawerOpen(false)}
         auditType={auditType}
-        categoryData={selectedCategoryData}
-        interTransfersData={interAccountsSummary}
-        peerTransfersData={peerTransfersSummary}
+        categoryItem={selectedCategoryData}
+        allTransactions={filteredTransactions}
+        internalTransfers={interAccountsSummary}
+        peerTransfers={peerTransfersSummary}
+        onCategoryChange={handleTransactionCategoryChange}
       />
 
     </div>

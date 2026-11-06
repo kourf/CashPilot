@@ -160,7 +160,7 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
   }, [activeIndex, activeDataset, totalAmount, viewMode]);
 
   return (
-    <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-4 sm:p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)] flex flex-col justify-between">
+    <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-4 sm:p-6 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.4)] flex flex-col justify-between h-full min-h-[500px]">
       
       {/* Header & View Mode Switcher */}
       <div>
