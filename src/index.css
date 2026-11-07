@@ -359,3 +359,73 @@
 .pb-mobile-nav-double {
   padding-bottom: calc(10.5rem + env(safe-area-inset-bottom, 0px));
 }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+.animate-shake {
+  animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* =========================================================================
+   RON DESIGN AURORA & FROSTED GLASS SYSTEM
+   ========================================================================= */
+
+/* Tiers supérieur blanc pur avec micro-points */
+.bg-luminous-header {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 85%, rgba(248, 250, 252, 0) 100%);
+}
+
+.bg-dot-matrix-subtle {
+  background-image: radial-gradient(rgba(15, 23, 42, 0.08) 1.1px, transparent 1.1px);
+  background-size: 18px 18px;
+}
+
+/* Carte porcelaine laiteuse (90% opacité) */
+.card-porcelain {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 
+    0 20px 45px -10px rgba(15, 23, 42, 0.07),
+    0 4px 12px -2px rgba(15, 23, 42, 0.03),
+    inset 0 1px 2px rgba(255, 255, 255, 1);
+}
+
+/* Grille 2x2 en verre dépoli (15% blanc sur fond coloré) */
+.card-frosted-kpi {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 
+    0 16px 36px -6px rgba(0, 0, 0, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.35);
+}
+
+/* Bouton pilule gris perle avec cercle vert Ron Design */
+.pill-pearl-slider {
+  background: #EAECEF;
+  border: 1px solid rgba(203, 213, 225, 0.7);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Sphères organiques Aurora */
+.aurora-sphere-lavender {
+  background: radial-gradient(circle, rgba(233, 213, 255, 0.75) 0%, rgba(221, 214, 254, 0.35) 50%, transparent 75%);
+  filter: blur(90px);
+}
+
+.aurora-sphere-amber {
+  background: radial-gradient(circle, rgba(254, 215, 170, 0.7) 0%, rgba(253, 230, 138, 0.3) 50%, transparent 75%);
+  filter: blur(100px);
+}
+
+.aurora-sphere-emerald {
+  background: radial-gradient(circle, rgba(6, 78, 59, 0.95) 0%, rgba(4, 47, 36, 0.9) 60%, transparent 85%);
+  filter: blur(90px);
+}
