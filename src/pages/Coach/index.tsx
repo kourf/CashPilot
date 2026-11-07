@@ -104,6 +104,8 @@ export default function Coach() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const baseDictationPromptRef = useRef<string>('');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -113,22 +115,52 @@ export default function Coach() {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Initialisation de la reconnaissance vocale Web Speech API
+  // Auto-ajustement dynamique de la hauteur du champ de saisie pour phrases longues et retours à la ligne
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollH = textareaRef.current.scrollHeight;
+      const targetH = Math.min(Math.max(scrollH, 26), 160);
+      textareaRef.current.style.height = `${targetH}px`;
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+    }
+  }, [inputPrompt]);
+
+  // Initialisation de la reconnaissance vocale Web Speech API avec streaming continu et retours à la ligne
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.continuous = true;
+      recognition.interimResults = true;
       recognition.lang = 'fr-FR';
 
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInputPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
-        setIsListening(false);
+        let interimText = '';
+        let finalText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            finalText += res[0].transcript;
+          } else {
+            interimText += res[0].transcript;
+          }
+        }
+
+        const newSpoken = (finalText || interimText).trim();
+        if (newSpoken) {
+          const base = baseDictationPromptRef.current;
+          const combined = base ? `${base.trim()} ${newSpoken}` : newSpoken;
+          setInputPrompt(combined);
+          if (finalText) {
+            baseDictationPromptRef.current = combined;
+          }
+        }
       };
 
-      recognition.onerror = () => {
+      recognition.onerror = (e: any) => {
+        console.warn('Speech recognition error:', e);
         setIsListening(false);
       };
 
@@ -146,14 +178,19 @@ export default function Coach() {
       return;
     }
     if (isListening) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.warn('Speech recognition stop error:', err);
+      }
       setIsListening(false);
     } else {
       try {
+        baseDictationPromptRef.current = inputPrompt || '';
         recognitionRef.current.start();
         setIsListening(true);
       } catch (err) {
-        console.warn('Speech recognition error', err);
+        console.warn('Speech recognition start error:', err);
         setIsListening(false);
       }
     }
@@ -969,46 +1006,53 @@ export default function Coach() {
               </p>
             </div>
 
-            {/* 2. CAPSULE DE SAISIE PROMPT EN PLEIN CENTRE (STITCH & GEMINI) */}
+            {/* 2. CAPSULE DE SAISIE PROMPT EN PLEIN CENTRE MULTILIGNE (STITCH & GEMINI) */}
             <div className="max-w-2xl sm:max-w-3xl mx-auto w-full space-y-2">
-              <div className="bg-[#171926]/90 hover:bg-[#1c1f30]/95 backdrop-blur-2xl rounded-full border border-white/20 p-2 sm:p-2.5 pl-3.5 sm:pl-5 flex items-center gap-2 sm:gap-3 shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus-within:border-sky-400/60 focus-within:ring-2 focus-within:ring-sky-400/20 transition-all duration-300">
+              <div className="bg-[#171926]/90 hover:bg-[#1c1f30]/95 backdrop-blur-2xl rounded-[28px] border border-white/20 p-2 sm:p-2.5 pl-3.5 sm:pl-4 flex items-end gap-2 sm:gap-3 shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus-within:border-sky-400/60 focus-within:ring-2 focus-within:ring-sky-400/20 transition-all duration-300">
                 
                 {/* Bouton '+' (Connecteurs / Règles & Abonnements) */}
                 <button
                   type="button"
                   onClick={() => setIsRulesOpen(true)}
-                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0 mb-0.5"
                   title="Mes règles & abonnements personnalisés"
                 >
                   <Plus size={16} />
                 </button>
 
-                {/* Champ de saisie prompt épuré & large */}
-                <input
-                  type="text"
-                  value={inputPrompt}
-                  onChange={(e) => setInputPrompt(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      onSend();
+                {/* Champ de saisie prompt multiline auto-expansible (Google Gemini) */}
+                <div className="flex-1 min-w-0 py-0.5">
+                  <textarea
+                    ref={textareaRef}
+                    rows={1}
+                    value={inputPrompt}
+                    onChange={(e) => setInputPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        onSend();
+                      }
+                    }}
+                    placeholder={
+                      isListening
+                        ? "Parlez, votre voix est transcrite en direct..."
+                        : "Posez une question sur vos relevés, demandez un audit, comparez vos prix..."
                     }
-                  }}
-                  placeholder="Posez une question sur vos relevés, demandez un audit, comparez vos prix..."
-                  disabled={isLoading}
-                  className="flex-1 bg-transparent border-none text-xs sm:text-sm md:text-base text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
-                />
+                    disabled={isLoading}
+                    className="w-full bg-transparent border-none text-xs sm:text-sm md:text-base text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light resize-none overflow-y-auto leading-relaxed max-h-40 py-1.5 px-1 scrollbar-thin scrollbar-thumb-white/20 whitespace-pre-wrap break-words block"
+                  />
+                </div>
 
                 {/* Microphone Vocal */}
                 <button
                   type="button"
                   onClick={toggleListening}
-                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 mb-0.5 ${
                     isListening 
-                      ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse' 
+                      ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.4)]' 
                       : 'text-slate-300 hover:text-white hover:bg-white/10'
                   }`}
-                  title={isListening ? "Écoute en cours... Cliquez pour terminer" : "Activer la saisie vocale"}
+                  title={isListening ? "Écoute en cours... Cliquez pour terminer la dictée" : "Activer la saisie vocale"}
                 >
                   {isListening ? <MicOff size={16} /> : <Mic size={16} />}
                 </button>
@@ -1018,8 +1062,8 @@ export default function Coach() {
                   type="button"
                   onClick={() => onSend()}
                   disabled={!inputPrompt.trim() || isLoading}
-                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-20 disabled:scale-100 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                  title="Envoyer"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-20 disabled:scale-100 disabled:cursor-not-allowed cursor-pointer shrink-0 mb-0.5"
+                  title="Envoyer (Entrée)"
                 >
                   <ArrowUp size={16} className="stroke-[2.5]" />
                 </button>
@@ -1027,7 +1071,7 @@ export default function Coach() {
 
               {/* Ligne discrète de confiance & avertissement */}
               <p className="text-[11px] text-center text-slate-500 font-light">
-                CashPilot IA peut faire des erreurs. Vérifiez les informations financières importantes.
+                CashPilot IA peut faire des erreurs. Vérifiez les informations financières importantes. (Maj+Entrée pour un saut de ligne)
               </p>
             </div>
 
@@ -1203,41 +1247,48 @@ export default function Coach() {
                   ))}
                 </div>
 
-                {/* Capsule de Saisie Prompt Style Google Gemini */}
-                <div className="bg-[#171926]/95 backdrop-blur-2xl rounded-full border border-white/20 p-2 sm:p-2.5 pl-3.5 sm:pl-5 flex items-center gap-2 sm:gap-3 shadow-[0_20px_50px_rgba(0,0,0,0.65)] focus-within:border-sky-400/60 focus-within:ring-2 focus-within:ring-sky-400/20 transition-all duration-300">
+                {/* Capsule de Saisie Prompt Multiligne Style Google Gemini */}
+                <div className="bg-[#171926]/95 backdrop-blur-2xl rounded-[28px] border border-white/20 p-2 sm:p-2.5 pl-3.5 sm:pl-4 flex items-end gap-2 sm:gap-3 shadow-[0_20px_50px_rgba(0,0,0,0.65)] focus-within:border-sky-400/60 focus-within:ring-2 focus-within:ring-sky-400/20 transition-all duration-300">
                   <button
                     type="button"
                     onClick={() => setIsRulesOpen(true)}
-                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0 mb-0.5"
                     title="Mes règles & abonnements personnalisés"
                   >
                     <Plus size={16} />
                   </button>
 
-                  <input
-                    type="text"
-                    value={inputPrompt}
-                    onChange={(e) => setInputPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        onSend();
+                  <div className="flex-1 min-w-0 py-0.5">
+                    <textarea
+                      ref={textareaRef}
+                      rows={1}
+                      value={inputPrompt}
+                      onChange={(e) => setInputPrompt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          onSend();
+                        }
+                      }}
+                      placeholder={
+                        isListening
+                          ? "Parlez, votre voix est transcrite en direct..."
+                          : "Posez une question sur vos relevés, demandez un audit, comparez vos prix..."
                       }
-                    }}
-                    placeholder="Posez une question sur vos relevés, demandez un audit, comparez vos prix..."
-                    disabled={isLoading}
-                    className="flex-1 bg-transparent border-none text-xs sm:text-sm md:text-base text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light"
-                  />
+                      disabled={isLoading}
+                      className="w-full bg-transparent border-none text-xs sm:text-sm md:text-base text-white placeholder-slate-400 focus:outline-none focus:ring-0 font-light resize-none overflow-y-auto leading-relaxed max-h-40 py-1.5 px-1 scrollbar-thin scrollbar-thumb-white/20 whitespace-pre-wrap break-words block"
+                    />
+                  </div>
 
                   <button
                     type="button"
                     onClick={toggleListening}
-                    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 mb-0.5 ${
                       isListening 
-                        ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse' 
+                        ? 'bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.4)]' 
                         : 'text-slate-300 hover:text-white hover:bg-white/10'
                     }`}
-                    title={isListening ? "Écoute en cours... Cliquez pour terminer" : "Activer la saisie vocale"}
+                    title={isListening ? "Écoute en cours... Cliquez pour terminer la dictée" : "Activer la saisie vocale"}
                   >
                     {isListening ? <MicOff size={16} /> : <Mic size={16} />}
                   </button>
@@ -1246,15 +1297,15 @@ export default function Coach() {
                     type="button"
                     onClick={() => onSend()}
                     disabled={!inputPrompt.trim() || isLoading}
-                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-20 disabled:scale-100 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                    title="Envoyer"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-20 disabled:scale-100 disabled:cursor-not-allowed cursor-pointer shrink-0 mb-0.5"
+                    title="Envoyer (Entrée)"
                   >
                     <ArrowUp size={16} className="stroke-[2.5]" />
                   </button>
                 </div>
 
                 <p className="text-[11px] text-center text-slate-500 font-light">
-                  CashPilot IA peut faire des erreurs. Vérifiez les informations financières importantes.
+                  CashPilot IA peut faire des erreurs. Vérifiez les informations financières importantes. (Maj+Entrée pour un saut de ligne)
                 </p>
               </div>
             </div>

@@ -868,7 +868,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                   <span className={`text-xl sm:text-2xl font-black font-mono tracking-tight ${
                     globalPercentage > 100 ? 'text-rose-400' : (globalPercentage >= 85 ? 'text-amber-400' : 'text-emerald-400')
                   }`}>
-                    {globalPercentage.toFixed(0)}%
+                    {(globalPercentage ?? 0).toFixed(0)}%
                   </span>
                   <span className="text-[10px] text-muted-foreground block font-medium">du budget consommé</span>
                 </div>
@@ -1060,7 +1060,7 @@ export const BudgetAndCostOfLivingDrawer: React.FC<BudgetAndCostOfLivingDrawerPr
                             />
                           </div>
                           <span className={`text-[10px] font-mono font-bold ${isOver ? 'text-rose-400' : 'text-muted-foreground'}`}>
-                            {row.percentage.toFixed(0)}%
+                            {(row?.percentage ?? 0).toFixed(0)}%
                           </span>
                           <div className="text-muted-foreground ml-1">
                             {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}

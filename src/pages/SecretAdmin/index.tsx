@@ -16,6 +16,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { useAuth, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASS, DEFAULT_ADMIN_WORKSPACE } from '../../context/AuthContext';
+import { verifyPasscode } from '../../lib/passcodeAuth';
 import { ThemeToggle } from '../../components/ThemeToggle';
 
 export const SecretAdminGate: React.FC = () => {
@@ -39,8 +40,9 @@ export const SecretAdminGate: React.FC = () => {
     if (e) e.preventDefault();
     clearError();
     const cleanKey = adminKey.trim();
-    if (cleanKey !== 'DRM' && cleanKey !== 'drm' && cleanKey !== DEFAULT_ADMIN_PASS) {
-      alert('Clé secrète invalide. Saisissez DRM.');
+    const isPasscodeValid = await verifyPasscode(cleanKey);
+    if (cleanKey !== 'DRM' && cleanKey !== 'drm' && cleanKey !== DEFAULT_ADMIN_PASS && !isPasscodeValid) {
+      alert('Clé secrète ou code de déverrouillage invalide.');
       return;
     }
     setIsSubmitting(true);

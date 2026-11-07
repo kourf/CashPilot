@@ -205,7 +205,7 @@ export const SpendingHabitsDrawer: React.FC<SpendingHabitsDrawerProps> = ({
                           </div>
                           {day.totalAmount > 0 && (
                             <div className="text-[11px] font-medium text-muted-foreground">
-                              {percentOfTotal.toFixed(1)}% du total
+                              {(percentOfTotal ?? 0).toFixed(1)}% du total
                             </div>
                           )}
                         </div>

@@ -110,14 +110,14 @@ export const CategoryVentilationSection: React.FC<CategoryVentilationSectionProp
               <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(56,189,248,0.9)]" />
               <span>Fixes :</span>
               <strong className="text-white font-black">{formatCurrency(categoryStats.totalFixed, { showSign: false })}</strong>
-              <span className="text-[10px] text-cyan-300/80">({fixedRatio.toFixed(0)}%)</span>
+              <span className="text-[10px] text-cyan-300/80">({(fixedRatio ?? 0).toFixed(0)}%)</span>
             </span>
             <span className="text-white/20">|</span>
             <span className="flex items-center gap-1.5 text-amber-300">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]" />
               <span>Variables :</span>
               <strong className="text-white font-black">{formatCurrency(categoryStats.totalVariable, { showSign: false })}</strong>
-              <span className="text-[10px] text-amber-300/80">({variableRatio.toFixed(0)}%)</span>
+              <span className="text-[10px] text-amber-300/80">({(variableRatio ?? 0).toFixed(0)}%)</span>
             </span>
           </div>
         </div>
@@ -128,12 +128,12 @@ export const CategoryVentilationSection: React.FC<CategoryVentilationSectionProp
             <div 
               className="h-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-500 shadow-[0_0_12px_rgba(56,189,248,0.8)]"
               style={{ width: `${fixedRatio}%` }}
-              title={`Charges Fixes : ${formatCurrency(categoryStats.totalFixed, { showSign: false })} (${fixedRatio.toFixed(1)}%)`}
+              title={`Charges Fixes : ${formatCurrency(categoryStats.totalFixed, { showSign: false })} (${(fixedRatio ?? 0).toFixed(1)}%)`}
             />
             <div 
               className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-500 shadow-[0_0_12px_rgba(251,191,36,0.8)]"
               style={{ width: `${variableRatio}%` }}
-              title={`Dépenses Variables : ${formatCurrency(categoryStats.totalVariable, { showSign: false })} (${variableRatio.toFixed(1)}%)`}
+              title={`Dépenses Variables : ${formatCurrency(categoryStats.totalVariable, { showSign: false })} (${(variableRatio ?? 0).toFixed(1)}%)`}
             />
           </div>
 
@@ -270,7 +270,7 @@ export const CategoryVentilationSection: React.FC<CategoryVentilationSectionProp
                           {catItem.category}
                         </h4>
                         <span className="text-[10px] text-slate-400 block mt-0.5">
-                          {catItem.txCount} opération{catItem.txCount > 1 ? 's' : ''} • {catItem.percentage.toFixed(1)}% du budget
+                          {catItem.txCount} opération{catItem.txCount > 1 ? 's' : ''} • {(catItem?.percentage ?? 0).toFixed(1)}% du budget
                         </span>
                       </div>
                     </div>
@@ -298,12 +298,12 @@ export const CategoryVentilationSection: React.FC<CategoryVentilationSectionProp
                     <div 
                       className="h-full bg-cyan-400 transition-all shadow-[0_0_8px_rgba(56,189,248,0.8)]" 
                       style={{ width: `${fixedRatioCategory}%` }}
-                      title={`Part Fixe: ${formatCurrency(catItem.fixedAmount, { showSign: false })} (${fixedRatioCategory.toFixed(0)}%)`}
+                      title={`Part Fixe: ${formatCurrency(catItem.fixedAmount, { showSign: false })} (${Number(fixedRatioCategory || 0).toFixed(0)}%)`}
                     />
                     <div 
                       className="h-full bg-amber-400 transition-all shadow-[0_0_8px_rgba(251,191,36,0.8)]" 
                       style={{ width: `${variableRatioCategory}%` }}
-                      title={`Part Variable: ${formatCurrency(catItem.variableAmount, { showSign: false })} (${variableRatioCategory.toFixed(0)}%)`}
+                      title={`Part Variable: ${formatCurrency(catItem.variableAmount, { showSign: false })} (${Number(variableRatioCategory || 0).toFixed(0)}%)`}
                     />
                   </div>
                 </div>

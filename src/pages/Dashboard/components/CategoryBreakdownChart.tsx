@@ -276,7 +276,7 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
                   ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40" 
                   : "bg-white/10 text-slate-300 border-white/10"
               )}>
-                {centerInfo.percentage.toFixed(1)} %
+                {(centerInfo?.percentage ?? 0).toFixed(1)} %
               </span>
             </div>
           </div>
@@ -320,7 +320,7 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
                     {formatCurrency(item.value, { showSign: false })}
                   </span>
                   <span className="text-[10px] font-bold text-slate-400 bg-white/[0.06] border border-white/10 px-1.5 py-0.5 rounded-md min-w-[42px] text-right">
-                    {item.percentage.toFixed(1)} %
+                    {(item?.percentage ?? 0).toFixed(1)} %
                   </span>
                   {viewMode === 'categories' && (
                     <ChevronRight size={13} className="text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-transform" />

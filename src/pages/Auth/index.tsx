@@ -17,14 +17,16 @@ import {
   Coins,
   Volume2,
   VolumeX,
+  Delete,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { verifyPasscode, DEFAULT_PASSCODE_WORKSPACE } from '../../lib/passcodeAuth';
 import { BanknoteCanvas, type BanknoteCanvasRef } from '../../components/BanknoteAnimation/BanknoteCanvas';
 import { VaultDoor } from '../../components/Vault3D/VaultDoor';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { cn } from '../../lib/utils';
 
-type AuthTab = 'login' | 'register' | 'reset';
+type AuthTab = 'passcode' | 'login' | 'register' | 'reset';
 
 export const AuthPage: React.FC = () => {
   const navigate = useNavigate();
@@ -69,6 +71,12 @@ export const AuthPage: React.FC = () => {
   const [localError, setLocalError] = useState<string | null>(null);
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
 
+  // États pour le déverrouillage express par code PIN
+  const [pin, setPin] = useState<string>('');
+  const [isVerifyingPin, setIsVerifyingPin] = useState<boolean>(false);
+  const [isPinError, setIsPinError] = useState<boolean>(false);
+  const [isPinSuccess, setIsPinSuccess] = useState<boolean>(false);
+
   // Redirection automatique si déjà connecté
   useEffect(() => {
     if (user) {
@@ -84,6 +92,8 @@ export const AuthPage: React.FC = () => {
       setActiveTab('register');
     } else if (modeParam === 'reset') {
       setActiveTab('reset');
+    } else if (modeParam === 'passcode' || modeParam === 'pin') {
+      setActiveTab('passcode');
     }
     if (params.get('unlocked') === 'true' || params.get('open') === 'true') {
       setIsVaultOpen(true);
@@ -94,8 +104,71 @@ export const AuthPage: React.FC = () => {
     clearError();
     setLocalError(null);
     setResetSuccessMsg(null);
+    setPin('');
+    setIsPinError(false);
     setActiveTab(tab);
   };
+
+  // Gestion du déverrouillage par Code PIN
+  const handleVerifyPin = useCallback(async (codeToVerify: string) => {
+    if (isVerifyingPin || isPinSuccess) return;
+    setIsVerifyingPin(true);
+    setIsPinError(false);
+    try {
+      const isValid = await verifyPasscode(codeToVerify);
+      if (isValid) {
+        setIsPinSuccess(true);
+        setIsVaultOpen(true);
+        if (canvasRef.current) {
+          canvasRef.current.makeItRain(40);
+        }
+        await loginAsAdmin(DEFAULT_PASSCODE_WORKSPACE);
+        setTimeout(() => {
+          navigate('/', { replace: true });
+        }, 600);
+      } else {
+        setIsPinError(true);
+        setTimeout(() => {
+          setPin('');
+          setIsPinError(false);
+        }, 800);
+      }
+    } catch {
+      setIsPinError(true);
+      setPin('');
+    } finally {
+      setIsVerifyingPin(false);
+    }
+  }, [isVerifyingPin, isPinSuccess, loginAsAdmin, navigate]);
+
+  const handleAddPinDigit = useCallback((d: string) => {
+    if (pin.length >= 4 || isVerifyingPin || isPinSuccess) return;
+    const next = pin + d;
+    setPin(next);
+    if (next.length === 4) {
+      handleVerifyPin(next);
+    }
+  }, [pin, isVerifyingPin, isPinSuccess, handleVerifyPin]);
+
+  const handleDeletePinDigit = useCallback(() => {
+    if (isVerifyingPin || isPinSuccess) return;
+    setPin((prev) => prev.slice(0, -1));
+    setIsPinError(false);
+  }, [isVerifyingPin, isPinSuccess]);
+
+  // Écouteur clavier physique pour le code PIN
+  useEffect(() => {
+    if (activeTab !== 'passcode') return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') {
+        handleAddPinDigit(e.key);
+      } else if (e.key === 'Backspace') {
+        handleDeletePinDigit();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [activeTab, handleAddPinDigit, handleDeletePinDigit]);
 
   // Déclencher une cascade de vrais billets EUR & CHF
   const handleMakeItRain = () => {
@@ -309,37 +382,146 @@ export const AuthPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Onglets : Se connecter / Créer un compte */}
+          {/* Onglets : Code PIN / Se connecter / Créer un compte */}
           {activeTab !== 'reset' && (
-            <div className="grid grid-cols-2 p-1 mb-5 rounded-2xl bg-white/[0.05] border border-white/10">
+            <div className="grid grid-cols-3 p-1 mb-5 rounded-2xl bg-white/[0.05] border border-white/10 text-xs">
+              <button
+                type="button"
+                onClick={() => switchTab('passcode')}
+                className={cn(
+                  'py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer',
+                  activeTab === 'passcode'
+                    ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                )}
+              >
+                <Lock size={12} className={activeTab === 'passcode' ? 'text-white' : 'text-cyan-400'} />
+                <span>Code PIN</span>
+              </button>
               <button
                 type="button"
                 onClick={() => switchTab('login')}
                 className={cn(
-                  'py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer',
+                  'py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer',
                   activeTab === 'login'
                     ? 'bg-gradient-to-r from-amber-500 via-emerald-500 to-cyan-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white'
                 )}
               >
-                Se connecter
+                Connexion
               </button>
               <button
                 type="button"
                 onClick={() => switchTab('register')}
                 className={cn(
-                  'py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer',
+                  'py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer',
                   activeTab === 'register'
                     ? 'bg-gradient-to-r from-amber-500 via-emerald-500 to-cyan-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white'
                 )}
               >
-                Créer un compte
+                Créer compte
               </button>
             </div>
           )}
 
-          {/* Message de succès */}
+          {activeTab === 'passcode' ? (
+            <div className="space-y-4 pt-1 animate-in fade-in duration-200">
+              <div className="text-center space-y-1">
+                <span className="text-xs font-semibold text-slate-300">
+                  {isPinSuccess ? 'Déverrouillage réussi • Ouverture...' : isPinError ? 'Code incorrect. Réessayez.' : 'Saisissez votre code PIN à 4 chiffres'}
+                </span>
+                <p className="text-[10px] text-slate-400">
+                  Accès instantané à votre espace et à vos relevés bancaires
+                </p>
+              </div>
+
+              {/* 4 Indicateurs Lumineux */}
+              <div className="flex items-center justify-center gap-4 py-3">
+                {[0, 1, 2, 3].map((index) => {
+                  const isFilled = pin.length > index;
+                  return (
+                    <div
+                      key={index}
+                      className={cn(
+                        "w-4 h-4 rounded-full transition-all duration-200 border",
+                        isPinSuccess
+                          ? "bg-emerald-400 border-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.8)] scale-110"
+                          : isPinError
+                          ? "bg-rose-500 border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.8)] scale-105"
+                          : isFilled
+                          ? "bg-gradient-to-tr from-cyan-400 to-blue-500 border-cyan-300 shadow-[0_0_15px_rgba(56,189,248,0.7)] scale-110"
+                          : "bg-white/[0.08] border-white/20"
+                      )}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Clavier Numérique Tactile Liquid Glass */}
+              <div className="space-y-2 max-w-[240px] mx-auto">
+                {[
+                  [{ d: '1', l: '' }, { d: '2', l: 'ABC' }, { d: '3', l: 'DEF' }],
+                  [{ d: '4', l: 'GHI' }, { d: '5', l: 'JKL' }, { d: '6', l: 'MNO' }],
+                  [{ d: '7', l: 'PQRS' }, { d: '8', l: 'TUV' }, { d: '9', l: 'WXYZ' }]
+                ].map((row, rIdx) => (
+                  <div key={rIdx} className="flex justify-between gap-2">
+                    {row.map((item) => (
+                      <button
+                        key={item.d}
+                        type="button"
+                        onClick={() => handleAddPinDigit(item.d)}
+                        disabled={isVerifyingPin || isPinSuccess}
+                        className="w-16 h-12 rounded-xl liquid-pill hover:border-cyan-400/50 flex flex-col items-center justify-center active:scale-95 transition-all text-white group cursor-pointer disabled:opacity-50"
+                      >
+                        <span className="text-lg font-bold group-hover:text-cyan-300">{item.d}</span>
+                        {item.l && <span className="text-[7px] text-slate-400 font-bold -mt-0.5">{item.l}</span>}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+                <div className="flex justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPin('')}
+                    disabled={pin.length === 0 || isVerifyingPin || isPinSuccess}
+                    className="w-16 h-12 rounded-xl liquid-glass-subtle flex items-center justify-center text-[10px] font-bold text-slate-400 hover:text-white active:scale-95 transition-all cursor-pointer disabled:opacity-20"
+                  >
+                    Effacer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAddPinDigit('0')}
+                    disabled={isVerifyingPin || isPinSuccess}
+                    className="w-16 h-12 rounded-xl liquid-pill hover:border-cyan-400/50 flex flex-col items-center justify-center active:scale-95 transition-all text-white group cursor-pointer disabled:opacity-50"
+                  >
+                    <span className="text-lg font-bold group-hover:text-cyan-300">0</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeletePinDigit}
+                    disabled={pin.length === 0 || isVerifyingPin || isPinSuccess}
+                    className="w-16 h-12 rounded-xl liquid-glass-subtle flex items-center justify-center text-slate-300 hover:text-white active:scale-95 transition-all cursor-pointer disabled:opacity-20"
+                    title="Supprimer un chiffre"
+                  >
+                    <Delete size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => switchTab('login')}
+                  className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Ou se connecter avec e-mail et mot de passe →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Message de succès */}
           {resetSuccessMsg && (
             <div className="mb-4 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2.5">
               <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-emerald-400" />
@@ -552,6 +734,8 @@ export const AuthPage: React.FC = () => {
                 ← Retour à la connexion
               </button>
             </div>
+          )}
+            </>
           )}
         </div>
       </main>

@@ -234,10 +234,10 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
       // Right Branch Nodes for each Expense Category
       financialData.expenseItems.forEach(item => {
         if (item.value > 0.01) {
-          const pctStr = item.percentage.toFixed(1);
+          const pctStr = (item?.percentage ?? 0).toFixed(1);
           const amtStr = formatCurrency(item.value, { showSign: false });
           const targetLabel = `${item.name} (${amtStr} • ${pctStr}%)`;
-          rows.push([incomeNodeLabel, targetLabel, Number(item.value.toFixed(2))]);
+          rows.push([incomeNodeLabel, targetLabel, Number((item?.value ?? 0).toFixed(2))]);
         }
       });
 
@@ -245,8 +245,8 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
       const realSurplus = totalAvailableFunds - totalExp;
       if (realSurplus > 0.01) {
         const surplusPct = totalAvailableFunds > 0 ? (realSurplus / totalAvailableFunds) * 100 : 0;
-        const surplusLabel = `Reste à Vivre Réel (${formatCurrency(realSurplus, { showSign: false })} • ${surplusPct.toFixed(1)}%)`;
-        rows.push([incomeNodeLabel, surplusLabel, Number(realSurplus.toFixed(2))]);
+        const surplusLabel = `Reste à Vivre Réel (${formatCurrency(realSurplus, { showSign: false })} • ${(surplusPct ?? 0).toFixed(1)}%)`;
+        rows.push([incomeNodeLabel, surplusLabel, Number((realSurplus ?? 0).toFixed(2))]);
       }
 
       if (rows.length === 0) return;
@@ -529,7 +529,7 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                                   Montant : <span className="font-bold text-foreground font-mono">{formatCurrency(data.value, { showSign: false })}</span>
                                 </div>
                                 <div className="text-cyan-400 font-semibold">
-                                  Part : {data.percentage.toFixed(1)}% des dépenses
+                                  Part : {(data?.percentage ?? 0).toFixed(1)}% des dépenses
                                 </div>
                               </div>
                             );
@@ -577,7 +577,7 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                         {formatCurrency(item.value, { showSign: false })}
                       </span>
                       <span className="text-[11px] font-semibold text-cyan-400 w-12 text-right">
-                        {item.percentage.toFixed(1)}%
+                        {(item?.percentage ?? 0).toFixed(1)}%
                       </span>
                     </div>
                   </div>
@@ -750,7 +750,7 @@ export const BankFlowCharts: React.FC<BankFlowChartsProps> = ({
                       />
                     </div>
                     <span className="text-[11px] font-mono font-medium text-muted-foreground w-9 text-right">
-                      {item.percentage.toFixed(0)}%
+                      {(item?.percentage ?? 0).toFixed(0)}%
                     </span>
                   </div>
                 </div>

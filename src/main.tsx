@@ -5,7 +5,7 @@ import App from './App.tsx'
 import { registerSW } from 'virtual:pwa-register'
 
 // Version d'application unique pour forcer la synchronisation mobile et PC
-export const APP_BUILD_ID = '2026.11.06-v2.8';
+export const APP_BUILD_ID = '2026.11.07-v2.9';
 
 // Détection automatique d'ancienne version : purge et recharge transparente
 if (typeof window !== 'undefined') {

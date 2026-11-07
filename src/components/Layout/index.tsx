@@ -126,7 +126,7 @@ export default function Layout() {
                 className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-slate-300 hover:text-cyan-300 hover:bg-white/[0.08] border border-white/10 flex items-center gap-1.5 text-xs transition-all active:scale-95 cursor-pointer bg-white/[0.04]"
               >
                 <RefreshCw size={14} className={cn("text-cyan-400 shrink-0", isRefreshingApp && "animate-spin")} />
-                <span className="text-[11px] font-bold text-cyan-300 sm:inline">v2.8</span>
+                <span className="text-[11px] font-bold text-cyan-300 sm:inline">v2.9</span>
               </button>
 
               <ThemeToggle variant="compact" />

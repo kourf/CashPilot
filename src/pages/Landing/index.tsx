@@ -38,9 +38,10 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import InstallPWAButton from '../../components/InstallPWAButton';
+import { PasscodeUnlockModal } from '../../components/PasscodeUnlockModal';
 import { cn } from '../../lib/utils';
 
-type AuthMode = 'login' | 'register' | 'reset';
+type AuthMode = 'passcode' | 'login' | 'register' | 'reset';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -56,6 +57,7 @@ export const LandingPage: React.FC = () => {
   } = useAuth();
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isPasscodeModalOpen, setIsPasscodeModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -66,7 +68,12 @@ export const LandingPage: React.FC = () => {
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const openModal = (mode: AuthMode = 'login') => {
-    navigate(`/auth?mode=${mode}`);
+    if (mode === 'passcode') {
+      setIsPasscodeModalOpen(true);
+      return;
+    }
+    setAuthMode(mode);
+    setIsAuthModalOpen(true);
   };
 
   const handleGoogleSignIn = async () => {
@@ -214,6 +221,17 @@ export const LandingPage: React.FC = () => {
               </button>
             ) : (
               <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Déverrouillage rapide par code PIN */}
+                <button
+                  type="button"
+                  onClick={() => setIsPasscodeModalOpen(true)}
+                  className="px-3 py-1.5 rounded-full text-xs font-bold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 hover:text-white border border-cyan-400/30 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                  title="Déverrouillage instantané par code PIN"
+                >
+                  <Lock size={12} className="text-cyan-400" />
+                  <span>Code PIN</span>
+                </button>
+
                 <button
                   onClick={() => openModal('login')}
                   className="hidden sm:inline-flex px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
@@ -363,6 +381,15 @@ export const LandingPage: React.FC = () => {
             >
               <span>Lancer mon cockpit gratuit</span>
               <ArrowRight size={15} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsPasscodeModalOpen(true)}
+              className="w-full sm:w-auto px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl liquid-glass hover:bg-white/[0.12] text-cyan-300 hover:text-white font-bold text-xs sm:text-sm border border-cyan-400/30 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 group"
+            >
+              <Lock size={15} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+              <span>Déverrouiller avec Code PIN</span>
             </button>
           </div>
 
@@ -728,7 +755,7 @@ export const LandingPage: React.FC = () => {
                     {authMode === 'register' && 'Créer mon Espace Gratuit'}
                     {authMode === 'reset' && 'Réinitialiser mon mot de passe'}
                   </h3>
-                  <span className="text-[10px] text-cyan-300 font-medium">Chiffrement AES-256</span>
+                  <span className="text-[10px] text-cyan-300 font-medium">Chiffrement AES-256 & SHA-256</span>
                 </div>
               </div>
 
@@ -739,6 +766,49 @@ export const LandingPage: React.FC = () => {
                 <X size={16} />
               </button>
             </div>
+
+            {/* Onglets Modes de Connexion */}
+            {authMode !== 'reset' && (
+              <div className="grid grid-cols-3 p-1 rounded-2xl bg-white/[0.05] border border-white/10 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAuthModalOpen(false);
+                    setIsPasscodeModalOpen(true);
+                  }}
+                  className="py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer text-cyan-300 hover:text-white hover:bg-white/10"
+                >
+                  <Lock size={12} className="text-cyan-400" />
+                  <span>Code PIN</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('login')}
+                  className={cn(
+                    "py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                    authMode === 'login'
+                      ? "bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md"
+                      : "text-slate-400 hover:text-white"
+                  )}
+                >
+                  <Mail size={12} />
+                  <span>Connexion</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('register')}
+                  className={cn(
+                    "py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                    authMode === 'register'
+                      ? "bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md"
+                      : "text-slate-400 hover:text-white"
+                  )}
+                >
+                  <Sparkles size={12} />
+                  <span>S'inscrire</span>
+                </button>
+              </div>
+            )}
 
             {/* Error or Success Messages */}
             {error && (
@@ -926,10 +996,38 @@ export const LandingPage: React.FC = () => {
                   </button>
                 </div>
               )}
+
+              {authMode === 'login' && (
+                <div className="text-center pt-2 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAuthModalOpen(false);
+                      setIsPasscodeModalOpen(true);
+                    }}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold flex items-center justify-center gap-1.5 mx-auto hover:underline cursor-pointer"
+                  >
+                    <Lock size={13} />
+                    <span>Déverrouiller plutôt avec mon code PIN à 4 chiffres</span>
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </div>
       )}
+
+      {/* Modale Déverrouillage Passcode Ultra-Rapide (Code PIN) */}
+      <PasscodeUnlockModal
+        isOpen={isPasscodeModalOpen}
+        onClose={() => setIsPasscodeModalOpen(false)}
+        onSuccess={() => navigate('/', { replace: true })}
+        onSwitchToClassicAuth={() => {
+          setIsPasscodeModalOpen(false);
+          setAuthMode('login');
+          setIsAuthModalOpen(true);
+        }}
+      />
 
     </div>
   );

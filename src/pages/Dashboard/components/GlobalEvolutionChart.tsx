@@ -341,7 +341,7 @@ export const GlobalEvolutionChart: React.FC<GlobalEvolutionChartProps> = ({
               <Sparkles size={13} className="text-cyan-400" />
             </div>
             <span className="text-xs sm:text-sm font-black text-cyan-400 block mt-1">
-              {stats.epargneRate.toFixed(1)} %
+              {(stats?.epargneRate ?? 0).toFixed(1)} %
             </span>
           </div>
         </div>
