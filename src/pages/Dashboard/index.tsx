@@ -93,6 +93,11 @@ export default function Dashboard() {
     return calculateCoachSynthesis(kpis, financialProfile);
   }, [kpis, financialProfile]);
 
+  // Statistiques de ventilation des dépenses
+  const categoryStats = useMemo(() => {
+    return calculateCategoryStats(filteredTransactions);
+  }, [filteredTransactions]);
+
   // Modals & Drawers
   const [isSavingsDrawerOpen, setIsSavingsDrawerOpen] = useState(false);
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -597,7 +602,8 @@ export default function Dashboard() {
            ========================================================================= */}
         <section className="w-full">
           <UnifiedCategorySection 
-            transactions={filteredTransactions}
+            categoryStats={categoryStats}
+            filteredTransactions={filteredTransactions}
             onSelectCategory={handleOpenCategoryAuditItem}
             hideBalances={hideBalances}
           />

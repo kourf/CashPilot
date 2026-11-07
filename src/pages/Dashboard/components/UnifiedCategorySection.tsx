@@ -20,17 +20,18 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import { formatCurrency } from '../../../lib/bankUtils';
-import { type CategoryStatsItem } from '../../../lib/categorizationRules';
+import { type CategoryStatsItem, calculateCategoryStats } from '../../../lib/categorizationRules';
 import { type Transaction } from '../../../lib/kpiUtils';
 import { cn } from '../../../lib/utils';
 
 interface UnifiedCategorySectionProps {
-  categoryStats: {
+  categoryStats?: {
     categories: CategoryStatsItem[];
     totalFixed: number;
     totalVariable: number;
   };
-  filteredTransactions: Transaction[];
+  filteredTransactions?: Transaction[];
+  transactions?: Transaction[];
   onSelectCategory: (category: CategoryStatsItem) => void;
   hideBalances?: boolean;
 }
@@ -76,11 +77,23 @@ const renderActiveShape = (props: any) => {
 };
 
 export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
-  categoryStats,
+  categoryStats: propStats,
   filteredTransactions,
+  transactions,
   onSelectCategory,
   hideBalances = false
 }) => {
+  const txList = filteredTransactions || transactions || [];
+  const categoryStats = useMemo(() => {
+    if (propStats && propStats.categories) return propStats;
+    if (txList.length > 0) return calculateCategoryStats(txList);
+    return {
+      categories: [],
+      totalFixed: 0,
+      totalVariable: 0
+    };
+  }, [propStats, txList]);
+
   const [viewMode, setViewMode] = useState<'categories' | 'nature'>('categories');
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [filterNature, setFilterNature] = useState<'all' | 'fixe' | 'variable' | 'top'>('all');
@@ -88,9 +101,9 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isExpandedAll, setIsExpandedAll] = useState(false);
 
-  const totalExpenses = categoryStats.totalFixed + categoryStats.totalVariable;
-  const fixedRatio = totalExpenses > 0 ? (categoryStats.totalFixed / totalExpenses) * 100 : 0;
-  const variableRatio = totalExpenses > 0 ? (categoryStats.totalVariable / totalExpenses) * 100 : 0;
+  const totalExpenses = (categoryStats?.totalFixed || 0) + (categoryStats?.totalVariable || 0);
+  const fixedRatio = totalExpenses > 0 ? ((categoryStats?.totalFixed || 0) / totalExpenses) * 100 : 0;
+  const variableRatio = totalExpenses > 0 ? ((categoryStats?.totalVariable || 0) / totalExpenses) * 100 : 0;
 
   // Donut data by category
   const donutCategoryData = useMemo(() => {
@@ -212,7 +225,7 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
               <strong className="text-white font-black">
                 {hideBalances ? "•••• €" : formatCurrency(categoryStats.totalFixed, { showSign: false })}
               </strong>
-              <span className="text-[10px] text-cyan-300/80">({fixedRatio.toFixed(0)}%)</span>
+              <span className="text-[10px] text-cyan-300/80">({(fixedRatio ?? 0).toFixed(0)}%)</span>
             </span>
             <span className="text-white/20">|</span>
             <span className="flex items-center gap-1.5 text-amber-300">
@@ -221,7 +234,7 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
               <strong className="text-white font-black">
                 {hideBalances ? "•••• €" : formatCurrency(categoryStats.totalVariable, { showSign: false })}
               </strong>
-              <span className="text-[10px] text-amber-300/80">({variableRatio.toFixed(0)}%)</span>
+              <span className="text-[10px] text-amber-300/80">({(variableRatio ?? 0).toFixed(0)}%)</span>
             </span>
           </div>
         </div>
@@ -232,12 +245,12 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
             <div 
               className="h-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-500 shadow-[0_0_12px_rgba(56,189,248,0.8)]"
               style={{ width: `${fixedRatio}%` }}
-              title={`Charges Fixes : ${formatCurrency(categoryStats.totalFixed, { showSign: false })} (${fixedRatio.toFixed(1)}%)`}
+              title={`Charges Fixes : ${formatCurrency(categoryStats.totalFixed, { showSign: false })} (${(fixedRatio ?? 0).toFixed(1)}%)`}
             />
             <div 
               className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-500 shadow-[0_0_12px_rgba(251,191,36,0.8)]"
               style={{ width: `${variableRatio}%` }}
-              title={`Dépenses Variables : ${formatCurrency(categoryStats.totalVariable, { showSign: false })} (${variableRatio.toFixed(1)}%)`}
+              title={`Dépenses Variables : ${formatCurrency(categoryStats.totalVariable, { showSign: false })} (${(variableRatio ?? 0).toFixed(1)}%)`}
             />
           </div>
 
@@ -346,7 +359,7 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
                 {hideBalances ? "•••• €" : formatCurrency(centerInfo.amount, { showSign: false })}
               </span>
               <span className="text-[11px] font-bold text-cyan-300 mt-0.5">
-                {centerInfo.percentage.toFixed(1)}%
+                {(centerInfo?.percentage ?? 0).toFixed(1)}%
               </span>
             </div>
           </div>
@@ -357,7 +370,7 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
               <div key={item.name} className="flex items-center gap-1.5 truncate">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                 <span className="text-slate-300 truncate">{item.name}</span>
-                <span className="text-slate-400 font-bold ml-auto">{item.percentage.toFixed(0)}%</span>
+                <span className="text-slate-400 font-bold ml-auto">{(item?.percentage ?? 0).toFixed(0)}%</span>
               </div>
             ))}
           </div>
@@ -487,7 +500,7 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
                               {catItem.category}
                             </h4>
                             <span className="text-[11px] text-slate-400 block mt-0.5">
-                              {catItem.txCount} opérations • {catItem.percentage.toFixed(1)}% du budget
+                              {catItem.txCount} opérations • {(catItem?.percentage ?? 0).toFixed(1)}% du budget
                             </span>
                           </div>
                         </div>
@@ -515,12 +528,12 @@ export const UnifiedCategorySection: React.FC<UnifiedCategorySectionProps> = ({
                         <div 
                           className="h-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-500 shadow-[0_0_8px_rgba(56,189,248,0.8)]" 
                           style={{ width: `${fixedRatioCategory}%` }}
-                          title={`Part Fixe : ${formatCurrency(catItem.fixedAmount, { showSign: false })} (${fixedRatioCategory.toFixed(0)}%)`}
+                          title={`Part Fixe : ${formatCurrency(catItem.fixedAmount, { showSign: false })} (${Number(fixedRatioCategory || 0).toFixed(0)}%)`}
                         />
                         <div 
                           className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-500 shadow-[0_0_8px_rgba(251,191,36,0.8)]" 
                           style={{ width: `${variableRatioCategory}%` }}
-                          title={`Part Variable : ${formatCurrency(catItem.variableAmount, { showSign: false })} (${variableRatioCategory.toFixed(0)}%)`}
+                          title={`Part Variable : ${formatCurrency(catItem.variableAmount, { showSign: false })} (${Number(variableRatioCategory || 0).toFixed(0)}%)`}
                         />
                       </div>
                     </div>
