@@ -17,6 +17,8 @@ interface SavingsAlertsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   alertsCount?: number;
+  kpis?: any;
+  transactions?: any[];
 }
 
 export const SavingsAlertsDrawer: React.FC<SavingsAlertsDrawerProps> = ({
